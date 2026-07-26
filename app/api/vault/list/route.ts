@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { browseKnowledge, deleteKnowledge, type KnowledgeSystem } from '@/lib/knowledge'
+import {
+  browseKnowledge,
+  deleteKnowledge,
+  updateKnowledge,
+  type KnowledgeSystem,
+} from '@/lib/knowledge'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
@@ -35,6 +40,36 @@ export async function GET(request: NextRequest) {
     console.error('Vault list error:', err)
     return NextResponse.json(
       { success: false, error: err instanceof Error ? err.message : 'List failed' },
+      { status: 500 },
+    )
+  }
+}
+
+// Edit a stored chunk in place. Content changes are re-embedded so retrieval
+// reflects the correction rather than the superseded text.
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = (await request.json()) as { id?: string; title?: string; content?: string }
+    if (!body.id) {
+      return NextResponse.json({ success: false, error: 'id is required' }, { status: 400 })
+    }
+    if (typeof body.content === 'string' && !body.content.trim()) {
+      return NextResponse.json(
+        { success: false, error: 'Content cannot be empty — delete the chunk instead.' },
+        { status: 400 },
+      )
+    }
+
+    const { reembedded } = await updateKnowledge({
+      id: body.id,
+      title: body.title,
+      content: body.content,
+    })
+    return NextResponse.json({ success: true, reembedded })
+  } catch (err) {
+    console.error('Vault update error:', err)
+    return NextResponse.json(
+      { success: false, error: err instanceof Error ? err.message : 'Update failed' },
       { status: 500 },
     )
   }

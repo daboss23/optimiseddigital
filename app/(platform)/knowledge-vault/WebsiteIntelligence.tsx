@@ -624,6 +624,28 @@ export function WebsiteIntelligencePanel({
           </div>
         )}
 
+        {/* An extraction that failed reads identically to a site that states
+            nothing — every field shows "Not confidently identified". Only this
+            tells the two apart, and only one of them is worth a re-run. */}
+        {website.extractionFailed && website.extractionFailed.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning/30 bg-warning/[0.06] px-3 py-2">
+            <span className="flex items-start gap-2 text-[12px] leading-relaxed text-warning">
+              <AlertCircle size={13} className="mt-0.5 shrink-0" />
+              {website.extractionFailed.length >= 5
+                ? 'Pages were indexed, but no intelligence profiles could be derived from them. The fields below are blank because extraction failed — not because the site says nothing.'
+                : `${website.extractionFailed.join(' and ')} intelligence could not be derived. Those fields are blank because extraction failed, not because the site says nothing.`}
+            </span>
+            <button
+              type="button"
+              onClick={refresh}
+              disabled={!!refreshing || busy}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-warning/40 bg-warning/10 px-2.5 py-1 text-[11px] font-medium text-warning transition-colors hover:bg-warning/20 disabled:opacity-50"
+            >
+              <RotateCw size={12} /> Retry extraction
+            </button>
+          </div>
+        )}
+
         {/* Summary metrics */}
         <CompletionMetrics summary={website} />
 

@@ -296,6 +296,45 @@ export async function deleteKnowledge(id: string): Promise<void> {
   if (error) throw error
 }
 
+/**
+ * Update a stored chunk's title and/or content.
+ *
+ * Content edits are re-embedded before the write. A chunk whose text changed
+ * but whose vector didn't would still be retrieved for the OLD text and then
+ * hand the agent the NEW text — the correction would be invisible to search
+ * and actively misleading in results. When embeddings aren't configured the
+ * text still updates (keyword browse stays correct) and the caller is told the
+ * vector is stale.
+ */
+export async function updateKnowledge(input: {
+  id: string
+  title?: string
+  content?: string
+}): Promise<{ reembedded: boolean }> {
+  if (!supabaseReady()) throw new Error('Vector store not configured')
+
+  const title = input.title?.trim()
+  const content = input.content?.trim()
+  if (!title && !content) throw new Error('Nothing to update')
+
+  const patch: Record<string, unknown> = {}
+  if (title) patch.title = title
+
+  let reembedded = false
+  if (content) {
+    patch.content = content
+    if (hasEmbeddings()) {
+      const [vector] = await embed([content], 'document')
+      patch.embedding = vector
+      reembedded = true
+    }
+  }
+
+  const { error } = await getSupabaseAdmin().from('knowledge_chunks').update(patch).eq('id', input.id)
+  if (error) throw error
+  return { reembedded }
+}
+
 /* ----------------------- Demo fallback knowledge -------------------------- */
 // Builds a corpus from the curated intelligence so retrieval works without a DB.
 

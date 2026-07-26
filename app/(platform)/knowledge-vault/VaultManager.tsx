@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   Search,
   Plus,
@@ -8,6 +9,11 @@ import {
   Check,
   AlertCircle,
   Trash2,
+  Maximize2,
+  Pencil,
+  X,
+  Save,
+  RotateCcw,
   Database,
   FileText,
   FolderOpen,
@@ -82,6 +88,12 @@ function liveCategoryGroups(groups: VaultStatGroup[]): CategoryGroup[] {
 // A vault artifact = one document, grouped from its underlying chunks.
 type AssetKind = 'pdf' | 'doc' | 'link' | 'image' | 'video' | 'audio' | 'text'
 
+/** One stored chunk of a document, as the expanded reader edits it. */
+interface ArtifactChunk {
+  id: string | null
+  content: string
+}
+
 interface VaultArtifact {
   key: string
   title: string
@@ -91,6 +103,8 @@ interface VaultArtifact {
   preview: string
   chunkCount: number
   ids: string[]
+  /** Every chunk of this document, in stored order — the expand/edit reader. */
+  chunks: ArtifactChunk[]
   similarity?: number
 }
 
@@ -126,6 +140,7 @@ function groupArtifacts(items: VaultItem[]): VaultArtifact[] {
     if (existing) {
       existing.chunkCount += 1
       if (it.id) existing.ids.push(it.id)
+      existing.chunks.push({ id: it.id, content: it.content })
       if (typeof it.similarity === 'number')
         existing.similarity = Math.max(existing.similarity ?? 0, it.similarity)
     } else {
@@ -138,6 +153,7 @@ function groupArtifacts(items: VaultItem[]): VaultArtifact[] {
         preview: it.content,
         chunkCount: 1,
         ids: it.id ? [it.id] : [],
+        chunks: [{ id: it.id, content: it.content }],
         similarity: it.similarity,
       })
     }
@@ -147,6 +163,242 @@ function groupArtifacts(items: VaultItem[]): VaultArtifact[] {
   if (arr.some((a) => typeof a.similarity === 'number'))
     arr.sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0))
   return arr
+}
+
+/* ------------------------- Artifact reader / editor ------------------------ */
+
+/**
+ * Full-document reader for a vault artifact, with in-place editing.
+ *
+ * Cards only ever showed a three-line clamp of the first chunk, so what the
+ * reactor actually retrieves was unreadable and uncorrectable from the UI. This
+ * opens the whole document chunk by chunk and lets each one be edited and saved
+ * back. Saves go through PATCH /api/vault/list, which re-embeds the chunk so
+ * search reflects the correction instead of the superseded text.
+ */
+function ArtifactReader({
+  artifact,
+  onClose,
+  onSaved,
+}: {
+  artifact: VaultArtifact
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [drafts, setDrafts] = useState<string[]>(() => artifact.chunks.map((c) => c.content))
+  const [saving, setSaving] = useState(false)
+  const [status, setStatus] = useState<{ ok: boolean; message: string } | null>(null)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => setMounted(true), [])
+
+  // The reader owns the screen while it is open.
+  useEffect(() => {
+    const { body } = document
+    const prev = body.style.overflow
+    body.style.overflow = 'hidden'
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !saving) onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      body.style.overflow = prev
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [onClose, saving])
+
+  const dirty = drafts.some((d, i) => d !== artifact.chunks[i]?.content)
+  // A chunk with no id lives in the curated demo corpus, not the database.
+  const editable = artifact.chunks.some((c) => c.id)
+
+  const revert = () => {
+    setDrafts(artifact.chunks.map((c) => c.content))
+    setStatus(null)
+  }
+
+  const save = async () => {
+    setSaving(true)
+    setStatus(null)
+    const changed = artifact.chunks
+      .map((c, i) => ({ chunk: c, content: drafts[i] }))
+      .filter((x) => x.chunk.id && x.content.trim() && x.content !== x.chunk.content)
+
+    try {
+      const results = await Promise.all(
+        changed.map((x) =>
+          fetch('/api/vault/list', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: x.chunk.id, content: x.content }),
+          }).then((r) => r.json()),
+        ),
+      )
+      const failed = results.filter((r) => !r.success)
+      if (failed.length > 0) {
+        setStatus({ ok: false, message: failed[0]?.error || 'Some changes could not be saved.' })
+      } else {
+        const stale = results.some((r) => r.reembedded === false)
+        setStatus({
+          ok: true,
+          message: stale
+            ? `Saved ${changed.length} chunk${changed.length === 1 ? '' : 's'} — text updated, but embeddings are not configured so search still matches the old wording.`
+            : `Saved and re-embedded ${changed.length} chunk${changed.length === 1 ? '' : 's'}.`,
+        })
+        setEditing(false)
+        onSaved()
+      }
+    } catch {
+      setStatus({ ok: false, message: 'Could not reach the vault. Try again.' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const Icon = KIND_META[artifact.kind].icon
+
+  if (!mounted) return null
+
+  // Portaled to <body>: the panel chrome this renders inside sets its own
+  // stacking context, which would trap a fixed overlay behind the shell.
+  // z-[120] clears the VaultDoor, which is itself a portaled `fixed inset-0
+  // z-[100]` — at a lower index the reader opened *behind* the vault interior.
+  return createPortal(
+    <div
+      className="launch-overlay fixed inset-0 z-[120] grid place-items-center p-0 sm:px-4 sm:py-6"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget && !saving) onClose()
+      }}
+      role="dialog"
+      aria-modal="true"
+      aria-label={artifact.title}
+    >
+      <div className="launch-panel flex h-[100dvh] max-h-[100dvh] w-full flex-col rounded-none sm:h-auto sm:max-h-[90vh] sm:w-[820px] sm:max-w-[calc(100vw-2rem)] sm:rounded-[1.5rem]">
+        {/* Header */}
+        <div className="flex items-start gap-3 border-b border-white/10 px-4 pb-4 pt-[max(1rem,env(safe-area-inset-top))] sm:px-6 sm:pt-5">
+          <span className="vault-artifact-icon grid h-10 w-10 shrink-0 place-items-center rounded-lg">
+            <Icon size={18} className="text-glow" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate font-display text-base font-bold text-white" title={artifact.title}>
+              {artifact.title}
+            </h2>
+            <p className="mt-0.5 text-[11px] uppercase tracking-wider text-white/40">
+              {KIND_META[artifact.kind].label} · {artifact.chunkCount} chunk
+              {artifact.chunkCount === 1 ? '' : 's'} · {artifact.system}
+              {artifact.category ? ` · ${artifact.category}` : ''}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="tap-target grid h-10 w-10 shrink-0 place-items-center rounded-full text-white/40 transition-colors hover:bg-white/5 hover:text-white disabled:opacity-40"
+            aria-label="Close"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Body — one block per stored chunk */}
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-5">
+          {artifact.chunks.map((chunk, i) => (
+            <div key={chunk.id ?? i} className="rounded-xl border border-white/10 bg-white/[0.02]">
+              {artifact.chunks.length > 1 && (
+                <div className="flex items-center justify-between border-b border-white/5 px-3 py-1.5">
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-white/35">
+                    Chunk {i + 1} of {artifact.chunks.length}
+                  </span>
+                  {drafts[i] !== chunk.content && (
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-warning">
+                      Edited
+                    </span>
+                  )}
+                </div>
+              )}
+              {editing && chunk.id ? (
+                <textarea
+                  value={drafts[i]}
+                  onChange={(e) =>
+                    setDrafts((d) => d.map((v, idx) => (idx === i ? e.target.value : v)))
+                  }
+                  spellCheck={false}
+                  rows={Math.min(24, Math.max(6, Math.ceil(drafts[i].length / 90)))}
+                  className="w-full resize-y bg-transparent px-3 py-3 font-mono text-[12.5px] leading-relaxed text-white/85 outline-none"
+                />
+              ) : (
+                <p className="whitespace-pre-wrap px-3 py-3 text-[13px] leading-relaxed text-white/70">
+                  {drafts[i]}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Footer */}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-4">
+          {status ? (
+            <span
+              className={`flex min-w-0 items-start gap-1.5 text-[11px] leading-snug ${
+                status.ok ? 'text-success' : 'text-danger'
+              }`}
+            >
+              {status.ok ? (
+                <Check size={12} className="mt-0.5 shrink-0" />
+              ) : (
+                <AlertCircle size={12} className="mt-0.5 shrink-0" />
+              )}
+              {status.message}
+            </span>
+          ) : (
+            <span className="text-[11px] text-white/35">
+              {editable
+                ? 'Edits are re-embedded, so the reactor retrieves the corrected text.'
+                : 'Demo corpus — connect Supabase to edit stored knowledge.'}
+            </span>
+          )}
+
+          <div className="ml-auto flex items-center gap-2">
+            {editing ? (
+              <>
+                <button
+                  type="button"
+                  onClick={dirty ? revert : () => setEditing(false)}
+                  disabled={saving}
+                  className="launch-nav tap-target disabled:opacity-40"
+                >
+                  <RotateCcw size={14} /> {dirty ? 'Revert' : 'Cancel'}
+                </button>
+                <button
+                  type="button"
+                  onClick={save}
+                  disabled={saving || !dirty}
+                  className="launch-nav launch-nav--primary tap-target disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                  {saving ? 'Saving…' : 'Save changes'}
+                </button>
+              </>
+            ) : (
+              editable && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditing(true)
+                    setStatus(null)
+                  }}
+                  className="launch-nav launch-nav--primary tap-target"
+                >
+                  <Pencil size={14} /> Edit
+                </button>
+              )
+            )}
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
 }
 
 const SYSTEMS: { value: KnowledgeSystem; label: string }[] = [
@@ -362,6 +614,15 @@ export function VaultManager({ initialStats }: { initialStats: Stats }) {
   const [visibleCount, setVisibleCount] = useState(12)
   useEffect(() => setVisibleCount(12), [query, systemFilter])
   const visibleArtifacts = artifacts.slice(0, visibleCount)
+
+  // The artifact currently open in the full reader/editor, if any.
+  const [reading, setReading] = useState<VaultArtifact | null>(null)
+  // Keep the open reader pointed at fresh data after a save re-loads the list.
+  useEffect(() => {
+    if (!reading) return
+    const next = artifacts.find((a) => a.key === reading.key)
+    if (next && next !== reading) setReading(next)
+  }, [artifacts, reading])
 
   const categoriesLive = live && stats.groups.length > 0
   const categoryGroups: CategoryGroup[] = categoriesLive
@@ -707,7 +968,7 @@ export function VaultManager({ initialStats }: { initialStats: Stats }) {
                             type="button"
                             onClick={() => removeDoc(art)}
                             aria-label={`Delete ${art.title}`}
-                            className="shrink-0 rounded-lg border border-border p-1.5 text-white/30 opacity-0 transition-all hover:border-danger/40 hover:bg-danger/10 hover:text-danger group-hover:opacity-100"
+                            className="shrink-0 rounded-lg border border-border p-1.5 text-white/30 opacity-0 transition-all hover:border-danger/40 hover:bg-danger/10 hover:text-danger group-hover:opacity-100 focus-visible:opacity-100"
                           >
                             <Trash2 size={13} />
                           </button>
@@ -723,6 +984,27 @@ export function VaultManager({ initialStats }: { initialStats: Stats }) {
                           <span className="ml-auto font-mono text-[10px] text-glow/70">
                             {Math.round(art.similarity * 100)}% match
                           </span>
+                        )}
+                      </div>
+
+                      {/* Read the whole document, and correct it. The card only
+                          ever shows a three-line clamp of the first chunk. */}
+                      <div className="mt-3 flex items-center gap-2 border-t border-white/5 pt-2.5">
+                        <button
+                          type="button"
+                          onClick={() => setReading(art)}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface/60 px-2.5 py-1.5 text-[11px] font-medium text-white/65 transition-all hover:border-glow/40 hover:text-glow"
+                        >
+                          <Maximize2 size={12} /> Expand
+                        </button>
+                        {art.ids.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setReading(art)}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface/60 px-2.5 py-1.5 text-[11px] font-medium text-white/65 transition-all hover:border-glow/40 hover:text-glow"
+                          >
+                            <Pencil size={12} /> Edit
+                          </button>
                         )}
                       </div>
                     </div>
@@ -793,6 +1075,14 @@ export function VaultManager({ initialStats }: { initialStats: Stats }) {
           ))}
         </div>
       </Panel>
+
+      {reading && (
+        <ArtifactReader
+          artifact={reading}
+          onClose={() => setReading(null)}
+          onSaved={() => load(query, systemFilter)}
+        />
+      )}
     </>
   )
 }
