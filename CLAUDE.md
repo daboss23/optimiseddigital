@@ -309,6 +309,31 @@ To run the *real* agent end to end: set `ANTHROPIC_API_KEY` (agent),
 - [x] Meta craft block injected into every orchestrator run (fold/hook rules, placement ratios, safe zones, CTA-to-temperature mapping)
 - [x] Performance ingest (Meta API) → `campaign_outcomes` auto-ingest of live CTR/CPL/ROAS with cohort-median grading; winners auto re-ingest into the Vault (`lib/meta-ingest.ts`, `/api/meta/ingest`, /meta sync control)
 
+**Network integrity, speed + mobile**
+- [x] ATLAS reconnected to the fallback knowledge layer — `foundationAssets` in
+      `lib/reactor-data.ts` gives the `vault` + `website` systems real curated
+      documents (frameworks, SOPs, positioning). ATLAS previously retrieved
+      nothing whenever Supabase/Voyage were absent
+- [x] Retrieval events carry their originating layer (`agent`/`id`); the
+      workflow reducer attributes by id and tracks concurrently active layers,
+      so batched parallel consults no longer pile every finding onto one card
+- [x] Mandatory-layer activation is enforced in code, not prompt: ATLAS · NOVA ·
+      ORACLE are briefed **in parallel before OPUS's first turn**
+      (`preflightBriefing`) and their findings injected into its first message —
+      guarantees the foundation layers run and removes 2–3 serial turns
+- [x] Independent tools in a turn (consults, stills, renders, rubric) resolve
+      concurrently; ORACLE's memory lookup runs alongside the briefing
+- [x] Streaming client: context value memoized + SSE events folded per chunk
+      (was one re-render of every consumer per event)
+- [x] Reactor page code-split (Canvas/Studio dynamic): 167 kB → 102 kB
+- [x] Mobile: safe-area viewport, portaled nav drawer + brief sheet (both were
+      trapped by `backdrop-filter` / `isolation: isolate` containing blocks),
+      `dvh` sheets, 44px touch targets, and a phone performance layer that
+      freezes the aurora and drops backdrop blur under 768px
+- [x] `npm run selftest` (`scripts/reactor-selftest.ts`) — asserts every
+      mandatory layer activates with real evidence, evidence is attributable,
+      and deliverable counts match the brief
+
 **Still open**
 - [ ] SPARK URL-only ingestion for JS-rendered sources (Meta Ad Library / TikTok via oEmbed/transcript APIs; pasted script works today)
 - [ ] Scheduled auto-sync for the Meta performance ingest (manual one-click sync done; cron/Vercel scheduled function pending)

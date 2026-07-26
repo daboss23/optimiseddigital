@@ -1143,7 +1143,7 @@ function CanvasInner({ mode, concepts, active, strategy, imageModel, videoModel,
                 <button
                   type="button"
                   onClick={() => sendLaneToStudio(0)}
-                  className="fire-btn inline-flex w-full items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-[11px] font-bold uppercase tracking-wide text-white"
+                  className="fire-btn fire-btn--sm inline-flex w-full items-center justify-center gap-1.5 font-bold uppercase tracking-wide text-white"
                 >
                   Send to Studio <ArrowRight size={12} />
                 </button>

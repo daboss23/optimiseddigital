@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "selftest": "tsx scripts/reactor-selftest.ts",
+    "verify": "./scripts/verify-reactor.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.103.0",

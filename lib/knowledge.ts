@@ -15,6 +15,7 @@ import {
   researchOutputs,
   creativeAnalyses,
   vaultCategories,
+  foundationAssets,
 } from '@/lib/reactor-data'
 
 export type KnowledgeSystem =
@@ -295,6 +296,45 @@ export async function deleteKnowledge(id: string): Promise<void> {
   if (error) throw error
 }
 
+/**
+ * Update a stored chunk's title and/or content.
+ *
+ * Content edits are re-embedded before the write. A chunk whose text changed
+ * but whose vector didn't would still be retrieved for the OLD text and then
+ * hand the agent the NEW text — the correction would be invisible to search
+ * and actively misleading in results. When embeddings aren't configured the
+ * text still updates (keyword browse stays correct) and the caller is told the
+ * vector is stale.
+ */
+export async function updateKnowledge(input: {
+  id: string
+  title?: string
+  content?: string
+}): Promise<{ reembedded: boolean }> {
+  if (!supabaseReady()) throw new Error('Vector store not configured')
+
+  const title = input.title?.trim()
+  const content = input.content?.trim()
+  if (!title && !content) throw new Error('Nothing to update')
+
+  const patch: Record<string, unknown> = {}
+  if (title) patch.title = title
+
+  let reembedded = false
+  if (content) {
+    patch.content = content
+    if (hasEmbeddings()) {
+      const [vector] = await embed([content], 'document')
+      patch.embedding = vector
+      reembedded = true
+    }
+  }
+
+  const { error } = await getSupabaseAdmin().from('knowledge_chunks').update(patch).eq('id', input.id)
+  if (error) throw error
+  return { reembedded }
+}
+
 /* ----------------------- Demo fallback knowledge -------------------------- */
 // Builds a corpus from the curated intelligence so retrieval works without a DB.
 
@@ -310,6 +350,26 @@ let demoCorpus: Doc[] | null = null
 function buildDemoCorpus(): Doc[] {
   if (demoCorpus) return demoCorpus
   const docs: Doc[] = []
+
+  // ATLAS's foundation — the `vault` and `website` systems. Without these the
+  // Knowledge Intelligence layer is the only one with no documents behind it,
+  // so it reports zero evidence on every run that isn't backed by a live
+  // Supabase + Voyage stack.
+  for (const a of foundationAssets) {
+    docs.push({ system: a.system, category: a.category, title: a.title, content: a.content })
+  }
+  // The Vault's asset inventory is retrievable too, so ATLAS can answer "what
+  // do we actually hold on this" with the real shape of the library.
+  for (const g of vaultCategories) {
+    docs.push({
+      system: 'vault',
+      category: g.group,
+      title: `${g.group} — Vault inventory`,
+      content: `${g.group} held in the Knowledge Vault: ${g.items
+        .map((i) => `${i.name} (${i.count})`)
+        .join(', ')}.`,
+    })
+  }
 
   for (const p of patterns) {
     docs.push({
@@ -360,14 +420,19 @@ function demoSearch(query: string, k: number, system?: KnowledgeSystem): Knowled
     return { d, score }
   })
 
-  return scored
-    .sort((a, b) => b.score - a.score)
-    .slice(0, k)
-    .map(({ d, score }) => ({
-      system: d.system,
-      category: d.category,
-      title: d.title,
-      content: d.content,
-      similarity: terms.length ? score / terms.length : 0,
-    }))
+  // Only documents that actually match the question count as evidence. The
+  // previous top-k slice returned k documents whatever the score, so a layer
+  // reported unrelated material as findings and banded its confidence off the
+  // raw count. With no query terms at all, ranking is meaningless — fall back
+  // to the head of the corpus so the layer still has ground to stand on.
+  const ranked = scored.sort((a, b) => b.score - a.score)
+  const relevant = terms.length ? ranked.filter((s) => s.score > 0) : ranked
+
+  return relevant.slice(0, k).map(({ d, score }) => ({
+    system: d.system,
+    category: d.category,
+    title: d.title,
+    content: d.content,
+    similarity: terms.length ? score / terms.length : 0,
+  }))
 }

@@ -833,6 +833,13 @@ body {
 
 /* Campaign Reactor CTA — neon liquid-glass 3D push button (cyan → violet). */
 .fire-btn {
+  /* One primary button for the whole platform. Every gradient CTA — topbar,
+     modal ignition, concept card, canvas, studio — is this class, so shape,
+     gloss, press physics and the shine sweep can only ever be defined once. */
+  position: relative;
+  overflow: hidden;
+  border-radius: 0.75rem;
+  cursor: pointer;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0) 44%),
     linear-gradient(115deg, rgb(var(--lg-cyan)) 0%, rgb(var(--lg-azure)) 48%, rgb(var(--lg-violet)) 100%);
@@ -867,6 +874,87 @@ body {
 }
 .fire-btn:disabled {
   filter: saturate(0.55) brightness(0.8);
+  cursor: not-allowed;
+}
+.fire-btn:focus-visible {
+  outline: 2px solid rgb(var(--lg-cyan));
+  outline-offset: 3px;
+}
+
+/* Shine sweep — a specular highlight travelling across the cap on hover. The
+   button already reads as glass; this is the light moving over it. Sits above
+   the label deliberately: the whole surface catches the light, not a band
+   behind the text. */
+.fire-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    45deg,
+    transparent 25%,
+    rgba(255, 255, 255, 0.7) 50%,
+    transparent 75%,
+    transparent 100%
+  );
+  background-size: 250% 250%;
+  background-position: 200% 0;
+  background-repeat: no-repeat;
+  transition: background-position 1s ease;
+}
+.fire-btn:hover:not(:disabled)::before {
+  background-position: -100% 0;
+}
+
+/* Size scale. The shape, gloss and shine are identical at every size — only
+   the type and padding change, so a topbar CTA and a full-width ignition
+   button read as the same object at different scales. */
+.fire-btn--sm {
+  padding: 0.5rem 0.85rem;
+  font-size: 0.75rem;
+}
+.fire-btn--md {
+  padding: 0.65rem 1.1rem;
+  font-size: 0.82rem;
+}
+.fire-btn--lg {
+  padding: 0.95rem 1.4rem;
+  font-size: 1rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fire-btn::before {
+    transition: none;
+  }
+  .fire-btn:hover:not(:disabled)::before {
+    background-position: 200% 0;
+  }
+}
+
+/* Secondary + ghost actions share the same radius language as the primary, so
+   a row of mixed buttons lines up instead of mixing pills with rectangles. */
+.ghost-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgb(var(--lg-cyan) / 0.3);
+  background: rgb(var(--lg-cyan) / 0.08);
+  color: #b6ecff;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+.ghost-btn:hover:not(:disabled) {
+  background: rgb(var(--lg-cyan) / 0.16);
+  border-color: rgb(var(--lg-cyan) / 0.5);
+  color: #dff6ff;
+}
+.ghost-btn:focus-visible {
+  outline: 2px solid rgb(var(--lg-cyan));
+  outline-offset: 3px;
 }
 .telemetry-console {
   border: 1px solid rgba(255, 255, 255, 0.10);
@@ -2438,4 +2526,111 @@ body {
 }
 @media (prefers-reduced-motion: reduce) {
   .canvas-immersive { animation: none; }
+}
+
+/* ============================================================================
+   MOBILE — the command center on a phone
+   The desktop material (fixed aurora under 24 backdrop-filtered surfaces, 50+
+   simultaneous ambient animations) is built for a GPU that is plugged in. On a
+   handset that same stack costs frames on every scroll and drains battery, so
+   below the tablet breakpoint the design keeps its look and sheds its cost:
+   the aurora becomes a static wash, glass falls back to opaque tint, and only
+   motion that carries meaning (live run state) survives.
+   ========================================================================== */
+
+/* Touch targets — Apple/Material both put the floor at ~44px. Several icon
+   controls were 36px squares, which is a miss on a moving thumb. */
+@media (hover: none) and (pointer: coarse) {
+  .tap-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  /* Stops iOS Safari from zooming the page when a control is focused — it
+     only does that below 16px. */
+  input,
+  textarea,
+  select {
+    font-size: max(16px, 1em);
+  }
+}
+
+/* Mobile navigation drawer ---------------------------------------------------*/
+.mobile-nav-scrim {
+  background: rgba(4, 7, 18, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: mobile-nav-scrim-in 0.18s ease-out both;
+  border: 0;
+  cursor: default;
+}
+.mobile-nav-panel {
+  background: linear-gradient(178deg, rgba(15, 22, 44, 0.99), rgba(8, 12, 26, 0.99));
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 24px 0 60px -30px rgba(0, 0, 0, 0.95);
+  padding-left: env(safe-area-inset-left);
+  animation: mobile-nav-panel-in 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes mobile-nav-scrim-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes mobile-nav-panel-in {
+  from { transform: translateX(-100%); }
+  to { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mobile-nav-scrim,
+  .mobile-nav-panel { animation: none; }
+}
+
+/* The topbar is sticky, so it also has to clear the notch. */
+.reactor-topbar {
+  padding-top: env(safe-area-inset-top);
+}
+
+/* Phone performance ----------------------------------------------------------*/
+@media (max-width: 767px) {
+  /* The aurora is the single most expensive layer on the page: four blurred,
+     screen-blended, continuously animated blobs behind everything. Frozen and
+     lightly blurred it still reads as the same colored light — it just stops
+     recompositing the whole viewport on every frame. */
+  .reactor-aurora {
+    filter: blur(30px) saturate(135%);
+  }
+  .aurora-blob {
+    animation: none !important;
+    opacity: 0.3;
+  }
+  /* Drifting intelligence dots are pure atmosphere and cost a full-screen
+     repaint to deliver it. */
+  .reactor-nodes { display: none; }
+
+  /* Real backdrop blur on stacked, scrolling glass is what makes phone
+     scrolling stutter. The tint and rim carry the material; the samples of
+     what's behind are what cost the frames. */
+  .glass,
+  .reactor-panel,
+  .command-surface,
+  .intel-card { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+
+  /* Pointer-tracked gloss has no pointer to track on a touchscreen. */
+  .command-surface .gloss,
+  .gloss-layer { display: none; }
+
+  /* Ambient decoration only — the live-run indicators (.animate-pulse-glow,
+     .dot-live, spinners) deliberately keep animating, because on mobile they
+     are the only signal that a long run is still alive. */
+  .reactor-stage-bg,
+  .conv-bloom,
+  .conv-core { animation: none !important; }
+
+  /* Horizontal overflow is the classic mobile break — a wide table or canvas
+     scrolls the whole page sideways. Contain it at the shell. */
+  body { overflow-x: hidden; }
+}
+
+/* Data-saver and reduced-motion users get the cheapest version everywhere. */
+@media (prefers-reduced-data: reduce) {
+  .reactor-aurora,
+  .reactor-nodes { display: none; }
 }

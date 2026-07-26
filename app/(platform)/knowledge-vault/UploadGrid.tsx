@@ -139,23 +139,23 @@ function UploadTile({ title, accept, icon }: { title: string; accept: string; ic
           <Icon size={18} />
         )}
       </span>
-      <span className="text-sm font-medium text-white">{title}</span>
+      <span className="text-[15px] font-semibold text-white">{title}</span>
 
       {status.kind === 'idle' && (
-        <span className="flex items-center gap-1 text-[11px] text-white/35">
-          <UploadCloud size={12} /> {accept}
+        <span className="flex items-center gap-1.5 text-[12.5px] font-medium text-white/65">
+          <UploadCloud size={14} className="text-glow/80" /> {accept}
         </span>
       )}
       {status.kind === 'working' && (
-        <span className="text-[11px] text-glow">Ingesting…</span>
+        <span className="text-[12.5px] font-medium text-glow">Ingesting…</span>
       )}
       {status.kind === 'done' && (
-        <span className="max-w-full truncate text-[11px] text-success">
+        <span className="max-w-full truncate text-[12.5px] font-medium text-success">
           {status.stored ? `Ingested · ${status.chunks} chunk${status.chunks === 1 ? '' : 's'}` : 'Queued (demo mode)'}
         </span>
       )}
       {status.kind === 'error' && (
-        <span className="max-w-full truncate text-[11px] text-danger">{status.message}</span>
+        <span className="max-w-full truncate text-[12.5px] font-medium text-danger">{status.message}</span>
       )}
 
       <input

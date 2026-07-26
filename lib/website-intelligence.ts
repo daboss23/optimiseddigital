@@ -154,6 +154,13 @@ export interface WebsiteSummary {
   profiles: WebsiteProfiles
   pages: WebsitePageInfo[]
   failedPages: { url: string; reason: string }[]
+  /**
+   * Profiles whose extraction failed outright, e.g. ["Offer", "Proof"]. Empty
+   * on a clean run. A failed extraction and a website that genuinely states
+   * nothing both leave fields reading "Not confidently identified" — only this
+   * distinguishes them, and only one of the two is worth re-running.
+   */
+  extractionFailed?: string[]
 }
 
 /** Streamed analysis events surfaced to the Website Intelligence UI. */
@@ -407,8 +414,26 @@ function normPath(url: string): string {
   }
 }
 
+/** Sitemap locations declared in robots.txt — where most CMSs actually put it. */
+async function sitemapsFromRobots(seed: URL): Promise<string[]> {
+  const res = await httpGet(`${seed.origin}/robots.txt`, ['text']).catch(() => null)
+  if (!res) return []
+  return Array.from(res.body.matchAll(/^\s*sitemap:\s*(\S+)/gim)).map((m) => m[1])
+}
+
 async function fetchSitemapUrls(seed: URL): Promise<string[]> {
-  const candidates = [`${seed.origin}/sitemap.xml`, `${seed.origin}/sitemap_index.xml`]
+  // robots.txt first — it is authoritative. The two conventional paths are
+  // only guesses, and a site that puts its sitemap anywhere else (very common
+  // on WordPress SEO plugins and hosted CMSs) yielded nothing at all.
+  const declared = await sitemapsFromRobots(seed).catch(() => [])
+  const candidates = [
+    ...declared,
+    `${seed.origin}/sitemap.xml`,
+    `${seed.origin}/sitemap_index.xml`,
+    `${seed.origin}/sitemap-index.xml`,
+    `${seed.origin}/wp-sitemap.xml`,
+    `${seed.origin}/sitemap/sitemap-index.xml`,
+  ]
   const found = new Set<string>()
   for (const sm of candidates) {
     const res = await httpGet(sm, ['xml', 'text']).catch(() => null)
@@ -447,18 +472,47 @@ async function discoverPages(seed: URL, homepageHtml: string): Promise<WebsitePa
     /* sitemap optional */
   }
 
-  const candidates = Array.from(new Set([...homeLinks, ...sitemap])).filter((u) => {
-    try {
-      return !EXCLUDE_RE.test(new URL(u).pathname)
-    } catch {
-      return false
-    }
-  })
+  const usable = (urls: string[]) =>
+    urls.filter((u) => {
+      try {
+        return !EXCLUDE_RE.test(new URL(u).pathname)
+      } catch {
+        return false
+      }
+    })
 
+  let candidates = Array.from(new Set([...usable(homeLinks), ...usable(sitemap)]))
+
+  // Second hop. Plenty of sites put almost nothing in the homepage nav (or
+  // render it client-side) and publish no sitemap — the homepage alone then
+  // yields two or three links and the whole scan runs on a corpus too thin to
+  // extract anything from. Follow the best few pages we did find and harvest
+  // their links before settling.
+  if (candidates.length < MAX_PAGES) {
+    const hops = candidates
+      .map((url) => ({ url, ...scoreUrl(url) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3)
+      .map((c) => c.url)
+    const fetched = await mapPool(hops, 3, async (url) => {
+      const res = await httpGet(url, ['text/html']).catch(() => null)
+      if (!res) return [] as string[]
+      try {
+        return usable(extractLinks(res.body, new URL(res.finalUrl)))
+      } catch {
+        return [] as string[]
+      }
+    })
+    candidates = Array.from(new Set([...candidates, ...fetched.flat()]))
+  }
+
+  // Deep pages used to score 0 and be dropped outright, which discarded real
+  // content on any site that nests (/programs/x/y). Everything is eligible now;
+  // score still decides the order, so the best pages are scanned first and the
+  // long tail only fills remaining slots.
   const scored = candidates
     .map((url) => ({ url, ...scoreUrl(url) }))
-    .filter((c) => c.score > 0)
-    .sort((a, b) => b.score - a.score)
+    .sort((a, b) => b.score - a.score || a.url.length - b.url.length)
 
   const seen = new Set<string>([normPath(seed.toString())])
   const picked: WebsitePageInfo[] = [{ url: seed.toString(), title: '', pageType: 'Homepage' }]
@@ -596,6 +650,117 @@ function emptyProfiles(companyName: string, domain: string): WebsiteProfiles {
   }
 }
 
+/**
+ * Recover an object from JSON that was cut off mid-write (the model hit its
+ * output ceiling). Walks the text tracking string/escape state, discards the
+ * incomplete tail, and closes whatever structures are still open. Returns null
+ * if the result still will not parse — this only ever salvages, never invents.
+ */
+function salvageJsonObject(raw: string): Record<string, unknown> | null {
+  const cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim()
+  const start = cleaned.indexOf('{')
+  if (start === -1) return null
+
+  // Every index at which the text could plausibly be cut and closed — the end
+  // of a completed string, number, keyword, or bracket. Collected on one pass,
+  // then tried newest-first so the most content survives. Trying candidates
+  // rather than committing to a single guess is what recovers the awkward
+  // cases, e.g. a cut-off inside a value whose key had already been written.
+  const cuts: number[] = []
+  let inString = false
+  let escaped = false
+  let depth = 0
+
+  for (let i = start; i < cleaned.length; i++) {
+    const ch = cleaned[i]
+    if (escaped) {
+      escaped = false
+      continue
+    }
+    if (ch === '\\') {
+      if (inString) escaped = true
+      continue
+    }
+    if (ch === '"') {
+      inString = !inString
+      if (!inString) cuts.push(i)
+      continue
+    }
+    if (inString) continue
+    if (ch === '{' || ch === '[') depth++
+    else if (ch === '}' || ch === ']') {
+      depth--
+      cuts.push(i)
+      if (depth === 0) break
+    } else if (ch === ',' || /[0-9a-z]/i.test(ch)) {
+      cuts.push(i)
+    }
+  }
+
+  for (let c = cuts.length - 1; c >= 0; c--) {
+    const end = cuts[c]
+    if (end <= start) continue
+    let body = cleaned.slice(start, end + 1).replace(/[,\s]*$/, '')
+    // Re-derive what is still open at this cut point and close it.
+    const open: string[] = []
+    let s = false
+    let esc = false
+    for (const ch of body) {
+      if (esc) {
+        esc = false
+        continue
+      }
+      if (ch === '\\') {
+        if (s) esc = true
+        continue
+      }
+      if (ch === '"') {
+        s = !s
+        continue
+      }
+      if (s) continue
+      if (ch === '{' || ch === '[') open.push(ch)
+      else if (ch === '}' || ch === ']') open.pop()
+    }
+    if (s) continue // cut lands inside a string — try an earlier candidate
+    // A dangling key ("foo": with no value, or a trailing bare key) cannot be
+    // closed meaningfully; drop it and let an earlier cut win.
+    if (/[:,]\s*$/.test(body) || /"[^"]*"\s*:\s*$/.test(body)) continue
+    for (let i = open.length - 1; i >= 0; i--) body += open[i] === '{' ? '}' : ']'
+
+    try {
+      const parsed = JSON.parse(body) as unknown
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>
+      }
+    } catch {
+      /* try an earlier cut */
+    }
+  }
+  return null
+}
+
+/**
+ * Retry a model call through transient failures. A rate limit or an overloaded
+ * upstream used to lose a whole profile silently.
+ */
+async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
+  const MAX = 2
+  let lastErr: unknown
+  for (let attempt = 0; attempt <= MAX; attempt++) {
+    try {
+      return await fn()
+    } catch (err) {
+      lastErr = err
+      const status = (err as { status?: number })?.status
+      const retriable = status === 429 || status === 500 || status === 503 || status === 529
+      if (!retriable || attempt === MAX) throw err
+      await new Promise((r) => setTimeout(r, 800 * 2 ** attempt))
+    }
+  }
+  throw lastErr
+}
+
 function asArray(v: unknown): string[] {
   if (Array.isArray(v)) return v.map((x) => String(x).trim()).filter(Boolean).slice(0, 25)
   if (typeof v === 'string' && v.trim()) return [v.trim()]
@@ -678,41 +843,151 @@ function mergeProfiles(base: WebsiteProfiles, raw: Record<string, unknown>, sour
   }
 }
 
+/**
+ * One extraction per profile.
+ *
+ * All five profiles used to be extracted in a SINGLE call capped at 3,500
+ * output tokens against a ~45-field schema. A content-rich site overruns that,
+ * and a truncated response is unparseable — `parseModelJson`'s brace-slice
+ * fallback cannot repair an object that was cut off mid-write. The throw was
+ * caught, the empty profiles returned, and the UI rendered a total extraction
+ * failure as "Not confidently identified" on every field, indistinguishable
+ * from a site that genuinely says nothing.
+ *
+ * Split per profile, each request is a fraction of the schema and nowhere near
+ * its ceiling, the five run concurrently (so it is no slower), and one bad
+ * response costs that profile only instead of all five.
+ */
+const PROFILE_SPECS: {
+  key: keyof WebsiteProfiles
+  label: string
+  focus: string
+  shape: string
+}[] = [
+  {
+    key: 'brand',
+    label: 'Brand',
+    focus:
+      'who this company is, what industry and business model they operate in, how they position themselves, their value propositions, differentiators, voice, tone, promises, and authority signals',
+    shape:
+      '{"companyName":"","industry":"","businessModel":"","positioning":"","valuePropositions":[],"differentiators":[],"brandVoice":"","tone":"","primaryPromises":[],"authoritySignals":[]}',
+  },
+  {
+    key: 'audience',
+    label: 'Audience',
+    focus:
+      'who the company says it serves — primary and secondary audiences, customer types, the problems they have, what they desire, the outcomes promised, and the exact language used to describe them',
+    shape:
+      '{"primaryAudiences":[],"secondaryAudiences":[],"customerTypes":[],"problems":[],"desires":[],"outcomes":[],"audienceLanguage":[]}',
+  },
+  {
+    key: 'offer',
+    label: 'Offer',
+    focus:
+      'everything the company sells or offers — products, services, programs, the primary offer, secondary offers, lead magnets, events, calls to action, pricing, and guarantees',
+    shape:
+      '{"products":[],"services":[],"programs":[],"primaryOffer":"","secondaryOffers":[],"leadMagnets":[],"events":[],"callsToAction":[],"pricing":[],"guarantees":[]}',
+  },
+  {
+    key: 'messaging',
+    label: 'Messaging',
+    focus:
+      'how the company communicates — recurring themes, actual headlines, common phrases, vocabulary, claims, emotional language, calls to action, differentiators, identity language, and transformation language',
+    shape:
+      '{"themes":[],"headlines":[],"commonPhrases":[],"vocabulary":[],"claims":[],"emotionalLanguage":[],"callsToAction":[],"differentiators":[],"identityLanguage":[],"transformationLanguage":[]}',
+  },
+  {
+    key: 'proof',
+    label: 'Proof',
+    focus:
+      'every proof element the company presents — testimonials, case studies, success stories, results, statistics, awards, partnerships, certifications, and authority signals',
+    shape:
+      '{"testimonials":[],"caseStudies":[],"successStories":[],"results":[],"statistics":[],"awards":[],"partnerships":[],"certifications":[],"authoritySignals":[]}',
+  },
+]
+
+/** What actually happened during extraction — reported, never swallowed. */
+export interface ProfileExtraction {
+  profiles: WebsiteProfiles
+  /** Profiles whose extraction failed outright (not "found nothing"). */
+  failed: string[]
+  /** True when no model key is configured, so nothing was extracted at all. */
+  skipped: boolean
+}
+
+async function extractProfile(
+  anthropic: Anthropic,
+  spec: (typeof PROFILE_SPECS)[number],
+  corpus: string,
+  domain: string,
+): Promise<Record<string, unknown> | null> {
+  const response = await withRetry(() =>
+    anthropic.messages.create({
+      model: MODEL,
+      // Generous headroom: one profile is ~10 fields, so this is far above what
+      // even a very rich site produces. Truncation was the original failure.
+      max_tokens: 4000,
+      system: `You are ATLAS, the Website Intelligence layer for The Professional Builder. You analyse a company's OWN public website and build its ${spec.label} profile. CRITICAL: do not invent details — only include what the website actually states. Use [] for any list with no evidence and "Not confidently identified" for any unknown scalar. Treat audiences as company-stated (not verified research) and proof as company-provided claims. Be thorough: extract every distinct item the site supports, as short strings. Reply with ONLY a JSON object, no prose, no markdown fences.`,
+      messages: [
+        {
+          role: 'user',
+          content: `Company domain: ${domain}\n\nBuild the ${spec.label} profile: ${spec.focus}.\n\nWebsite content:\n"""${corpus}"""\n\nReturn JSON with exactly this shape:\n${spec.shape}`,
+        },
+      ],
+    }),
+  )
+  const out = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text')?.text ?? ''
+  if (!out.trim()) return null
+  try {
+    return parseModelJson<Record<string, unknown>>(out)
+  } catch {
+    // A response cut off mid-object still holds most of its fields — recover
+    // them rather than discarding the whole profile.
+    const salvaged = salvageJsonObject(out)
+    if (salvaged) {
+      console.warn(`ATLAS ${spec.label} profile: response was truncated, salvaged partial JSON.`)
+      return salvaged
+    }
+    throw new Error(`${spec.label} profile returned unparseable JSON`)
+  }
+}
+
 async function deriveProfiles(
   pages: ScannedPage[],
   companyName: string,
   domain: string,
-): Promise<WebsiteProfiles> {
+): Promise<ProfileExtraction> {
   const base = emptyProfiles(companyName, domain)
   const sourceUrls = pages.map((p) => p.url)
-  if (!process.env.ANTHROPIC_API_KEY || pages.length === 0) return base
+  if (!process.env.ANTHROPIC_API_KEY || pages.length === 0) {
+    return { profiles: base, failed: [], skipped: !process.env.ANTHROPIC_API_KEY }
+  }
 
   const corpus = pages
     .map((p) => `## [${p.pageType}] ${p.title}\nURL: ${p.url}\n${p.content.slice(0, 1800)}`)
     .join('\n\n')
     .slice(0, PROFILE_INPUT_CHARS)
 
-  try {
-    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-    const response = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: 3500,
-      system:
-        'You are ATLAS, the Website Intelligence layer for The Professional Builder. You analyse a company’s OWN public website and build five compact intelligence profiles. CRITICAL: do not invent details. Only include what the website actually states. Use [] for any list with no evidence and "Not confidently identified" for any unknown scalar. Treat audiences as company-stated (not verified research) and proof as company-provided claims. Reply with ONLY a JSON object, no prose, no markdown fences.',
-      messages: [
-        {
-          role: 'user',
-          content: `Company domain: ${domain}\n\nWebsite content:\n"""${corpus}"""\n\nReturn JSON with exactly this shape (arrays of short strings; omit nothing — use [] / "Not confidently identified" when absent):\n{"brand":{"companyName":"","industry":"","businessModel":"","positioning":"","valuePropositions":[],"differentiators":[],"brandVoice":"","tone":"","primaryPromises":[],"authoritySignals":[]},"audience":{"primaryAudiences":[],"secondaryAudiences":[],"customerTypes":[],"problems":[],"desires":[],"outcomes":[],"audienceLanguage":[]},"offer":{"products":[],"services":[],"programs":[],"primaryOffer":"","secondaryOffers":[],"leadMagnets":[],"events":[],"callsToAction":[],"pricing":[],"guarantees":[]},"messaging":{"themes":[],"headlines":[],"commonPhrases":[],"vocabulary":[],"claims":[],"emotionalLanguage":[],"callsToAction":[],"differentiators":[],"identityLanguage":[],"transformationLanguage":[]},"proof":{"testimonials":[],"caseStudies":[],"successStories":[],"results":[],"statistics":[],"awards":[],"partnerships":[],"certifications":[],"authoritySignals":[]}}`,
-        },
-      ],
-    })
-    const out = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text')?.text ?? ''
-    const raw = parseModelJson<Record<string, unknown>>(out)
-    return mergeProfiles(base, raw, sourceUrls)
-  } catch (err) {
-    console.error('ATLAS profile derivation failed, using base profiles:', err)
-    return base
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+  const results = await Promise.all(
+    PROFILE_SPECS.map(async (spec) => {
+      try {
+        return { key: spec.key, label: spec.label, raw: await extractProfile(anthropic, spec, corpus, domain) }
+      } catch (err) {
+        console.error(`ATLAS ${spec.label} profile extraction failed:`, err)
+        return { key: spec.key, label: spec.label, raw: null }
+      }
+    }),
+  )
+
+  const merged: Record<string, unknown> = {}
+  const failed: string[] = []
+  for (const r of results) {
+    if (r.raw) merged[r.key] = r.raw
+    else failed.push(r.label)
   }
+
+  return { profiles: mergeProfiles(base, merged, sourceUrls), failed, skipped: false }
 }
 
 /* ------------------------------- Persistence ------------------------------ */
@@ -802,13 +1077,19 @@ function countSignals(profiles: WebsiteProfiles): WebsiteMetrics {
     arr(profiles.offer as unknown as Record<string, unknown>) +
     arr(profiles.messaging as unknown as Record<string, unknown>) +
     arr(profiles.proof as unknown as Record<string, unknown>)
+  // Only profiles that actually carry something count as created. Reporting a
+  // flat 5 claimed a full set even when every extraction came back empty.
+  const profilesCreated = (
+    ['brand', 'audience', 'offer', 'messaging', 'proof'] as (keyof WebsiteProfiles)[]
+  ).filter((k) => arr(profiles[k] as unknown as Record<string, unknown>) > 0).length
+
   return {
     ...emptyMetrics(),
     intelligenceSignals,
     offersFound,
     audiencesDetected,
     proofAssets,
-    profilesCreated: 5,
+    profilesCreated,
   }
 }
 
@@ -866,10 +1147,27 @@ export async function analyzeWebsite(
   emit({ type: 'progress', message: 'Detecting testimonials and proof…' })
 
   const companyName = extractTitle(home.body) || domain
-  const profiles = await deriveProfiles(scanned, companyName, domain)
+  const extraction = await deriveProfiles(scanned, companyName, domain)
+  const profiles = extraction.profiles
 
   for (const meta of PROFILE_META) {
     emit({ type: 'progress', message: `Building ${meta.title}…` })
+  }
+
+  // A failed extraction must never be presented as "the site says nothing".
+  // Those are different answers and only one of them is worth a re-run. This
+  // surfaces live in the progress feed; it also rides on the summary
+  // (`extractionFailed`) so the panel keeps showing it after the run ends.
+  if (extraction.skipped) {
+    emit({
+      type: 'progress',
+      message: 'No ANTHROPIC_API_KEY configured — pages indexed, no profiles derived.',
+    })
+  } else if (extraction.failed.length > 0) {
+    emit({
+      type: 'progress',
+      message: `⚠ ${extraction.failed.join(', ')} intelligence could not be derived — retry with Refresh.`,
+    })
   }
 
   emit({ type: 'progress', message: 'Embedding website knowledge…' })
@@ -953,6 +1251,7 @@ export async function analyzeWebsite(
     profiles,
     pages: scanned.map((p) => ({ url: p.url, title: p.title, pageType: p.pageType })),
     failedPages,
+    extractionFailed: extraction.failed,
   }
 
   emit({ type: 'progress', message: 'Website Intelligence ready.' })
