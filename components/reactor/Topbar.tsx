@@ -107,7 +107,7 @@ export function Topbar() {
           <button
             type="button"
             onClick={newCampaign}
-            className="fire-btn tap-target inline-flex items-center gap-2 rounded-xl px-3 py-2 font-display text-xs font-bold uppercase tracking-wide text-white sm:px-4 sm:text-sm"
+            className="fire-btn fire-btn--sm tap-target inline-flex items-center gap-2 font-display font-bold uppercase tracking-wide text-white"
           >
             <Atom size={15} />
             <span className="hidden sm:inline">New Creative Campaign</span>

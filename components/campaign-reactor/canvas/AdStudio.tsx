@@ -710,7 +710,7 @@ export function AdStudio({
                 onClick={pushToMeta}
                 disabled={push.status === 'pushing' || hasErrors || !primaryText.trim() || !headline.trim()}
                 title={hasErrors ? 'Fix the compliance issues first' : undefined}
-                className="fire-btn inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 font-display text-sm font-bold uppercase tracking-[0.14em] text-white"
+                className="fire-btn fire-btn--md inline-flex w-full items-center justify-center gap-2 font-display font-bold uppercase tracking-[0.14em] text-white"
               >
                 {push.status === 'pushing' ? (
                   <>

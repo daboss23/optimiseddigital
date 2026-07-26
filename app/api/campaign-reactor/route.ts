@@ -87,6 +87,49 @@ const NEURO_MODEL = INTELLIGENCE_MODEL
 const MAX_NEURO_REVISIONS = 1
 const MAX_TURNS = 12
 
+/* ------------------------------ Run budget -------------------------------- */
+
+/**
+ * Wall-clock budget for a single run, in milliseconds.
+ *
+ * `maxDuration` above is a REQUEST, not a guarantee — the host enforces its own
+ * ceiling (Vercel Hobby kills the function at 60s no matter what the route
+ * declares). When that happens the SSE stream simply stops: no terminal event,
+ * no concepts, the whole run lost. The budget below keeps the run inside a
+ * limit we control, so an overrun degrades to partial output instead of
+ * vanishing.
+ *
+ * Default 55s clears the strictest common ceiling. Raise it wherever the host
+ * genuinely allows longer (Vercel Pro serves the full 300s):
+ *   REACTOR_BUDGET_MS=280000
+ */
+const RUN_BUDGET_MS = (() => {
+  const raw = Number(process.env.REACTOR_BUDGET_MS)
+  return Number.isFinite(raw) && raw >= 10_000 ? raw : 55_000
+})()
+
+/** Past this share of the budget, OPUS is told to stop exploring and submit. */
+const BUDGET_NUDGE_AT = 0.65
+/** Past this share, the run closes cleanly with whatever it has. */
+const BUDGET_CLOSE_AT = 0.88
+
+/**
+ * Rendering a still BLOCKS this route. fal's image path returns the URL inline
+ * (video is queued and polled), so each generate_image call parks the whole
+ * orchestrator for 15-25s — several of those inside one run is what pushes it
+ * past the host's ceiling.
+ *
+ * The client already renders every visual concept from its production brief
+ * once the stream closes (`briefToPrompt` → /api/generate-image), outside this
+ * function's budget and with its own per-render window. So by default the agent
+ * plans the creative and the client renders it: same brief, same prompt path,
+ * no blocking.
+ *
+ * Set REACTOR_INLINE_IMAGES=1 to hand the tool back to the agent where the host
+ * allows genuinely long runs and agent-authored prompts are worth the wait.
+ */
+const INLINE_IMAGES = process.env.REACTOR_INLINE_IMAGES === '1'
+
 // The Creative Learnings rubric is a static, documented list — it does not change
 // within a process, so build the get_learnings tool-result string once and reuse
 // it across every run instead of re-mapping the array on each self-critique call.
@@ -454,6 +497,8 @@ function coordinatorPrompt(
   caps: {
     metaAds: boolean
     image: boolean
+    /** Stills are configured but rendered client-side from the production brief. */
+    imageRendersFromBrief: boolean
     video: boolean
     videoModels: string[]
     imageModels: string[]
@@ -470,7 +515,9 @@ function coordinatorPrompt(
       : ''
   const imageLine = caps.image
     ? `\n- For visual output types (Static Concept, Founder Concept, Campaign Concept): FIRST write a frame-by-frame production brief for the concept, THEN build the generate_image prompt FROM that brief. Available models: ${caps.imageModels.join(', ')}. Pass the concept type as conceptType, include the returned imageUrl, and attach the productionBrief to the submitted concept.${preferredImageLine}`
-    : ''
+    : caps.imageRendersFromBrief
+      ? `\n- For visual output types (Static Concept, Founder Concept, Campaign Concept): the platform renders the still FROM the production brief the moment you submit, so the brief IS the creative — you have no image tool and do not need one. Write it as if directing a photographer: name the subject, the setting, the light, the framing, and what occupies the space reserved for text. A vague brief renders a vague ad. Attach it as productionBrief on every visual concept.`
+      : ''
   const preferredLine =
     caps.preferredVideoModel && caps.videoModels.includes(caps.preferredVideoModel)
       ? ` The user has selected the "${caps.preferredVideoModel}" model — use it for every generate_video call unless a shot clearly needs a different capability.`
@@ -1158,7 +1205,12 @@ export async function POST(request: NextRequest) {
         const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
         const metaAds = metaAdsServer(body.metaProvider)
         const mcpServer = metaAds?.server ?? null
-        const useImage = imageConfigured()
+        // Image rendering is configured, but only handed to the agent as a tool
+        // when inline (blocking) renders are explicitly enabled — see
+        // INLINE_IMAGES. Otherwise the concept ships with its production brief
+        // and the client renders from it after the stream closes.
+        const imageReady = imageConfigured()
+        const useImage = imageReady && INLINE_IMAGES
         const useVideo = videoConfigured()
         const availableVideoModels = listVideoModels().filter((m) => m.configured).map((m) => m.id)
         const availableImageModels = listImageModels().filter((m) => m.configured).map((m) => m.id)
@@ -1174,7 +1226,14 @@ export async function POST(request: NextRequest) {
           const via = metaAds.provider === 'meta' ? 'Meta first-party MCP' : 'Pipeboard MCP'
           sse(controller, { type: 'step', text: `Live Meta Ads performance feed connected · ${via}.` })
         }
-        if (useImage) sse(controller, { type: 'step', text: `Image engine ready · models: ${availableImageModels.join(', ')}` })
+        if (imageReady) {
+          sse(controller, {
+            type: 'step',
+            text: useImage
+              ? `Image engine ready · models: ${availableImageModels.join(', ')}`
+              : `Image engine ready · models: ${availableImageModels.join(', ')} · stills render from each production brief as concepts land`,
+          })
+        }
         if (useVideo) sse(controller, { type: 'step', text: `Video engine ready · models: ${availableVideoModels.join(', ')}` })
         sse(controller, {
           type: 'step',
@@ -1245,6 +1304,7 @@ export async function POST(request: NextRequest) {
           coordinatorPrompt(outputs, {
             metaAds: Boolean(mcpServer),
             image: useImage,
+            imageRendersFromBrief: imageReady && !useImage,
             video: useVideo,
             videoModels: availableVideoModels,
             imageModels: availableImageModels,
@@ -1280,6 +1340,23 @@ export async function POST(request: NextRequest) {
         const neuroPrinciplesPromise = retrieveNeuroPrinciples(body.angle ?? '', body.builderId ?? null)
         let neuroRevisions = 0
 
+        // Run budget. The host can kill this function without warning, which
+        // ends the stream mid-sentence and loses everything the run produced.
+        // Staying inside a limit we control means an overrun is something we
+        // report and close on, not something that happens to us.
+        const runStart = Date.now()
+        const elapsed = () => Date.now() - runStart
+        const overNudge = () => elapsed() > RUN_BUDGET_MS * BUDGET_NUDGE_AT
+        let nudged = false
+        // A turn already in flight cannot be cancelled, so the budget has to be
+        // spent BEFORE starting one. Tracking the slowest turn seen lets the
+        // loop stop while there is still room for the turn it is about to run —
+        // a fixed percentage alone would happily start a 30s turn with 8s left.
+        let slowestTurnMs = 0
+        const cannotFitAnotherTurn = () =>
+          elapsed() > RUN_BUDGET_MS * BUDGET_CLOSE_AT ||
+          elapsed() + slowestTurnMs > RUN_BUDGET_MS
+
         // The model actually driving this run. Starts on the orchestrator tier
         // (Fable 5); if the org can't run it at all (400 on every request when
         // the 30-day data-retention requirement isn't met, 403/404 on access),
@@ -1289,6 +1366,18 @@ export async function POST(request: NextRequest) {
         let fallbackAnnounced = false
 
         for (let turn = 0; turn < MAX_TURNS; turn++) {
+          // Out of time before another round trip could land — stop here and
+          // report it, rather than starting a turn the host will cut short.
+          if (cannotFitAnotherTurn()) {
+            sse(controller, {
+              type: 'error',
+              message: `The run hit its ${Math.round(RUN_BUDGET_MS / 1000)}s time limit before OPUS submitted concepts. The intelligence below is real and complete — retry, or lower the variation count to give generation more room. (Raise REACTOR_BUDGET_MS if your hosting plan allows longer functions.)`,
+            })
+            sse(controller, { type: 'done' })
+            controller.close()
+            return
+          }
+
           const onFable = opusModel !== OPUS_FALLBACK_MODEL
           const betas: string[] = []
           const params: Anthropic.Beta.Messages.MessageCreateParamsNonStreaming = {
@@ -1311,6 +1400,7 @@ export async function POST(request: NextRequest) {
           if (betas.length) params.betas = betas
 
           let response: Anthropic.Beta.Messages.BetaMessage
+          const turnStart = Date.now()
           try {
             response = await withRetry(
               () => anthropic.beta.messages.create(params),
@@ -1320,6 +1410,8 @@ export async function POST(request: NextRequest) {
                   text: `Claude is busy (overloaded) — retrying (${n}/4) in ${w / 1000}s…`,
                 }),
             )
+            // Feeds the "can another turn fit?" estimate above.
+            slowestTurnMs = Math.max(slowestTurnMs, Date.now() - turnStart)
           } catch (err) {
             // Eligibility errors on the orchestrator model (org retention config,
             // model access) — switch to the fallback tier and redo this turn.
@@ -1600,6 +1692,22 @@ export async function POST(request: NextRequest) {
             }
           }
           messages.push({ role: 'user', content: results })
+
+          // Past the nudge line, stop the exploring. OPUS gets one plain
+          // instruction to land what it has — sent once, alongside the tool
+          // results it was already going to read, so it costs no extra turn.
+          if (!nudged && overNudge()) {
+            nudged = true
+            sse(controller, {
+              type: 'step',
+              text: 'Time budget reached — OPUS is finalising and submitting now.',
+            })
+            messages.push({
+              role: 'user',
+              content:
+                'TIME BUDGET REACHED. Stop consulting and stop refining. Call submit_concepts NOW with the strongest concepts you can write from the evidence already in hand, covering every requested output type. Partial, grounded work shipped beats a perfect run that never lands.',
+            })
+          }
         }
 
         sse(controller, { type: 'step', text: 'Coordinator reached its turn limit without submitting concepts.' })

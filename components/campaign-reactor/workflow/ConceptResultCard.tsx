@@ -264,7 +264,7 @@ export function ConceptResultCard({
           <button
             type="button"
             onClick={onConfigureInStudio}
-            className="fire-btn inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 font-display text-xs font-bold uppercase tracking-[0.14em] text-white"
+            className="fire-btn fire-btn--sm inline-flex w-full items-center justify-center gap-2 font-display font-bold uppercase tracking-[0.14em] text-white"
           >
             <Wand2 size={14} /> Configure in Studio
           </button>

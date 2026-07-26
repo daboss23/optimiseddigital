@@ -308,10 +308,19 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
           if (chunkConcepts.length) setConcepts((p) => [...p, ...chunkConcepts])
         }
         setPhase('done')
-        // Stream ended cleanly without a terminal event (rare) — finalize the
-        // workflow as interrupted so completed findings are preserved on screen.
+        // The stream stopped without a terminal event. The server closes itself
+        // cleanly when it runs out of budget, so reaching here means the host
+        // killed the function outright — almost always its own execution
+        // ceiling, which no code in the route can override. Say that, because
+        // "stream ended" tells nobody what to do next.
         setWorkflow((w) =>
-          w.finished ? w : reduceWorkflow(w, { type: 'error', message: 'Reactor stream ended before completing.' }),
+          w.finished
+            ? w
+            : reduceWorkflow(w, {
+                type: 'error',
+                message:
+                  'The run was cut off by the hosting time limit before it finished. Everything below completed and is real. Fire again with fewer variations, or raise the function timeout on your hosting plan.',
+              }),
         )
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Reactor failed'

@@ -1158,7 +1158,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                 <button
                   type="button"
                   onClick={fire}
-                  className="fire-btn flex w-full items-center justify-center gap-2 rounded-full px-4 py-4 font-display text-lg font-bold uppercase tracking-wide text-white"
+                  className="fire-btn fire-btn--lg flex w-full items-center justify-center gap-2 font-display font-bold uppercase tracking-wide text-white"
                 >
                   <Atom size={18} /> ⚡ Fire Reactor
                 </button>
@@ -1381,7 +1381,7 @@ function QuickLaunch({
             <button
               type="button"
               onClick={onFire}
-              className="fire-btn flex w-full items-center justify-center gap-2 rounded-full px-4 py-4 font-display text-lg font-bold uppercase tracking-wide text-white"
+              className="fire-btn fire-btn--lg flex w-full items-center justify-center gap-2 font-display font-bold uppercase tracking-wide text-white"
             >
               <Atom size={18} /> ⚡ Fire Reactor
             </button>

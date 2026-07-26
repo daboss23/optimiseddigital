@@ -81,7 +81,7 @@ export function MetaSyncButton() {
         type="button"
         onClick={runSync}
         disabled={state.status === 'syncing' || configured === null}
-        className="inline-flex items-center gap-1.5 rounded-full border border-glow/35 bg-glow/10 px-3 py-1.5 text-[11px] font-semibold text-glow transition-colors hover:bg-glow/20 disabled:opacity-60"
+        className="ghost-btn px-3 py-1.5 text-[11px] disabled:opacity-60"
       >
         {state.status === 'syncing' ? (
           <>

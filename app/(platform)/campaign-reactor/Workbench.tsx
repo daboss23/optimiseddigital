@@ -849,7 +849,7 @@ export function Workbench() {
               setCanvasTab('montage')
               setView('canvas')
             }}
-            className="fire-btn inline-flex items-center gap-2 rounded-full px-5 py-2.5 font-display text-sm font-bold uppercase tracking-wide text-white"
+            className="fire-btn fire-btn--md inline-flex items-center gap-2 font-display font-bold uppercase tracking-wide text-white"
           >
             <Workflow size={15} /> Launch in Creative Canvas
           </button>
@@ -926,7 +926,7 @@ export function Workbench() {
             <button
               type="button"
               onClick={() => setModalOpen(true)}
-              className="mt-5 inline-flex items-center gap-2 rounded-full border border-glow/30 bg-glow/10 px-5 py-2.5 text-sm font-semibold text-glow transition-colors hover:bg-glow/20"
+              className="ghost-btn mt-5 px-5 py-2.5 text-sm"
             >
               <Atom size={14} /> Open the campaign brief
             </button>
