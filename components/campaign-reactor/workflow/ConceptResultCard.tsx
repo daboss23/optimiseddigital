@@ -151,16 +151,19 @@ export function ConceptResultCard({
 
   return (
     <div
-      className={`glass-hover animate-fade-up stagger-${(i % 8) + 1} rounded-xl border border-border bg-surface/40 p-4`}
+      className={`glass-hover animate-fade-up stagger-${(i % 8) + 1} rounded-xl border border-border bg-surface/40 p-3 sm:p-4`}
     >
-      <div className="mb-1.5 flex items-center justify-between gap-2">
+      {/* Up to four actions sit beside the type/score pills. On a narrow
+          screen they wrap to their own line instead of squeezing the pills or
+          pushing the card into horizontal scroll. */}
+      <div className="mb-1.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
         <div className="flex items-center gap-2">
           <Pill tone="primary">{c.type}</Pill>
           {typeof c.score === 'number' && (
             <Pill tone={c.score >= 8 ? 'success' : 'warning'}>{c.score}/10</Pill>
           )}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
           {wantsVideo && hasRefs && (
             <button
               type="button"

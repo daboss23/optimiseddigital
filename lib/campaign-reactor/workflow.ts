@@ -158,6 +158,13 @@ export interface WorkflowState {
   demo: boolean
   opusPhase: OpusPhase
   agents: Record<IntelligenceId, AgentRuntime>
+  /**
+   * Every layer currently mid-consult, in the order they were delegated to.
+   * OPUS batches independent consults into a single turn, so more than one
+   * layer is routinely working at once.
+   */
+  activeAgents: IntelligenceId[]
+  /** The most recently delegated layer still working — the core's headline. */
   activeAgent: IntelligenceId | null
   /** Append-only packet log; the view layer animates new entries. */
   packets: Packet[]
@@ -198,6 +205,7 @@ export function startWorkflow(seed: WorkflowSeed = {}): WorkflowState {
     demo: false,
     opusPhase: 'initialising',
     agents: freshAgents(),
+    activeAgents: [],
     activeAgent: null,
     packets: [],
     packetSeq: 0,
@@ -308,7 +316,10 @@ export function reduceWorkflow(prev: WorkflowState, ev: Record<string, unknown>)
         title: String(ev.title ?? ''),
       }
       state.retrievals = [...state.retrievals, finding]
-      const id = state.activeAgent
+      // Prefer the layer the backend named. Falling back to "whoever started
+      // most recently" is only correct for a single in-flight consult, and
+      // OPUS is explicitly told to batch them.
+      const id = resolveAgentId(ev) ?? state.activeAgent
       if (id) {
         const a = state.agents[id]
         const exists = a.findings.some((f) => f.title === finding.title && f.system === finding.system)
@@ -326,6 +337,10 @@ export function reduceWorkflow(prev: WorkflowState, ev: Record<string, unknown>)
       if (!id) return state
       const status = ev.status as string
       if (status === 'start') {
+        // Additive: a second layer starting does not evict the first.
+        state.activeAgents = state.activeAgents.includes(id)
+          ? state.activeAgents
+          : [...state.activeAgents, id]
         state.activeAgent = id
         state.lastDelegateDone = false
         state.agents[id] = {
@@ -342,7 +357,10 @@ export function reduceWorkflow(prev: WorkflowState, ev: Record<string, unknown>)
           confidence: (ev.confidence as string) || state.agents[id].confidence,
         }
         state.agents[id] = merged
-        if (state.activeAgent === id) state.activeAgent = null
+        // Hand the headline to whichever layer is still working, instead of
+        // blanking it while its siblings are mid-consult.
+        state.activeAgents = state.activeAgents.filter((a) => a !== id)
+        state.activeAgent = state.activeAgents[state.activeAgents.length - 1] ?? null
         state.lastDelegateDone = true
         state.receiveCount += 1
         state.opusPhase = bump(state.opusPhase, 'receiving')
@@ -376,13 +394,13 @@ export function reduceWorkflow(prev: WorkflowState, ev: Record<string, unknown>)
       state.active = false
       state.finished = true
       state.endedAt = Date.now()
-      if (state.activeAgent) {
-        state.agents[state.activeAgent] = {
-          ...state.agents[state.activeAgent],
-          status: 'error',
-        }
-        state.activeAgent = null
+      // Every layer still mid-consult when the run faulted — not just the
+      // most recent one — is the one that got cut off.
+      for (const id of state.activeAgents) {
+        state.agents[id] = { ...state.agents[id], status: 'error' }
       }
+      state.activeAgents = []
+      state.activeAgent = null
       return state
     }
 
@@ -390,6 +408,8 @@ export function reduceWorkflow(prev: WorkflowState, ev: Record<string, unknown>)
       state.active = false
       state.finished = true
       state.endedAt = Date.now()
+      state.activeAgents = []
+      state.activeAgent = null
       state.opusPhase = state.opusPhase === 'error' ? 'error' : 'ready'
       // Any layer that never reported is genuinely Not Required for this run;
       // a layer cut off mid-stream still produced evidence, so mark it complete.

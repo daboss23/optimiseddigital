@@ -498,6 +498,131 @@ export const patterns: Pattern[] = [
   },
 ]
 
+/* -------------------------- ATLAS foundation assets ----------------------- */
+
+/**
+ * The Knowledge-Vault and connected-website documents ATLAS stands on.
+ *
+ * Every other intelligence layer has curated documents behind it in the
+ * fallback corpus (patterns, copy, transformations, learnings, research,
+ * creative analyses). ATLAS reads the `vault` and `website` systems, which had
+ * no curated documents at all — so the layer the platform calls its foundation
+ * was the one layer that could never return evidence without a live Supabase +
+ * Voyage stack. These are the curated stand-ins: real TPB frameworks, SOPs and
+ * positioning distilled from `skills/*.md` and `brand/BRAND_MEMORY.md`, so
+ * ATLAS retrieves genuine, specific ground truth on every run.
+ *
+ * Kept isomorphic (no `fs`) because `lib/knowledge.ts` is imported by client
+ * components — reading the markdown at runtime would break the browser bundle.
+ */
+export interface FoundationAsset {
+  system: 'vault' | 'website'
+  category: string
+  title: string
+  content: string
+}
+
+export const foundationAssets: FoundationAsset[] = [
+  {
+    system: 'vault',
+    category: 'Creative Frameworks',
+    title: 'Meta Ad Anatomy — the three copy slots',
+    content:
+      'A Meta feed ad has three copy slots that must work together. Hook (primary text, first line): the only line visible before "See more" — it must stop the scroll on its own, one sentence, ideally under 12 words. Body (primary text, remainder): expands the promise, handles the objection, builds belief; under ~150 words in short paragraphs. CTA: the button plus a closing line driving one clear next action. Write the hook to survive alone above the fold.',
+  },
+  {
+    system: 'vault',
+    category: 'Creative Frameworks',
+    title: 'PAS — Problem · Agitate · Solve',
+    content:
+      'Name the reader\'s problem, twist the knife on what it costs them, then resolve it with the brand\'s proof. Best for fear-led angles — cost blowouts, profit leaks, the builder disappearing, owner dependency. Pairs with problem-aware and solution-aware traffic.',
+  },
+  {
+    system: 'vault',
+    category: 'Creative Frameworks',
+    title: 'BAB — Before · After · Bridge',
+    content:
+      'Paint the "before" (stress, uncertainty, chaos on site), then the "after" (calm, margin, finished work, time back), and position the mechanism as the bridge between them. Best for aspiration and transformation angles where a named member win supplies the after-state.',
+  },
+  {
+    system: 'vault',
+    category: 'Creative Frameworks',
+    title: 'AIDA — Attention · Interest · Desire · Action',
+    content:
+      'Attention, Interest, Desire, Action. The classic full-arc structure for a colder audience that needs the whole argument inside one ad. Use when the traffic is unaware or problem-aware and no prior context can be assumed.',
+  },
+  {
+    system: 'vault',
+    category: 'Hook Frameworks',
+    title: 'The 4 U\'s — Useful, Unique, Urgent, Ultra-specific',
+    content:
+      'A strong hook tends to be Useful, Unique, Urgent and Ultra-specific. Specific numbers (19 years, 200 homes, 12% to 22% margin, fixed price) outperform vague adjectives every time. Specificity is credibility: prefer "the price you sign is the price you pay" over "no hidden costs".',
+  },
+  {
+    system: 'vault',
+    category: 'Hook Frameworks',
+    title: 'Hook construction checklist',
+    content:
+      'Four gates every hook must pass. 1. Does it name a specific fear or desire in the first six words? 2. Is there a concrete number or local detail? 3. Could a competitor run it unchanged — if yes, rewrite it. 4. Is it under ~12 words and readable at a glance? A hook that fails gate 3 is a category claim, not a campaign.',
+  },
+  {
+    system: 'vault',
+    category: 'Creative SOPs',
+    title: 'Rules of thumb — writing the ad',
+    content:
+      'Lead with the reader\'s fear or desire, never the company. One idea per ad — do not stack three offers. Specificity equals credibility. Write at a Grade 5–6 reading level with short words and short sentences. Match message to temperature: cold audiences need the problem named, warm and retargeting audiences need the objection crushed and the CTA made obvious.',
+  },
+  {
+    system: 'vault',
+    category: 'Creative SOPs',
+    title: 'Meta compliance guardrails',
+    content:
+      'No claims that cannot be substantiated. Avoid before/after framing that implies a guaranteed personal outcome. Do not assert personal attributes about the viewer ("Struggling with debt?") — speak to the situation, not the person\'s identity. No fake countdowns or invented scarcity. Attribute every results figure to a named individual as their result, and carry the not-typical disclaimer wherever a member result appears.',
+  },
+  {
+    system: 'vault',
+    category: 'Story Mining SOPs',
+    title: 'Mining a member win into creative',
+    content:
+      'Pull the before-state in the member\'s own words (hours, margin, the moment it broke), the turning point (which mechanism, applied when), and the after-state with one hard figure. Ship it as: named member, concrete number, the mechanism between the two. Refresh proof inventory monthly — named-member proof ads booked 38% versus 21% for promise-led creative.',
+  },
+  {
+    system: 'vault',
+    category: 'Offer Frameworks',
+    title: 'Offer framing by awareness stage',
+    content:
+      'Unaware and problem-aware traffic converts to a low-friction diagnostic (audit, assessment, scorecard) — the offer is clarity, not the program. Solution-aware traffic converts to the mechanism itself, named. Product-aware and most-aware traffic converts to the direct application or call, where the job of the ad is objection removal and urgency, not education.',
+  },
+  {
+    system: 'website',
+    category: 'Positioning',
+    title: 'Who we are — the operating positioning',
+    content:
+      'A family-owned residential building company in the Hunter Valley, NSW. 19 years building, 200+ custom homes, knockdown-rebuilds and major renovations across Maitland, Cessnock, Pokolbin, Newcastle and surrounds. Deliberately not a volume builder — a limited number of homes each year so every client gets the director\'s personal phone number and a site they can walk any time.',
+  },
+  {
+    system: 'website',
+    category: 'Proof',
+    title: 'Proof points — what makes the offer different',
+    content:
+      'Fixed-Price Guarantee: the price you sign is the price you pay, with no provisional sums that balloon halfway through the slab. 19 years and 200+ homes in one region. Director-led — you deal with the owners, not a rotating cast of subcontracted project managers. Local trades and local reputation, with subbies who have worked with the company for years. Free, no-obligation site assessment before a dollar is committed.',
+  },
+  {
+    system: 'website',
+    category: 'Audience',
+    title: 'Who we talk to and what they fear',
+    content:
+      'Hunter Valley families and professionals, typically 30–55, building a first custom home or knocking down and rebuilding. Burned by — or terrified of — cost blowouts they have heard about from friends. Afraid of the horror story: the builder who disappears, goes under, or leaves a half-finished frame in the rain. Time-poor and craving a builder who communicates without being chased. Core pains: "What if the final bill is nothing like the quote?", "What if the builder goes broke and takes my deposit?", "What if I can never get a straight answer about where my money went?", "I don\'t want to project-manage tradies on my weekends."',
+  },
+  {
+    system: 'website',
+    category: 'Voice',
+    title: 'Voice and tone — how the brand speaks',
+    content:
+      'Plain-spoken and confident — a straight-shooting builder on site, not a marketing department. Calm authority: never hype, never exclamation-mark spam, never promise the world; reassure with specifics. Proof over adjectives — "200 homes in 19 years" beats "trusted and reliable". Australian, regional and grounded: Hunter Valley references welcome, no American spelling, no corporate jargon.',
+  },
+]
+
 /* ----------------------------- Creative Learnings ------------------------- */
 
 export interface Learning {

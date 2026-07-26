@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { Atom, Loader2, Workflow } from 'lucide-react'
 import { Panel, PanelHeader } from '@/components/reactor/ui'
 import {
@@ -12,8 +13,6 @@ import {
   LiveAgentWorkflow,
   type WorkflowControls,
 } from '@/components/campaign-reactor/workflow/LiveAgentWorkflow'
-import { AdStudio } from '@/components/campaign-reactor/canvas/AdStudio'
-import { CreativeCanvas } from '@/components/creative-canvas/CreativeCanvas'
 import { reactorOutputTypes, winningAngles } from '@/lib/reactor-data'
 import { INTEL_SOURCES, intelSourceLabel } from '@/lib/intelligence-sources'
 import {
@@ -52,6 +51,34 @@ import type { CanvasMode } from '@/lib/creative-canvas/graph'
 // The native campaign-angle choices (the No Preference / Custom sentinels are
 // added by the dropdown itself).
 const ANGLE_NAMES = winningAngles.map((a) => a.name)
+
+// A panel-shaped placeholder while a view surface streams in — never a blank
+// box, per the platform's empty/loading rules.
+function SurfaceLoading({ label }: { label: string }) {
+  return (
+    <Panel className="min-h-[480px]">
+      <div className="grid min-h-[480px] place-items-center px-6 text-center">
+        <div className="flex items-center gap-2.5 text-sm text-glow/70">
+          <Loader2 size={15} className="animate-spin" />
+          {label}
+        </div>
+      </div>
+    </Panel>
+  )
+}
+
+// The Canvas (React Flow) and Studio are heavy surfaces the reactor view never
+// touches — a run can be fired, watched, and shipped without either. Splitting
+// them out keeps that first load lean, which matters most on a phone. Both are
+// browser-only (measurement, drag, portals), so SSR stays off.
+const CreativeCanvas = dynamic(
+  () => import('@/components/creative-canvas/CreativeCanvas').then((m) => m.CreativeCanvas),
+  { ssr: false, loading: () => <SurfaceLoading label="Opening Creative Canvas…" /> },
+)
+const AdStudio = dynamic(
+  () => import('@/components/campaign-reactor/canvas/AdStudio').then((m) => m.AdStudio),
+  { ssr: false, loading: () => <SurfaceLoading label="Opening Studio…" /> },
+)
 
 export function Workbench() {
   // Run + media state lives in the persistent platform-layout provider, so an
@@ -807,7 +834,7 @@ export function Workbench() {
     <div className="space-y-6">
       {/* The brief wizard opens itself on arrival — the top row only carries the
           run status and the output-surface toggle. */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
         {phase === 'firing' ? (
           <span className="inline-flex items-center gap-1.5 text-sm text-glow/80">
             <Loader2 size={13} className="animate-spin" /> Reactor firing — agents are working
@@ -830,8 +857,9 @@ export function Workbench() {
           <span />
         )}
         {/* Output surface toggle — watch the reactor work, shape the run in the
-            Creative Canvas, or finish one ad in the Studio. */}
-        <div className="inline-flex rounded-full border border-white/10 bg-white/[0.03] p-1">
+            Creative Canvas, or finish one ad in the Studio. Full width on a
+            phone so each segment clears the touch-target floor. */}
+        <div className="inline-flex w-full rounded-full border border-white/10 bg-white/[0.03] p-1 sm:w-auto">
           {(['reactor', 'canvas', 'studio'] as const).map((v) => (
             <button
               key={v}
@@ -841,7 +869,7 @@ export function Workbench() {
                 setView(v)
               }}
               aria-pressed={view === v}
-              className={`rounded-full px-3.5 py-1.5 text-xs font-semibold capitalize transition-colors ${
+              className={`tap-target flex-1 rounded-full px-3.5 py-2 text-xs font-semibold capitalize transition-colors sm:flex-none sm:min-h-0 sm:py-1.5 ${
                 view === v ? 'bg-glow/15 text-glow' : 'text-white/45 hover:text-white/70'
               }`}
             >

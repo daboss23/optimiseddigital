@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
 import { briefToPrompt, type ProductionBrief, type ReactorInputs, type NeuroScore } from '@/lib/reactor-inputs'
 import type { MetaAdPackage } from '@/lib/meta-ads'
 import type { Verdict, OutcomeAttributes } from '@/lib/outcomes'
@@ -132,8 +132,13 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
   // Manually triggered renders, keyed by concept text.
   const [manualVideos, setManualVideos] = useState<Record<string, VideoUiState>>({})
 
-  const pushTelemetry = useCallback((line: TelemetryLine) => {
-    setTelemetry((prev) => [...prev, line])
+  // A single SSE chunk routinely carries several events (a delegate plus its
+  // retrievals, a burst of concepts). Appending one line at a time meant one
+  // state write — and a re-render of every consumer — per event. These take a
+  // whole chunk's worth at once.
+  const pushTelemetry = useCallback((lines: TelemetryLine[]) => {
+    if (lines.length === 0) return
+    setTelemetry((prev) => [...prev, ...lines])
   }, [])
 
   // Poll a video render until it completes or fails (model-aware across providers).
@@ -219,6 +224,13 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
           buffer += decoder.decode(value, { stream: true })
           const parts = buffer.split('\n\n')
           buffer = parts.pop() ?? ''
+
+          // Collected across the chunk and flushed once at the end, so a chunk
+          // carrying eight events costs one render instead of sixteen.
+          const chunkEvents: { type: string; [k: string]: unknown }[] = []
+          const chunkTelemetry: TelemetryLine[] = []
+          const chunkConcepts: Concept[] = []
+
           for (const part of parts) {
             const line = part.replace(/^data: /, '').trim()
             if (!line) continue
@@ -230,12 +242,12 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
             }
             // Drive the live agent workflow off the same real event — single
             // source of truth, no parallel parsing of the raw telemetry.
-            setWorkflow((w) => reduceWorkflow(w, ev))
-            if (ev.type === 'step') pushTelemetry({ text: ev.text as string, kind: 'step' })
+            chunkEvents.push(ev)
+            if (ev.type === 'step') chunkTelemetry.push({ text: ev.text as string, kind: 'step' })
             else if (ev.type === 'retrieval')
-              pushTelemetry({ text: `${ev.system} · ${ev.title}`, kind: 'retrieval' })
+              chunkTelemetry.push({ text: `${ev.system} · ${ev.title}`, kind: 'retrieval' })
             else if (ev.type === 'delegate')
-              pushTelemetry({
+              chunkTelemetry.push({
                 text:
                   ev.status === 'start'
                     ? 'Analyzing…'
@@ -282,10 +294,18 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
                   )
                 }
               }
-            } else if (ev.type === 'concept') setConcepts((p) => [...p, ev.concept as Concept])
+            } else if (ev.type === 'concept') chunkConcepts.push(ev.concept as Concept)
             else if (ev.type === 'error') setError(ev.message as string)
             else if (ev.type === 'done') setPhase('done')
           }
+
+          // Flush the chunk. The workflow reducer still sees every event in
+          // order — it is just folded in one pass instead of one render each.
+          if (chunkEvents.length) {
+            setWorkflow((w) => chunkEvents.reduce(reduceWorkflow, w))
+          }
+          pushTelemetry(chunkTelemetry)
+          if (chunkConcepts.length) setConcepts((p) => [...p, ...chunkConcepts])
         }
         setPhase('done')
         // Stream ended cleanly without a terminal event (rare) — finalize the
@@ -526,23 +546,46 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
   )
   const creativeStateFor = useCallback((c: Concept) => creatives[c.text], [creatives])
 
-  const value: ReactorRunValue = {
-    phase,
-    concepts,
-    telemetry,
-    workflow,
-    error,
-    logged,
-    streamReactor,
-    generateCreative,
-    animate,
-    generateUGC,
-    markOutcome,
-    imageFor,
-    imageMetaFor,
-    videoFor,
-    creativeStateFor,
-  }
+  // Rebuilt only when something a consumer reads actually changed. As a fresh
+  // object literal it was a new context value on every provider render, so each
+  // telemetry line re-rendered every subscriber in the tree — including the
+  // Canvas and Studio — for the length of the run.
+  const value = useMemo<ReactorRunValue>(
+    () => ({
+      phase,
+      concepts,
+      telemetry,
+      workflow,
+      error,
+      logged,
+      streamReactor,
+      generateCreative,
+      animate,
+      generateUGC,
+      markOutcome,
+      imageFor,
+      imageMetaFor,
+      videoFor,
+      creativeStateFor,
+    }),
+    [
+      phase,
+      concepts,
+      telemetry,
+      workflow,
+      error,
+      logged,
+      streamReactor,
+      generateCreative,
+      animate,
+      generateUGC,
+      markOutcome,
+      imageFor,
+      imageMetaFor,
+      videoFor,
+      creativeStateFor,
+    ],
+  )
 
   return <ReactorRunContext.Provider value={value}>{children}</ReactorRunContext.Provider>
 }

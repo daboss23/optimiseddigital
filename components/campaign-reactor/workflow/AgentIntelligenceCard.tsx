@@ -86,7 +86,12 @@ export function AgentIntelligenceCard({
   const dim = agent.status === 'dormant' || agent.status === 'notRequired' || agent.status === 'queued'
   const findingCount = agent.findings.length
   const topFinding = agent.findings[0]
-  const previewTitle = topFinding?.title || (complete ? agent.summary : undefined)
+  // The preview surfaces the top retrieved SOURCE beneath the layer's report.
+  // It used to fall back to the summary when a layer had no findings — but the
+  // summary is already the action line above, so the card printed the same
+  // sentence twice (once in full, once truncated). With no source to show,
+  // the report alone is the honest card.
+  const previewTitle = topFinding?.title
   const previewLabel = topFinding?.system
 
   return (

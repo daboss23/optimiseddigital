@@ -489,7 +489,7 @@ Your intelligence network:
 - ORACLE — Strategic Memory: the memory of every winning strategic configuration (angle, audience, offer, awareness, creative + copy structure) — which patterns win, which lose, and what is most likely to work next.
 
 Process:
-1. Consult your network with consult_intelligence. ALWAYS consult ATLAS FIRST — she is the knowledge foundation (frameworks, SOPs, calls, uploaded assets); every build is grounded in the Vault before anything else. Then ALWAYS consult NOVA and ORACLE, plus at least one of SPARK/ECHO. You may request several independent layers in a SINGLE step (multiple consult_intelligence calls at once) — they run in parallel, so batch them to move faster without losing any depth. Use their findings as evidence — don't guess.${metaAdsLine}
+1. ATLAS, NOVA and ORACLE are briefed in parallel before you take your first turn — their findings are already in your context, so the Vault, the market, and strategic memory are grounded before you start. Build on that evidence rather than asking for it again. Consult SPARK and/or ECHO with consult_intelligence for the creative and copy DNA you still need, and re-consult a briefed layer only for a genuinely NEW question its report does not answer. Request several independent layers in a SINGLE step (multiple consult_intelligence calls at once) — they run in parallel, so batch them to move faster without losing any depth. Use findings as evidence — don't guess.${metaAdsLine}
 2. Call get_learnings and self-score every concept against that rubric. Revise or drop anything below 7.${imageLine}${videoLine}
 3. Call submit_concepts with concepts ONLY for these requested output types: ${outputs.join(', ')}. Each concept cites which intelligence layer its evidence came from, and each concept carries a complete adPackage — the launch-ready Meta ad unit.
 
@@ -506,7 +506,7 @@ const SOPHISTICATION_BLOCK =
   'MARKET SOPHISTICATION: This is a highly sophisticated market. Direct claims and basic mechanism claims are exhausted. Differentiate through a named proprietary mechanism, a contrarian angle, or identification so precise the prospect feels seen. Avoid generic claims any competitor could make. If the Vault contains Unique Mechanism documents, retrieve the most relevant one for this angle and awareness stage and anchor the concept on it.'
 
 const INTELLIGENCE_BLOCK =
-  'INTELLIGENCE NETWORK: ATLAS (the Knowledge Vault) is ALWAYS active and consulted first on every run — she is the foundation the build stands on, never skipped, never asleep. Beyond ATLAS, NOVA, and ORACLE (always consulted), use your judgment to select which of the remaining layers (SPARK/ECHO) to consult based on the campaign angle, audience type, and brief — query whichever will give you the most relevant evidence for this run.'
+  'INTELLIGENCE NETWORK: ATLAS (the Knowledge Vault) is ALWAYS active on every run — she is the foundation the build stands on, never skipped, never asleep. ATLAS, NOVA and ORACLE are briefed automatically in parallel before your first turn, so their evidence is guaranteed present rather than left to your discretion. Use your judgment to select which of the remaining layers (SPARK/ECHO) to consult based on the campaign angle, audience type, and brief — query whichever will give you the most relevant evidence for this run.'
 
 const COMPLIANCE_BLOCK = `HARD COMPLIANCE CONSTRAINTS — these override all creative instructions:
 - Attribute every income or results figure to a named individual as THEIR result. Never imply typical or guaranteed outcomes for the viewer.
@@ -702,8 +702,19 @@ async function runIntelligence(
       agent.systems.map((system) => searchKnowledge(question, { system, k: 4, builderId })),
     )
   ).flat()
+  // Every retrieval names the layer that made it. OPUS is told to batch
+  // independent consults into one turn, so several layers stream retrievals
+  // concurrently — without the id the view layer can only attribute them to
+  // whichever layer started last, and one agent card collects everyone's
+  // findings.
   for (const h of hits.slice(0, 5)) {
-    sse(controller, { type: 'retrieval', system: h.system, title: h.title })
+    sse(controller, {
+      type: 'retrieval',
+      system: h.system,
+      title: h.title,
+      agent: agent.codename,
+      id: agent.id,
+    })
   }
 
   const evidence = hits.length
@@ -743,6 +754,107 @@ async function runIntelligence(
   return findings
 }
 
+/* ------------------------- Pre-flight intelligence ------------------------ */
+
+/**
+ * The layers the platform guarantees on every build. ATLAS is the foundation
+ * (never skipped, never asleep), NOVA supplies the market, ORACLE supplies the
+ * memory of what has already won. Ordered so the telemetry feed reads the way
+ * the platform describes itself.
+ */
+const MANDATORY_LAYERS: IntelligenceId[] = ['atlas', 'nova', 'oracle']
+
+/**
+ * The focused question each mandatory layer is briefed with, built from the
+ * run's own strategic inputs so retrieval is scoped to this campaign rather
+ * than the angle alone.
+ */
+function preflightQuestion(id: IntelligenceId, ctx: {
+  angle: string
+  audience?: string
+  awareness?: string
+  offer?: string
+  brief?: string
+}): string {
+  const who = ctx.audience && ctx.audience !== 'No Preference' ? ctx.audience : 'builders'
+  const stage = ctx.awareness && ctx.awareness !== 'No Preference' ? ctx.awareness : 'mixed-awareness'
+  const offer = ctx.offer && ctx.offer !== 'No Preference' ? ctx.offer : 'the core offer'
+  const briefTail = ctx.brief?.trim() ? ` Campaign brief: ${ctx.brief.trim().slice(0, 400)}` : ''
+  switch (id) {
+    case 'atlas':
+      return `Which frameworks, SOPs, and Vault assets should ground a "${ctx.angle}" campaign for ${who} at ${stage} awareness? Name the specific documents and what each one dictates.${briefTail}`
+    case 'nova':
+      return `For ${who}, what are the sharpest pains, desires, objections, and beliefs relevant to the "${ctx.angle}" angle at ${stage} awareness? Quote the market's own language.${briefTail}`
+    case 'oracle':
+      return `Which past winning patterns and strategic configurations match a "${ctx.angle}" campaign for ${who} driving to ${offer}? Name what won, what lost, and why.${briefTail}`
+    default:
+      return `What matters most for a "${ctx.angle}" campaign aimed at ${who}?${briefTail}`
+  }
+}
+
+/**
+ * Brief the mandatory layers CONCURRENTLY before OPUS's first turn.
+ *
+ * Two problems this solves at once:
+ *
+ * 1. Activation was prompt-only. "ALWAYS consult ATLAS first" is an
+ *    instruction, not a guarantee — a run where the model skipped a layer left
+ *    that agent dormant and the build ungrounded. Now the foundation layers
+ *    always run, and always stream their real delegate/retrieval events.
+ * 2. Every consult cost a full orchestrator round trip. Three mandatory
+ *    consults meant up to three serial Fable-5 turns before drafting could
+ *    start. Running them up front in parallel collapses that into one wait —
+ *    the same model calls, the same evidence, just not queued behind each
+ *    other.
+ *
+ * Returns the findings block to inject into OPUS's first message. Never
+ * throws: a layer that fails is reported and the run continues, because a
+ * degraded briefing still beats no briefing.
+ */
+async function preflightBriefing(
+  anthropic: Anthropic,
+  controller: ReadableStreamDefaultController,
+  ctx: { angle: string; audience?: string; awareness?: string; offer?: string; brief?: string },
+  builderId: string | null,
+): Promise<string> {
+  const results = await Promise.all(
+    MANDATORY_LAYERS.map(async (id) => {
+      const question = preflightQuestion(id, ctx)
+      try {
+        const findings = await runIntelligence(anthropic, controller, id, question, builderId)
+        return { id, findings }
+      } catch (err) {
+        const agent = INTELLIGENCE[id]
+        sse(controller, {
+          type: 'delegate',
+          agent: agent.codename,
+          id,
+          label: agent.intelligenceLabel,
+          status: 'done',
+          summary: 'Layer unavailable for this run — OPUS may re-consult it directly.',
+          confidence: 'Exploratory',
+        })
+        console.error(`Pre-flight ${id} failed:`, err)
+        return null
+      }
+    }),
+  )
+
+  const reported = results.filter((r): r is { id: IntelligenceId; findings: string } => r !== null)
+  if (reported.length === 0) return ''
+
+  const blocks = reported
+    .map(({ id, findings }) => {
+      const agent = INTELLIGENCE[id]
+      return `### ${agent.codename} — ${agent.role}\nQuestion: ${preflightQuestion(id, ctx)}\n\n${findings}`
+    })
+    .join('\n\n')
+
+  return `\n\nYOUR INTELLIGENCE NETWORK HAS ALREADY REPORTED. ${reported
+    .map((r) => INTELLIGENCE[r.id].codename)
+    .join(', ')} were briefed in parallel the moment this run started, and their findings are below. Treat this as evidence in hand — do NOT re-consult these layers to ask the same question. Use consult_intelligence only for SPARK/ECHO, or to push one of these layers on a genuinely NEW question the findings below do not answer.\n\n${blocks}`
+}
+
 /* --------------------------- Demo fallback flow --------------------------- */
 
 // A frame-by-frame production brief for a visual demo concept, so demo mode also
@@ -780,9 +892,22 @@ function demoBrief(creativeType: string, angle: string, montage = false): Produc
  * (retrieve → analyse → report per agent) instead of dumping every event in
  * one burst, so the live workflow animation gets its full choreography.
  * Jitter keeps the rhythm organic rather than metronomic.
+ *
+ * Scaled by DEMO_TEMPO. At 1.0 the choreography ran ~42s end to end — longer
+ * than many live runs, for a path that makes no model calls at all. The beats
+ * are all still here and still in order; they are just no longer padded past
+ * the point where waiting reads as the system thinking. Env-overridable so the
+ * cadence can be tuned (or zeroed for tests) without touching the beats.
  */
+const DEMO_TEMPO = (() => {
+  const raw = Number(process.env.REACTOR_DEMO_TEMPO)
+  return Number.isFinite(raw) && raw >= 0 ? raw : 0.34
+})()
+
 function pace(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms + Math.random() * ms * 0.4))
+  const scaled = ms * DEMO_TEMPO
+  if (scaled <= 0) return Promise.resolve()
+  return new Promise((r) => setTimeout(r, scaled + Math.random() * scaled * 0.4))
 }
 
 async function runDemo(controller: ReadableStreamDefaultController, body: ReactorRequest) {
@@ -800,6 +925,24 @@ async function runDemo(controller: ReadableStreamDefaultController, body: Reacto
     await pace(700)
   }
 
+  // What the demo layers actually search for. The angle alone is not a query
+  // when the user let the platform choose it — a Quick Launch sends the
+  // "No Preference" sentinel, and searching for that phrase matches nothing,
+  // so every layer reported Exploratory with zero sources. Build the query the
+  // way the live path builds its briefing questions: resolved angle plus the
+  // brief and audience the user actually supplied.
+  const demoRi = body.reactorInputs
+  const demoAngleSentinel =
+    !body.angle || body.angle === 'Agent decides' || body.angle === 'No Preference'
+  const demoAngle = demoAngleSentinel ? 'Profit' : (body.angle as string)
+  const demoQuery = [
+    demoAngle,
+    demoRi?.audienceType && demoRi.audienceType !== 'No Preference' ? demoRi.audienceType : '',
+    demoRi?.brief?.trim().slice(0, 300) ?? '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+
   const demoSummaries: Partial<Record<IntelligenceId, string>> = {
     atlas: 'Vault grounded: TPB frameworks, SOPs and member-call assets retrieved as the foundation for this build',
     nova: 'Builders fear margin erosion despite record revenue; "profit leak" language resonates',
@@ -814,10 +957,16 @@ async function runDemo(controller: ReadableStreamDefaultController, body: Reacto
     sse(controller, { type: 'delegate', agent: agent.codename, id: agent.id, label: agent.intelligenceLabel, status: 'start' })
     await pace(1300)
     const hits = (
-      await Promise.all(agent.systems.map((s) => searchKnowledge(body.angle, { system: s, k: 2 })))
+      await Promise.all(agent.systems.map((s) => searchKnowledge(demoQuery, { system: s, k: 2 })))
     ).flat()
     for (const h of hits.slice(0, 3)) {
-      sse(controller, { type: 'retrieval', system: h.system, title: h.title })
+      sse(controller, {
+        type: 'retrieval',
+        system: h.system,
+        title: h.title,
+        agent: agent.codename,
+        id: agent.id,
+      })
       await pace(700)
     }
     // Dwell in "analysing" before the finding lands back at the core.
@@ -829,7 +978,10 @@ async function runDemo(controller: ReadableStreamDefaultController, body: Reacto
       label: agent.intelligenceLabel,
       status: 'done',
       summary: demoSummaries[id],
-      confidence: confidenceBand(hits.length || 2),
+      // Banded off the evidence this layer actually retrieved. The old
+      // `|| 2` floor invented a Medium band for a layer that returned nothing,
+      // which is exactly the fabricated activity the workflow layer forbids.
+      confidence: confidenceBand(hits.length),
     })
     await pace(600)
   }
@@ -844,8 +996,8 @@ async function runDemo(controller: ReadableStreamDefaultController, body: Reacto
   })
   await pace(900)
 
-  const angleIsSentinel = !body.angle || body.angle === 'Agent decides' || body.angle === 'No Preference'
-  const a = angleIsSentinel ? 'Profit' : (body.angle as string)
+  // Resolved once at the top of the run, alongside the retrieval query.
+  const a = demoAngle
   const al = a.toLowerCase()
   const pool: Concept[] = [
     { type: 'Hook', text: `Most builders don't have a ${al} problem. They have a ${al} leak hiding in plain sight.`, basis: 'ECHO + NOVA', learningCheck: 'Specific, contrarian framing', score: 9 },
@@ -1013,28 +1165,10 @@ export async function POST(request: NextRequest) {
         const tools = buildTools(useImage, useVideo, Boolean(mcpServer))
         const inputBlocks = buildInputBlocks(body.reactorInputs)
 
-        // ORACLE retrieves matching past winners and feeds them into OPUS's
-        // reasoning — the Reactor reuses what worked instead of starting cold.
         const ri = body.reactorInputs
-        const winningConfigs = await retrieveWinningConfigs({
-          angle: ri?.angle ?? body.angle,
-          audience: ri?.audienceType,
-          awareness: ri?.awarenessStage,
-          offer: ri?.offerType,
-        }).catch(() => [] as WinningConfig[])
-        if (winningConfigs.length > 0) {
-          sse(controller, {
-            type: 'delegate',
-            agent: 'ORACLE',
-            id: 'oracle',
-            label: 'Strategic Memory',
-            status: 'done',
-            confidence: 'High',
-            summary: `Retrieved ${winningConfigs.length} matching historical winner${winningConfigs.length === 1 ? '' : 's'} — feeding configurations into generation.`,
-          })
-        }
-        const oracleMemory = memoryBlock(winningConfigs)
 
+        // The run is live from the first byte — these announce the configured
+        // engines and must not sit behind a retrieval round trip.
         sse(controller, { type: 'step', text: 'OPUS online. Directing the intelligence network…' })
         if (metaAds) {
           const via = metaAds.provider === 'meta' ? 'Meta first-party MCP' : 'Pipeboard MCP'
@@ -1042,6 +1176,52 @@ export async function POST(request: NextRequest) {
         }
         if (useImage) sse(controller, { type: 'step', text: `Image engine ready · models: ${availableImageModels.join(', ')}` })
         if (useVideo) sse(controller, { type: 'step', text: `Video engine ready · models: ${availableVideoModels.join(', ')}` })
+        sse(controller, {
+          type: 'step',
+          text: `Briefing ${MANDATORY_LAYERS.map((id) => INTELLIGENCE[id].codename).join(' · ')} in parallel…`,
+        })
+
+        // ORACLE's memory lookup and the mandatory-layer briefing are
+        // independent, so they run against the same wall clock instead of
+        // queueing. Neither can fail the run.
+        const [winningConfigs, briefing] = await Promise.all([
+          // ORACLE retrieves matching past winners and feeds them into OPUS's
+          // reasoning — the Reactor reuses what worked instead of starting cold.
+          retrieveWinningConfigs({
+            angle: ri?.angle ?? body.angle,
+            audience: ri?.audienceType,
+            awareness: ri?.awarenessStage,
+            offer: ri?.offerType,
+          })
+            .then((configs) => {
+              if (configs.length > 0) {
+                sse(controller, {
+                  type: 'delegate',
+                  agent: 'ORACLE',
+                  id: 'oracle',
+                  label: 'Strategic Memory',
+                  status: 'done',
+                  confidence: 'High',
+                  summary: `Retrieved ${configs.length} matching historical winner${configs.length === 1 ? '' : 's'} — feeding configurations into generation.`,
+                })
+              }
+              return configs
+            })
+            .catch(() => [] as WinningConfig[]),
+          preflightBriefing(
+            anthropic,
+            controller,
+            {
+              angle: ri?.angle ?? body.angle,
+              audience: ri?.audienceType,
+              awareness: ri?.awarenessStage,
+              offer: ri?.offerType,
+              brief: ri?.brief,
+            },
+            body.builderId ?? null,
+          ).catch(() => ''),
+        ])
+        const oracleMemory = memoryBlock(winningConfigs)
 
         const angleClause =
           !body.angle || body.angle === 'Agent decides' || body.angle === 'No Preference'
@@ -1050,7 +1230,7 @@ export async function POST(request: NextRequest) {
         const messages: Anthropic.Beta.Messages.BetaMessageParam[] = [
           {
             role: 'user',
-            content: `${angleClause}. Active intelligence inputs: ${(body.inputs ?? []).join(', ') || 'all'}. Requested output types: ${outputs.join(', ')}.`,
+            content: `${angleClause}. Active intelligence inputs: ${(body.inputs ?? []).join(', ') || 'all'}. Requested output types: ${outputs.join(', ')}.${briefing}`,
           },
         ]
 
@@ -1198,37 +1378,26 @@ export async function POST(request: NextRequest) {
           )
           if (toolUses.length === 0) break
 
-          const results: Anthropic.Beta.Messages.BetaToolResultBlockParam[] = []
-          // Independent knowledge retrievals requested in the same turn run
-          // concurrently — identical findings and quality, just less waiting.
-          // Stateful/terminal tools (submit, media) stay strictly ordered below.
-          const consultUses = toolUses.filter((b) => b.name === 'consult_intelligence')
-          if (consultUses.length > 1) {
-            const parallel = await Promise.all(
-              consultUses.map(async (tu) => {
-                const { layer, question } = tu.input as { layer: string; question: string }
-                if (!isIntelligenceId(layer)) {
-                  return {
-                    type: 'tool_result' as const,
-                    tool_use_id: tu.id,
-                    content: 'Unknown intelligence layer',
-                    is_error: true,
-                  }
-                }
-                const findings = await runIntelligence(anthropic, controller, layer, question, body.builderId ?? null)
-                return { type: 'tool_result' as const, tool_use_id: tu.id, content: findings }
-              }),
-            )
-            results.push(...parallel)
-          }
-          for (const tu of toolUses) {
-            // Consults with siblings were already resolved in parallel above.
-            if (tu.name === 'consult_intelligence' && consultUses.length > 1) continue
+          /**
+           * Resolve one non-terminal tool call. Every tool handled here is
+           * independent of its siblings in the same turn: a retrieval, a static
+           * rubric read, or a render kicked off from a prompt the model already
+           * holds. A render that animates a still necessarily references an
+           * imageUrl from an EARLIER turn's tool_result, so nothing in a single
+           * turn depends on anything else in it.
+           */
+          const runIndependentTool = async (
+            tu: Anthropic.Beta.Messages.BetaToolUseBlock,
+          ): Promise<Anthropic.Beta.Messages.BetaToolResultBlockParam> => {
             if (tu.name === 'consult_intelligence') {
               const { layer, question } = tu.input as { layer: string; question: string }
               if (!isIntelligenceId(layer)) {
-                results.push({ type: 'tool_result', tool_use_id: tu.id, content: 'Unknown intelligence layer', is_error: true })
-                continue
+                return {
+                  type: 'tool_result',
+                  tool_use_id: tu.id,
+                  content: 'Unknown intelligence layer',
+                  is_error: true,
+                }
               }
               const findings = await runIntelligence(
                 anthropic,
@@ -1237,15 +1406,15 @@ export async function POST(request: NextRequest) {
                 question,
                 body.builderId ?? null,
               )
-              results.push({ type: 'tool_result', tool_use_id: tu.id, content: findings })
-            } else if (tu.name === 'get_learnings') {
+              return { type: 'tool_result', tool_use_id: tu.id, content: findings }
+            }
+
+            if (tu.name === 'get_learnings') {
               sse(controller, { type: 'step', text: 'ORACLE — loading the Creative Learnings rubric for self-critique…' })
-              results.push({
-                type: 'tool_result',
-                tool_use_id: tu.id,
-                content: LEARNINGS_RUBRIC,
-              })
-            } else if (tu.name === 'generate_image') {
+              return { type: 'tool_result', tool_use_id: tu.id, content: LEARNINGS_RUBRIC }
+            }
+
+            if (tu.name === 'generate_image') {
               const { prompt, conceptType, aspectRatio, model } = tu.input as {
                 prompt: string
                 conceptType?: string
@@ -1257,28 +1426,29 @@ export async function POST(request: NextRequest) {
                 text: `Generating still creative via ${model ?? 'default model'}${conceptType ? ` · ${conceptType}` : ''}…`,
               })
               const result = await generateImageWith(model, prompt, aspectRatio ?? '1:1')
-              if (result) {
-                sse(controller, {
-                  type: 'media',
-                  mediaType: 'image',
-                  conceptType: conceptType ?? '',
-                  model: result.modelId,
-                  provider: result.provider,
-                  url: result.imageUrl,
-                })
-                results.push({
-                  type: 'tool_result',
-                  tool_use_id: tu.id,
-                  content: JSON.stringify({ imageUrl: result.imageUrl, model: result.modelId }),
-                })
-              } else {
-                results.push({
+              if (!result) {
+                return {
                   type: 'tool_result',
                   tool_use_id: tu.id,
                   content: JSON.stringify({ imageUrl: null, note: 'image generation unavailable' }),
-                })
+                }
               }
-            } else if (tu.name === 'generate_video') {
+              sse(controller, {
+                type: 'media',
+                mediaType: 'image',
+                conceptType: conceptType ?? '',
+                model: result.modelId,
+                provider: result.provider,
+                url: result.imageUrl,
+              })
+              return {
+                type: 'tool_result',
+                tool_use_id: tu.id,
+                content: JSON.stringify({ imageUrl: result.imageUrl, model: result.modelId }),
+              }
+            }
+
+            if (tu.name === 'generate_video') {
               const { mode, prompt, imageUrl, model, aspectRatio, conceptType } = tu.input as {
                 mode: GenMode
                 prompt?: string
@@ -1291,51 +1461,67 @@ export async function POST(request: NextRequest) {
                 type: 'step',
                 text: `Rendering ${mode} via ${model ?? 'default model'}${conceptType ? ` · ${conceptType}` : ''}…`,
               })
-              const started = await startVideoJob(model, {
-                mode,
-                prompt,
-                imageUrl,
-                aspectRatio,
-              })
-              if (started) {
-                await logGeneration({
-                  builder_id: body.builderId ?? null,
-                  model_id: started.modelId,
-                  provider: started.provider,
-                  mode,
-                  prompt: prompt ?? null,
-                  image_url: imageUrl ?? null,
-                  request_id: started.requestId,
-                  status: started.status,
-                })
-                sse(controller, {
-                  type: 'media',
-                  mediaType: 'video',
-                  conceptType: conceptType ?? '',
-                  model: started.modelId,
-                  provider: started.provider,
-                  requestId: started.requestId,
-                  status: started.status,
-                  responseUrl: started.responseUrl,
-                })
-                results.push({
-                  type: 'tool_result',
-                  tool_use_id: tu.id,
-                  content: JSON.stringify({
-                    requestId: started.requestId,
-                    model: started.modelId,
-                    status: started.status,
-                    note: 'video is rendering; it will appear on the concept card when ready',
-                  }),
-                })
-              } else {
-                results.push({
+              const started = await startVideoJob(model, { mode, prompt, imageUrl, aspectRatio })
+              if (!started) {
+                return {
                   type: 'tool_result',
                   tool_use_id: tu.id,
                   content: JSON.stringify({ requestId: null, note: 'video generation unavailable' }),
-                })
+                }
               }
-            } else if (tu.name === 'submit_concepts') {
+              await logGeneration({
+                builder_id: body.builderId ?? null,
+                model_id: started.modelId,
+                provider: started.provider,
+                mode,
+                prompt: prompt ?? null,
+                image_url: imageUrl ?? null,
+                request_id: started.requestId,
+                status: started.status,
+              })
+              sse(controller, {
+                type: 'media',
+                mediaType: 'video',
+                conceptType: conceptType ?? '',
+                model: started.modelId,
+                provider: started.provider,
+                requestId: started.requestId,
+                status: started.status,
+                responseUrl: started.responseUrl,
+              })
+              return {
+                type: 'tool_result',
+                tool_use_id: tu.id,
+                content: JSON.stringify({
+                  requestId: started.requestId,
+                  model: started.modelId,
+                  status: started.status,
+                  note: 'video is rendering; it will appear on the concept card when ready',
+                }),
+              }
+            }
+
+            return { type: 'tool_result', tool_use_id: tu.id, content: 'Unknown tool', is_error: true }
+          }
+
+          // Everything except the terminal submit runs concurrently — four
+          // stills used to render one after another, each waiting on the last.
+          // Same calls, same results, one wall clock. `submit_concepts` stays
+          // outside because it gates the run and can end it.
+          const independentUses = toolUses.filter((tu) => tu.name !== 'submit_concepts')
+          const settled = await Promise.all(independentUses.map(runIndependentTool))
+          const resultById = new Map(settled.map((r) => [r.tool_use_id, r]))
+
+          // Replayed in the order the model asked, so the transcript reads the
+          // way the model wrote it.
+          const results: Anthropic.Beta.Messages.BetaToolResultBlockParam[] = []
+          for (const tu of toolUses) {
+            const done = resultById.get(tu.id)
+            if (done) {
+              results.push(done)
+              continue
+            }
+            if (tu.name === 'submit_concepts') {
               const concepts = (tu.input as { concepts?: Concept[] }).concepts ?? []
 
               // Meta ad-unit compliance gate — Meta's placement limits + TPB's
@@ -1411,8 +1597,6 @@ export async function POST(request: NextRequest) {
                 controller.close()
                 return
               }
-            } else {
-              results.push({ type: 'tool_result', tool_use_id: tu.id, content: 'Unknown tool', is_error: true })
             }
           }
           messages.push({ role: 'user', content: results })

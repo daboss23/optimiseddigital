@@ -2439,3 +2439,110 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .canvas-immersive { animation: none; }
 }
+
+/* ============================================================================
+   MOBILE — the command center on a phone
+   The desktop material (fixed aurora under 24 backdrop-filtered surfaces, 50+
+   simultaneous ambient animations) is built for a GPU that is plugged in. On a
+   handset that same stack costs frames on every scroll and drains battery, so
+   below the tablet breakpoint the design keeps its look and sheds its cost:
+   the aurora becomes a static wash, glass falls back to opaque tint, and only
+   motion that carries meaning (live run state) survives.
+   ========================================================================== */
+
+/* Touch targets — Apple/Material both put the floor at ~44px. Several icon
+   controls were 36px squares, which is a miss on a moving thumb. */
+@media (hover: none) and (pointer: coarse) {
+  .tap-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  /* Stops iOS Safari from zooming the page when a control is focused — it
+     only does that below 16px. */
+  input,
+  textarea,
+  select {
+    font-size: max(16px, 1em);
+  }
+}
+
+/* Mobile navigation drawer ---------------------------------------------------*/
+.mobile-nav-scrim {
+  background: rgba(4, 7, 18, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: mobile-nav-scrim-in 0.18s ease-out both;
+  border: 0;
+  cursor: default;
+}
+.mobile-nav-panel {
+  background: linear-gradient(178deg, rgba(15, 22, 44, 0.99), rgba(8, 12, 26, 0.99));
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 24px 0 60px -30px rgba(0, 0, 0, 0.95);
+  padding-left: env(safe-area-inset-left);
+  animation: mobile-nav-panel-in 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes mobile-nav-scrim-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes mobile-nav-panel-in {
+  from { transform: translateX(-100%); }
+  to { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mobile-nav-scrim,
+  .mobile-nav-panel { animation: none; }
+}
+
+/* The topbar is sticky, so it also has to clear the notch. */
+.reactor-topbar {
+  padding-top: env(safe-area-inset-top);
+}
+
+/* Phone performance ----------------------------------------------------------*/
+@media (max-width: 767px) {
+  /* The aurora is the single most expensive layer on the page: four blurred,
+     screen-blended, continuously animated blobs behind everything. Frozen and
+     lightly blurred it still reads as the same colored light — it just stops
+     recompositing the whole viewport on every frame. */
+  .reactor-aurora {
+    filter: blur(30px) saturate(135%);
+  }
+  .aurora-blob {
+    animation: none !important;
+    opacity: 0.3;
+  }
+  /* Drifting intelligence dots are pure atmosphere and cost a full-screen
+     repaint to deliver it. */
+  .reactor-nodes { display: none; }
+
+  /* Real backdrop blur on stacked, scrolling glass is what makes phone
+     scrolling stutter. The tint and rim carry the material; the samples of
+     what's behind are what cost the frames. */
+  .glass,
+  .reactor-panel,
+  .command-surface,
+  .intel-card { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+
+  /* Pointer-tracked gloss has no pointer to track on a touchscreen. */
+  .command-surface .gloss,
+  .gloss-layer { display: none; }
+
+  /* Ambient decoration only — the live-run indicators (.animate-pulse-glow,
+     .dot-live, spinners) deliberately keep animating, because on mobile they
+     are the only signal that a long run is still alive. */
+  .reactor-stage-bg,
+  .conv-bloom,
+  .conv-core { animation: none !important; }
+
+  /* Horizontal overflow is the classic mobile break — a wide table or canvas
+     scrolls the whole page sideways. Contain it at the shell. */
+  body { overflow-x: hidden; }
+}
+
+/* Data-saver and reduced-motion users get the cheapest version everywhere. */
+@media (prefers-reduced-data: reduce) {
+  .reactor-aurora,
+  .reactor-nodes { display: none; }
+}

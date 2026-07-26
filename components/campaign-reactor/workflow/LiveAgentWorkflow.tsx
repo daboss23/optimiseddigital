@@ -281,7 +281,7 @@ export function LiveAgentWorkflow(controls: WorkflowControls) {
             {concepts.length}
           </span>
         </div>
-        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+        <div className="grid grid-cols-1 gap-2.5 sm:gap-3 xl:grid-cols-2">
           {concepts.map((c, i) => (
             <ConceptResultCard
               key={`${c.type}-${i}`}
@@ -519,12 +519,20 @@ export function LiveAgentWorkflow(controls: WorkflowControls) {
           </div>
         </div>
       ) : (
-        /* --------------------------- Tablet / Mobile -------------------------- */
-        <div className="reactor-panel glass space-y-5 p-4 sm:p-6">
-          <div className="flex justify-center py-2">
+        /* --------------------------- Tablet / Mobile --------------------------
+           No measured SVG channels here: the desktop stage positions agent
+           cards around the core and draws energy paths between the measured
+           rectangles, which needs horizontal room the phone does not have.
+           The same live state is carried by the core, the per-agent cards, and
+           the strategy panel — stacked in the order the run moves through
+           them. */
+        <div className="reactor-panel glass space-y-4 p-3 sm:space-y-5 sm:p-6">
+          <div className="flex justify-center py-1 sm:py-2">
             <OpusReactorCore {...opusProps} />
           </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{renderAgents(false)}</div>
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 sm:gap-3">
+            {renderAgents(false)}
+          </div>
           <EmergingStrategyPanel workflow={workflow} conceptCount={concepts.length} />
         </div>
       )}

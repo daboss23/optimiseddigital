@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   Activity,
   ArrowRight,
@@ -604,7 +605,26 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, dirty])
 
-  if (!open) return null
+  // The brief is a full-screen sheet on a phone — without this the page behind
+  // scrolls under it, so dismissing the modal lands the user somewhere they
+  // never navigated to. `overscroll-contain` on the body handles the rubber
+  // band; this handles the scroll itself.
+  useEffect(() => {
+    if (!open) return
+    const { body } = document
+    const prev = body.style.overflow
+    body.style.overflow = 'hidden'
+    return () => {
+      body.style.overflow = prev
+    }
+  }, [open])
+
+  // The modal renders through a portal on <body> (see the return below), which
+  // only exists client-side.
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
+
+  if (!open || !mounted) return null
 
   const fire = () => {
     onClose()
@@ -615,14 +635,21 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
   const progress = (step / LAST_STEP) * 100
   const feedTitle = FEED_OPTIONS.find((f) => f.id === form.metaProvider)?.title ?? 'Standalone'
 
-  return (
+  // Portaled to <body>. `.command-surface` (the frame this modal is rendered
+  // inside) sets `isolation: isolate`, which scopes the overlay's z-index to
+  // that frame — the sticky topbar then painted over the top of the sheet.
+  // Escaping to the document root puts the modal above the whole shell.
+  return createPortal(
     <div
-      className="launch-overlay fixed inset-0 z-50 grid place-items-center px-4 py-6"
+      className="launch-overlay fixed inset-0 z-[70] grid place-items-center p-0 sm:px-4 sm:py-6"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) requestClose()
       }}
     >
-      <div className="launch-panel flex max-h-[92vh] w-[760px] max-w-[calc(100vw-2rem)] flex-col rounded-[1.75rem]">
+      {/* Full-bleed sheet on a phone, centred panel from tablet up. `dvh`
+          rather than `vh` because mobile browser chrome shrinks the viewport
+          as it collapses — with `vh` the footer sits under the URL bar. */}
+      <div className="launch-panel flex h-[100dvh] max-h-[100dvh] w-full flex-col rounded-none sm:h-auto sm:max-h-[92vh] sm:w-[760px] sm:max-w-[calc(100vw-2rem)] sm:rounded-[1.75rem]">
         {mode === 'quick' ? (
           <QuickLaunch
             form={form}
@@ -638,7 +665,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
         </div>
 
         {/* Header — eyebrow, stepper, title */}
-        <div className="border-b border-white/10 px-7 pb-5 pt-5">
+        <div className="border-b border-white/10 px-4 pb-4 pt-[max(1rem,env(safe-area-inset-top))] sm:px-7 sm:pb-5 sm:pt-5">
           <div className="mb-5 flex items-center justify-between gap-3">
             <span className="launch-eyebrow">
               <Atom size={14} className="text-[#38E8FF]" />
@@ -655,7 +682,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
               <button
                 type="button"
                 onClick={requestClose}
-                className="grid h-8 w-8 place-items-center rounded-full text-white/40 transition-colors hover:bg-white/5 hover:text-white"
+                className="tap-target grid h-10 w-10 place-items-center rounded-full text-white/40 transition-colors hover:bg-white/5 hover:text-white sm:h-8 sm:w-8"
                 aria-label="Close"
               >
                 <X size={18} />
@@ -700,14 +727,16 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
             })}
           </div>
 
-          <div className="mt-6">
-            <h2 className="font-display text-2xl font-bold tracking-tight text-white">{meta.label}</h2>
-            <p className="mt-1 text-sm text-white/45">{meta.sub}</p>
+          <div className="mt-4 sm:mt-6">
+            <h2 className="font-display text-xl font-bold tracking-tight text-white sm:text-2xl">
+              {meta.label}
+            </h2>
+            <p className="mt-1 text-[13px] text-white/45 sm:text-sm">{meta.sub}</p>
           </div>
         </div>
 
         {/* Body */}
-        <div className="min-h-0 flex-1 overflow-y-auto px-7 py-6">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-7 sm:py-6">
           {step === 1 && (
             <div className="animate-fade-up space-y-6">
               <div>
@@ -859,7 +888,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                             pick={form.models[montageMotionKey(o)]}
                             onPick={(id) => form.setModel(montageMotionKey(o), id)}
                           />
-                          <div className="grid grid-cols-3 gap-2.5 pt-1">
+                          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3 pt-1">
                             {sizes.map((s) => {
                               const on = chosen.includes(s.ratio)
                               return (
@@ -912,7 +941,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                               pick={form.models[o]}
                               onPick={(id) => form.setModel(o, id)}
                             />
-                            <div className="grid grid-cols-3 gap-2.5">
+                            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
                               {sizes.map((s) => {
                                 const on = chosen.includes(s.ratio)
                                 return (
@@ -948,7 +977,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                       The reactor creates this many distinct versions of every image and video
                       creative — different hook, pattern, and proof on each.
                     </p>
-                    <div className="grid grid-cols-4 gap-2.5">
+                    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
                       {[1, 2, 3, 4].map((n) => {
                         const on = form.variations === n
                         return (
@@ -1141,17 +1170,22 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
           )}
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-between gap-3 border-t border-white/10 px-7 py-4">
+        {/* Footer — pinned above the home indicator so Back/Next stay
+            reachable with a thumb rather than scrolling off a tall step. */}
+        <div className="flex items-center justify-between gap-3 border-t border-white/10 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-7 sm:py-4">
           {step > 1 ? (
-            <button type="button" onClick={() => setStep((s) => s - 1)} className="launch-nav">
+            <button
+              type="button"
+              onClick={() => setStep((s) => s - 1)}
+              className="launch-nav tap-target"
+            >
               <ChevronLeft size={16} /> Back
             </button>
           ) : (
             <span />
           )}
 
-          <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/30">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/30 sm:text-[11px]">
             Step {step} of {LAST_STEP}
           </span>
 
@@ -1159,7 +1193,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
             <button
               type="button"
               onClick={() => setStep((s) => s + 1)}
-              className="launch-nav launch-nav--primary"
+              className="launch-nav launch-nav--primary tap-target"
             >
               Next <ChevronRight size={16} />
             </button>
@@ -1170,7 +1204,8 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
@@ -1220,7 +1255,7 @@ function QuickLaunch({
         <i style={{ width: '100%' }} />
       </div>
 
-      <div className="flex items-center justify-between gap-3 px-7 pb-4 pt-5">
+      <div className="flex items-center justify-between gap-3 px-4 pb-3 pt-[max(1rem,env(safe-area-inset-top))] sm:px-7 sm:pb-4 sm:pt-5">
         <span className="launch-eyebrow">
           <Zap size={14} className="text-[#38E8FF]" />
           Quick Launch
@@ -1228,20 +1263,20 @@ function QuickLaunch({
         <button
           type="button"
           onClick={onClose}
-          className="grid h-8 w-8 place-items-center rounded-full text-white/40 transition-colors hover:bg-white/5 hover:text-white"
+          className="tap-target grid h-10 w-10 place-items-center rounded-full text-white/40 transition-colors hover:bg-white/5 hover:text-white sm:h-8 sm:w-8"
           aria-label="Close"
         >
           <X size={18} />
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-7 pb-7">
-        <div className="animate-fade-up space-y-6">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-7 sm:pb-7">
+        <div className="animate-fade-up space-y-5 sm:space-y-6">
           <div>
-            <h2 className="font-display text-3xl font-bold tracking-tight text-white">
+            <h2 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
               Fire a campaign in one line.
             </h2>
-            <p className="mt-1.5 text-sm text-white/45">
+            <p className="mt-1.5 text-[13px] text-white/45 sm:text-sm">
               Describe what you want — the reactor infers the angle, audience, offer, and creative,
               then builds it. Nothing else required.
             </p>
