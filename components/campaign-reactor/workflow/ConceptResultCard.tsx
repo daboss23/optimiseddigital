@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import {
   Activity,
+  AlertTriangle,
   Check,
   ChevronRight,
   Copy as CopyIcon,
@@ -17,6 +18,7 @@ import {
   Workflow,
 } from 'lucide-react'
 import { Pill } from '@/components/reactor/ui'
+import { validateAdPackage, type AdComplianceIssue } from '@/lib/meta-ads'
 import { NEURO_AXES, NEURO_PASS_MARK, type NeuroScore } from '@/lib/reactor-inputs'
 import type {
   Concept,
@@ -57,6 +59,54 @@ function NeuroBar({ label, value }: { label: string; value: number }) {
         ))}
       </div>
       <span className="w-7 shrink-0 text-right text-[10px] font-medium text-white/70">{value}</span>
+    </div>
+  )
+}
+
+// Meta ad-unit compliance. Errors block launch (Meta truncates the copy, or a
+// banned phrase is present); warnings are cosmetic. The orchestrator normally
+// revises failures before they ship, but a time-constrained run skips that pass
+// — so the card states plainly what is wrong rather than letting a broken unit
+// look launch-ready.
+function CompliancePanel({ issues }: { issues: AdComplianceIssue[] }) {
+  if (issues.length === 0) return null
+  const errors = issues.filter((i) => i.severity === 'error')
+  const warnings = issues.filter((i) => i.severity === 'warning')
+  const blocking = errors.length > 0
+  return (
+    <div
+      className={`mt-3 rounded-lg border p-2.5 ${
+        blocking ? 'border-danger/30 bg-danger/[0.06]' : 'border-warning/30 bg-warning/[0.06]'
+      }`}
+    >
+      <div className="flex items-center gap-1.5">
+        <AlertTriangle size={12} className={blocking ? 'text-danger' : 'text-warning'} />
+        <span
+          className={`text-[10px] font-semibold uppercase tracking-wider ${
+            blocking ? 'text-danger' : 'text-warning'
+          }`}
+        >
+          {blocking
+            ? `Not launch-ready · ${errors.length} issue${errors.length === 1 ? '' : 's'}`
+            : `${warnings.length} warning${warnings.length === 1 ? '' : 's'}`}
+        </span>
+      </div>
+      <ul className="mt-1.5 space-y-1">
+        {[...errors, ...warnings].map((issue, i) => (
+          <li key={`${issue.field}-${i}`} className="flex gap-1.5 text-[11px] leading-relaxed text-white/70">
+            <span className="text-white/30">·</span>
+            <span>
+              <span className="uppercase tracking-wide text-white/40">{issue.field}</span>{' '}
+              {issue.message}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {blocking && (
+        <p className="mt-1.5 text-[10px] text-white/40">
+          Fix in Studio before pushing — Meta will cut or reject this as written.
+        </p>
+      )}
     </div>
   )
 }
@@ -139,6 +189,10 @@ export function ConceptResultCard({
 }) {
   const creativeBusy = creativeState?.status === 'working' || video?.status === 'rendering'
   const hasCreative = Boolean(image || (video?.status === 'done' && video.url))
+  // Validated client-side on every render, so an ad unit that skipped the
+  // orchestrator's revision pass still cannot present itself as launch-ready.
+  const complianceIssues = validateAdPackage(c.adPackage)
+  const blocksLaunch = complianceIssues.some((i) => i.severity === 'error')
   const [push, setPush] = useState<{ status: 'idle' | 'pushing' | 'done' | 'error'; message?: string }>({
     status: 'idle',
   })
@@ -279,9 +333,17 @@ export function ConceptResultCard({
             <button
               type="button"
               onClick={handlePush}
-              disabled={!c.adPackage || push.status === 'pushing' || push.status === 'done'}
+              disabled={
+                !c.adPackage || blocksLaunch || push.status === 'pushing' || push.status === 'done'
+              }
               className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-white/12 bg-white/[0.03] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-white/70 transition-colors hover:border-primary/40 hover:text-primary disabled:opacity-50 disabled:hover:border-white/12 disabled:hover:text-white/70"
-              title={c.adPackage ? 'Push this ad unit to your Meta creative library' : 'No ad package on this concept'}
+              title={
+                !c.adPackage
+                  ? 'No ad package on this concept'
+                  : blocksLaunch
+                    ? 'This ad unit is not launch-ready — fix the compliance issues in Studio first'
+                    : 'Push this ad unit to your Meta creative library'
+              }
             >
               {push.status === 'pushing' ? (
                 <Loader2 size={13} className="animate-spin" />
@@ -309,6 +371,8 @@ export function ConceptResultCard({
           </p>
         </div>
       )}
+
+      <CompliancePanel issues={complianceIssues} />
 
       <p className="mt-3 text-[12px] leading-relaxed text-white/55">{c.text}</p>
 
