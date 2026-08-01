@@ -114,6 +114,29 @@ const BUDGET_NUDGE_AT = 0.65
 const BUDGET_CLOSE_AT = 0.88
 
 /**
+ * FAST PATH — for hosts with a hard short ceiling (Vercel Hobby caps functions
+ * at 60s, so the budget can never be raised past it).
+ *
+ * A default run wants three orchestrator turns (consult → refine → submit) on
+ * Fable 5, whose thinking is always on and costs 20-40s per turn. Add the
+ * preflight briefing and that is comfortably over a minute — the run times out
+ * having produced intelligence but no ads, every time.
+ *
+ * Under a short budget the run trades exploration depth for actually landing:
+ *   - orchestration runs on Opus 4.8, which has no always-on thinking and turns
+ *     over several times faster
+ *   - OPUS is told from its first message that the preflight evidence IS its
+ *     research and to submit immediately
+ *   - the NEURO revision pass is dropped, so the first submission ships with
+ *     its scores attached rather than costing another full turn
+ *
+ * Engages off the budget alone — no extra configuration. Setting
+ * REACTOR_BUDGET_MS below this line is all a Hobby deployment needs.
+ */
+const FAST_PATH_UNDER_MS = 90_000
+const FAST_PATH = RUN_BUDGET_MS < FAST_PATH_UNDER_MS
+
+/**
  * Rendering a still BLOCKS this route. fal's image path returns the URL inline
  * (video is queued and polled), so each generate_image call parks the whole
  * orchestrator for 15-25s — several of those inside one run is what pushes it
@@ -1251,6 +1274,12 @@ export async function POST(request: NextRequest) {
         // The run is live from the first byte — these announce the configured
         // engines and must not sit behind a retrieval round trip.
         sse(controller, { type: 'step', text: 'OPUS online. Directing the intelligence network…' })
+        if (FAST_PATH) {
+          sse(controller, {
+            type: 'step',
+            text: `Fast path · ${Math.round(RUN_BUDGET_MS / 1000)}s host ceiling — orchestrating on ${OPUS_FALLBACK_MODEL}, submitting straight from the briefing.`,
+          })
+        }
         if (metaAds) {
           const via = metaAds.provider === 'meta' ? 'Meta first-party MCP' : 'Pipeboard MCP'
           sse(controller, { type: 'step', text: `Live Meta Ads performance feed connected · ${via}.` })
@@ -1315,10 +1344,17 @@ export async function POST(request: NextRequest) {
           !body.angle || body.angle === 'Agent decides' || body.angle === 'No Preference'
             ? 'Select the strongest campaign angle from the brief and intelligence'
             : `Design campaign concepts for the "${body.angle}" angle`
+        // Short-ceiling hosts cannot afford the consult → refine → submit arc.
+        // The preflight briefing above already carries ATLAS, NOVA and ORACLE's
+        // findings, so the evidence is in hand — say so, and ask for the submit
+        // on this turn rather than letting OPUS open with more retrieval.
+        const fastClause = FAST_PATH
+          ? ' TIME-CONSTRAINED RUN: the intelligence briefing above is your research — it is complete and already grounded. Do NOT open with consult_intelligence. Call submit_concepts on this turn, covering every requested output type, citing the briefing as your evidence. Only consult a layer if a concept genuinely cannot be written without it.'
+          : ''
         const messages: Anthropic.Beta.Messages.BetaMessageParam[] = [
           {
             role: 'user',
-            content: `${angleClause}. Active intelligence inputs: ${(body.inputs ?? []).join(', ') || 'all'}. Requested output types: ${outputs.join(', ')}.${briefing}`,
+            content: `${angleClause}. Active intelligence inputs: ${(body.inputs ?? []).join(', ') || 'all'}. Requested output types: ${outputs.join(', ')}.${briefing}${fastClause}`,
           },
         ]
 
@@ -1390,7 +1426,10 @@ export async function POST(request: NextRequest) {
         // the 30-day data-retention requirement isn't met, 403/404 on access),
         // the run switches to Opus 4.8 once and continues — the platform never
         // dies on model eligibility.
-        let opusModel: string = OPUS_MODEL
+        // Under a short host ceiling, orchestrate on the fallback tier from the
+        // start: Fable 5's always-on thinking cannot turn over fast enough to
+        // reach submit_concepts inside the budget.
+        let opusModel: string = FAST_PATH ? OPUS_FALLBACK_MODEL : OPUS_MODEL
         let fallbackAnnounced = false
 
         for (let turn = 0; turn < MAX_TURNS; turn++) {
@@ -1684,8 +1723,12 @@ export async function POST(request: NextRequest) {
                 }`,
               })
 
+              // Under a short ceiling a revision costs a whole extra turn the
+              // run does not have — ship the first submission with its scores
+              // attached and let the flagged numbers speak for themselves.
+              const revisionBudget = FAST_PATH ? 0 : MAX_NEURO_REVISIONS
               const needsRevision = weak.length > 0 || compliance.failingIndices.length > 0
-              if (needsRevision && neuroRevisions < MAX_NEURO_REVISIONS) {
+              if (needsRevision && neuroRevisions < revisionBudget) {
                 // Step 5 — hand the weak scores / compliance failures back to
                 // OPUS so it revises (or drops), same as the rubric self-critique.
                 // Both gates share one bounded revision pass to cap cost.
