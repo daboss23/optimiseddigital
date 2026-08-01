@@ -89,14 +89,6 @@ const kpiStagger = [
   'stagger-8',
 ]
 
-function heatLevel(v: number): string {
-  if (v >= 85) return 'heat-l4'
-  if (v >= 70) return 'heat-l3'
-  if (v >= 55) return 'heat-l2'
-  if (v >= 40) return 'heat-l1'
-  return 'heat-l0'
-}
-
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
   const mins = Math.round(diff / 60000)
@@ -298,59 +290,6 @@ export default async function ReactorDashboard() {
             </div>
           </Panel>
         </div>
-
-        {/* Live heatmap — where intelligence is accumulating, by month */}
-        <Panel>
-          <PanelHeader
-            icon={<Activity size={16} />}
-            accent="violet"
-            title="Creative Intelligence Heatmap"
-            subtitle="Signal intensity by system over the last 6 months"
-            accessory={
-              <div className="hidden items-center gap-2 text-[11px] text-white/40 sm:flex">
-                <span>Low</span>
-                <span className="h-2 w-24 rounded-full bg-gradient-to-r from-border via-primary to-cyan shadow-[0_0_10px_-2px_rgba(34,211,238,0.7)]" />
-                <span>High</span>
-              </div>
-            }
-          />
-          <div className="overflow-x-auto p-5">
-            <table className="w-full min-w-[560px] border-separate border-spacing-1.5">
-              <thead>
-                <tr>
-                  <th className="w-40" />
-                  {data.heatmap.months.map((m, i) => (
-                    <th
-                      key={`${m}-${i}`}
-                      className="px-2 text-center text-[11px] font-medium uppercase tracking-wider text-white/35"
-                    >
-                      {m}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {data.heatmap.rows.map((row) => (
-                  <tr key={row.dimension}>
-                    <td className="pr-3 text-sm font-medium text-white/70">{row.dimension}</td>
-                    {row.cells.map((c, i) => (
-                      <td key={i}>
-                        <div
-                          className={cn(
-                            'heat-cell grid h-9 place-items-center rounded-md text-[11px] font-semibold tabular text-white/90 transition-transform hover:scale-105',
-                            heatLevel(c),
-                          )}
-                        >
-                          {c}
-                        </div>
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Panel>
 
         {/* Strategic recommendations — intelligence briefing cards */}
         <Panel>
