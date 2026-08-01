@@ -1195,6 +1195,35 @@ export async function POST(request: NextRequest) {
 
   const stream = new ReadableStream({
     async start(controller) {
+      // Budget clock starts HERE — the moment the run begins — not after the
+      // preflight briefing. The host's ceiling applies to the whole function,
+      // so anything measured from a later point under-counts real elapsed time
+      // and lets the loop start turns there was never room for.
+      const runStart = Date.now()
+      const elapsed = () => Date.now() - runStart
+
+      // Concepts OPUS already submitted but that were sent back for a NEURO /
+      // compliance revision. They are finished, graded work — if the run ends
+      // before the revision lands (budget, turn limit, or a mid-run fault) they
+      // ship as-is instead of being thrown away. Rough ads beat zero ads.
+      // Declared out here so the catch below can salvage them too.
+      let pendingConcepts: Concept[] = []
+
+      /**
+       * Emit retained concepts on a run that ends before a clean submit.
+       * Returns true if anything shipped, so callers can pick their message.
+       */
+      const flushPendingConcepts = (): boolean => {
+        if (pendingConcepts.length === 0) return false
+        sse(controller, {
+          type: 'step',
+          text: `Shipping ${pendingConcepts.length} concept(s) from the last submission — the revision pass did not complete, so these carry their original pre-test scores.`,
+        })
+        for (const c of pendingConcepts) sse(controller, { type: 'concept', concept: c })
+        pendingConcepts = []
+        return true
+      }
+
       try {
         if (!process.env.ANTHROPIC_API_KEY) {
           await runDemo(controller, body)
@@ -1343,9 +1372,8 @@ export async function POST(request: NextRequest) {
         // Run budget. The host can kill this function without warning, which
         // ends the stream mid-sentence and loses everything the run produced.
         // Staying inside a limit we control means an overrun is something we
-        // report and close on, not something that happens to us.
-        const runStart = Date.now()
-        const elapsed = () => Date.now() - runStart
+        // report and close on, not something that happens to us. The clock
+        // itself starts at the top of `start()` so preflight counts against it.
         const overNudge = () => elapsed() > RUN_BUDGET_MS * BUDGET_NUDGE_AT
         let nudged = false
         // A turn already in flight cannot be cancelled, so the budget has to be
@@ -1369,9 +1397,16 @@ export async function POST(request: NextRequest) {
           // Out of time before another round trip could land — stop here and
           // report it, rather than starting a turn the host will cut short.
           if (cannotFitAnotherTurn()) {
+            const shipped = flushPendingConcepts()
             sse(controller, {
-              type: 'error',
-              message: `The run hit its ${Math.round(RUN_BUDGET_MS / 1000)}s time limit before OPUS submitted concepts. The intelligence below is real and complete — retry, or lower the variation count to give generation more room. (Raise REACTOR_BUDGET_MS if your hosting plan allows longer functions.)`,
+              type: shipped ? 'step' : 'error',
+              ...(shipped
+                ? {
+                    text: `The run hit its ${Math.round(RUN_BUDGET_MS / 1000)}s time limit during the revision pass. The concepts above are real but did not clear the pre-test — review them, or raise REACTOR_BUDGET_MS to give the revision room to finish.`,
+                  }
+                : {
+                    message: `The run hit its ${Math.round(RUN_BUDGET_MS / 1000)}s time limit before OPUS submitted concepts. The intelligence below is real and complete — retry, or lower the variation count to give generation more room. (Raise REACTOR_BUDGET_MS if your hosting plan allows longer functions.)`,
+                  }),
             })
             sse(controller, { type: 'done' })
             controller.close()
@@ -1655,6 +1690,14 @@ export async function POST(request: NextRequest) {
                 // OPUS so it revises (or drops), same as the rubric self-critique.
                 // Both gates share one bounded revision pass to cap cost.
                 neuroRevisions += 1
+                // Retain this submission before handing it back. It is finished,
+                // scored work; if the revision never lands (budget, turn limit,
+                // fault) these ship rather than vanishing.
+                concepts.forEach((c, i) => {
+                  c.neuro = scores[i]
+                })
+                if (body.isolate) tagIsolatedConcepts(concepts, body.isolate, runTestId)
+                pendingConcepts = concepts
                 sse(controller, {
                   type: 'step',
                   text: `${
@@ -1710,7 +1753,12 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        sse(controller, { type: 'step', text: 'Coordinator reached its turn limit without submitting concepts.' })
+        if (!flushPendingConcepts()) {
+          sse(controller, {
+            type: 'step',
+            text: 'Coordinator reached its turn limit without submitting concepts.',
+          })
+        }
         sse(controller, { type: 'done' })
         controller.close()
       } catch (err) {
@@ -1740,6 +1788,18 @@ export async function POST(request: NextRequest) {
           } catch (demoErr) {
             console.error('Campaign Reactor demo fallback error:', demoErr)
           }
+        }
+
+        // A submission already in hand outlives the fault that interrupted its
+        // revision — ship it and close cleanly rather than reporting nothing.
+        if (flushPendingConcepts()) {
+          sse(controller, {
+            type: 'step',
+            text: 'The revision pass faulted after concepts were submitted — the concepts above are the last complete set and did not clear the pre-test.',
+          })
+          sse(controller, { type: 'done' })
+          controller.close()
+          return
         }
 
         const message =
