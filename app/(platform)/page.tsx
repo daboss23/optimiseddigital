@@ -16,7 +16,6 @@ import {
   Network,
   Sparkles,
   Target,
-  TrendingUp,
   Trophy,
   Users,
   type LucideIcon,
@@ -33,7 +32,6 @@ import {
   accentClass,
   type Accent,
 } from '@/components/reactor/ui'
-import { GrowthAreaChart } from '@/components/reactor/charts/GrowthAreaChart'
 import { WinRateDonut } from '@/components/reactor/charts/WinRateDonut'
 import { recommendations } from '@/lib/reactor-data'
 import { getDashboardData, winningAngles } from '@/lib/dashboard-data'
@@ -79,14 +77,6 @@ const agentIdentity: Record<AgentId, { accent: Accent; icon: LucideIcon }> = {
   echo: { accent: 'emerald', icon: FileText },
   oracle: { accent: 'pink', icon: Hexagon },
 }
-
-// Header metadata chips — the live capabilities feeding the command center.
-const metaChips: { label: string; accent: Accent }[] = [
-  { label: 'Live Vault', accent: 'blue' },
-  { label: 'Campaign Memory', accent: 'violet' },
-  { label: 'Pattern Engine', accent: 'amber' },
-  { label: 'Agent Network', accent: 'cyan' },
-]
 
 const kpiStagger = [
   'stagger-1',
@@ -149,29 +139,6 @@ export default async function ReactorDashboard() {
             TPB create next, based on everything that has already worked?
           </p>
           <div className="hero-scanline" />
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            {metaChips.map((c) => (
-              <span key={c.label} className={cn('meta-chip', accentClass[c.accent])}>
-                <span className="meta-chip-dot" />
-                {c.label}
-              </span>
-            ))}
-          </div>
-        </div>
-        <div className="flex flex-col items-end gap-2.5">
-          <span className={cn('live-pill', !data.live && 'live-pill--demo')}>
-            <span className="live-pill__dot" />
-            {data.live ? 'Live Intelligence' : 'Demo Intelligence'}
-          </span>
-          <Pill tone="primary">
-            <Activity size={12} />
-            <span className="font-semibold uppercase tracking-[0.14em] tabular">
-              {data.total.toLocaleString()} assets {data.live ? 'stored' : 'mapped'}
-            </span>
-          </Pill>
-          <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-white/30">
-            Engineered For Performance.
-          </span>
         </div>
       </div>
 
@@ -196,25 +163,8 @@ export default async function ReactorDashboard() {
           })}
         </section>
 
-        {/* Hero analytics: intelligence growth + concept win rate */}
-        <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
-          <Panel className="xl:col-span-2">
-            <PanelHeader
-              icon={<TrendingUp size={16} />}
-              accent="cyan"
-              title="Intelligence Growth"
-              subtitle="Cumulative knowledge assets — is the Vault compounding?"
-              accessory={
-                <Pill tone="primary">
-                  <span className="tabular">+{data.growth[data.growth.length - 1].added}</span> this week
-                </Pill>
-              }
-            />
-            <div className="p-5 pt-3">
-              <GrowthAreaChart data={data.growth} />
-            </div>
-          </Panel>
-
+        {/* Hero analytics: concept win rate */}
+        <div className="grid grid-cols-1 gap-3">
           <Panel>
             <PanelHeader
               icon={<Trophy size={16} />}
