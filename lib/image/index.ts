@@ -1,6 +1,12 @@
 import { generateImage as higgsfieldImage, higgsfieldConfigured } from '@/lib/higgsfield'
 import { generateFalImage, falImageConfigured } from './fal'
-import { generateKieImage, kieImageConfigured } from './kie'
+import {
+  generateKieImage,
+  kieImageConfigured,
+  startKieImage,
+  pollKieImage,
+  type KiePollResult,
+} from './kie'
 import { DEFAULT_IMAGE_MODEL, IMAGE_MODELS, getImageModel } from './registry'
 import type { AspectRatio, ImageModelAvailability } from './types'
 
@@ -114,4 +120,47 @@ export async function generateImageWith(
   aspectRatio: AspectRatio = '1:1',
 ): Promise<GeneratedImage | null> {
   return (await generateImageDetailed(modelId, prompt, aspectRatio)).image
+}
+
+/* ------------------------- Async (start + poll) path ----------------------- */
+/* Kie persists a finished render against its taskId, so a slow model can be    */
+/* started in one short request and polled in later ones — the render never     */
+/* has to survive a single function under the host ceiling. Only Kie models     */
+/* support this; fal/Higgsfield return inline and use the synchronous path.     */
+
+export interface StartedImageJob {
+  taskId: string | null
+  modelId: string
+  provider: string
+  error?: string
+}
+
+/** True when the resolved model renders via Kie (the async-capable provider). */
+export function isAsyncImageModel(requested?: string): boolean {
+  const id = resolveModelId(requested)
+  const model = id ? getImageModel(id) : null
+  return model?.provider === 'kie'
+}
+
+/**
+ * Start an async Kie render and return its taskId. Resolves the requested model
+ * to a configured Kie model; returns an error (never throws) when none applies.
+ */
+export async function startImageJob(
+  requested: string | undefined,
+  prompt: string,
+  aspectRatio: AspectRatio = '1:1',
+): Promise<StartedImageJob> {
+  const id = resolveModelId(requested)
+  const model = id ? getImageModel(id) : null
+  if (!id || !model || model.provider !== 'kie') {
+    return { taskId: null, modelId: id ?? '', provider: model?.provider ?? '', error: 'Not a Kie model' }
+  }
+  const { taskId, error } = await startKieImage(id, prompt, aspectRatio)
+  return { taskId, modelId: id, provider: 'kie', error }
+}
+
+/** Poll a previously started Kie render once. */
+export async function pollImageJob(taskId: string): Promise<KiePollResult> {
+  return pollKieImage(taskId)
 }

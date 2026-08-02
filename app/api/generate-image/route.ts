@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { generateImageDetailed, imageConfigured, type AspectRatio } from '@/lib/image'
+import {
+  generateImageDetailed,
+  imageConfigured,
+  isAsyncImageModel,
+  startImageJob,
+  pollImageJob,
+  type AspectRatio,
+} from '@/lib/image'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -28,6 +35,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'prompt is required' }, { status: 400 })
     }
 
+    // Kie models render async: start the task and hand the client a taskId to
+    // poll. The render then never has to finish inside this one function, so a
+    // slow model can't be killed at the host ceiling with the image (and the
+    // charged credit) lost. fal/Higgsfield stay on the synchronous path below.
+    if (isAsyncImageModel(model)) {
+      const job = await startImageJob(model, prompt, aspectRatio ?? '1:1')
+      if (job.taskId) {
+        return NextResponse.json({
+          success: true,
+          pending: true,
+          taskId: job.taskId,
+          model: job.modelId,
+          provider: job.provider,
+        })
+      }
+      // Start failed (e.g. Kie rejected) — fall through to the synchronous
+      // oven, which will try any other configured provider before giving up.
+    }
+
     const { image, error } = await generateImageDetailed(model, prompt, aspectRatio ?? '1:1')
     if (!image) {
       return NextResponse.json({
@@ -52,4 +78,22 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     )
   }
+}
+
+// Poll an async (Kie) render started by POST: /api/generate-image?taskId=...
+// Each call is one fast recordInfo lookup, so the render is retrieved across
+// many short requests instead of one long-lived function.
+export async function GET(request: NextRequest) {
+  const taskId = request.nextUrl.searchParams.get('taskId')
+  if (!taskId) {
+    return NextResponse.json({ success: false, error: 'taskId is required' }, { status: 400 })
+  }
+  const res = await pollImageJob(taskId)
+  if (res.status === 'completed' && res.url) {
+    return NextResponse.json({ success: true, status: 'completed', imageUrl: res.url })
+  }
+  if (res.status === 'failed') {
+    return NextResponse.json({ success: false, status: 'failed', error: res.error ?? 'Render failed' })
+  }
+  return NextResponse.json({ success: true, status: 'pending' })
 }
