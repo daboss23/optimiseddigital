@@ -56,7 +56,19 @@ export interface KieImageResult {
 }
 
 const POLL_INTERVAL_MS = 1500
-const POLL_TIMEOUT_MS = Number(process.env.KIE_POLL_TIMEOUT_MS) || 90_000
+/**
+ * How long to poll Kie before giving up. This MUST stay under the host's
+ * function ceiling (Vercel Hobby kills a function at 60s, `maxDuration = 60` on
+ * the image route). The previous 90s default sat ABOVE that ceiling, so the
+ * function was killed mid-poll before the timeout could ever fire: a hard crash
+ * instead of a clean error — and because Kie charges a credit at createTask,
+ * the credit was spent while the URL was never retrieved.
+ *
+ * 50s leaves the function ~10s to return the timeout error cleanly. Pro
+ * deployments (300s ceiling) can raise it with KIE_POLL_TIMEOUT_MS to give
+ * Kie's slower flagship models more room.
+ */
+const POLL_TIMEOUT_MS = Number(process.env.KIE_POLL_TIMEOUT_MS) || 50_000
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
@@ -134,7 +146,11 @@ export async function generateKieImage(
       }
       // waiting | queuing | generating → keep polling.
     }
-    return { url: null, error: 'Kie job timed out' }
+    return {
+      url: null,
+      error:
+        'Kie render exceeded the time limit. Kie charges a credit when the job starts, so the image likely finished on Kie’s side — check your Kie dashboard. For reliable inline rendering under a 60s host limit, use a faster model (fal-flux).',
+    }
   } catch (err) {
     return { url: null, error: `Kie request error: ${err instanceof Error ? err.message : String(err)}` }
   }
