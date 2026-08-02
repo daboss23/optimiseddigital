@@ -827,12 +827,21 @@ async function runIntelligence(
 /* ------------------------- Pre-flight intelligence ------------------------ */
 
 /**
- * The layers the platform guarantees on every build. ATLAS is the foundation
- * (never skipped, never asleep), NOVA supplies the market, ORACLE supplies the
- * memory of what has already won. Ordered so the telemetry feed reads the way
- * the platform describes itself.
+ * The layers the platform guarantees on every build — every consultable layer
+ * in the network. ATLAS is the foundation (never skipped, never asleep), NOVA
+ * supplies the market, SPARK the creative DNA, ECHO the copy DNA, ORACLE the
+ * memory of what has already won. (OPUS is the sixth agent but orchestrates
+ * rather than reports, so it is never briefed.) Ordered so the telemetry feed
+ * reads the way the platform describes itself.
+ *
+ * SPARK and ECHO used to be OPUS's job to request. That made the two layers
+ * closest to ad craft — hooks, structures, messaging, objection handling — the
+ * two most likely to be skipped, and each request it did make cost a serial
+ * orchestrator turn. Briefing them here instead costs nothing extra in wall
+ * clock: the whole set runs concurrently, so the wait is the slowest layer, not
+ * the sum. Every concept ships a Meta ad unit, so copy DNA is never irrelevant.
  */
-const MANDATORY_LAYERS: IntelligenceId[] = ['atlas', 'nova', 'oracle']
+const MANDATORY_LAYERS: IntelligenceId[] = ['atlas', 'nova', 'spark', 'echo', 'oracle']
 
 /**
  * The focused question each mandatory layer is briefed with, built from the
@@ -857,6 +866,10 @@ function preflightQuestion(id: IntelligenceId, ctx: {
       return `For ${who}, what are the sharpest pains, desires, objections, and beliefs relevant to the "${ctx.angle}" angle at ${stage} awareness? Quote the market's own language.${briefTail}`
     case 'oracle':
       return `Which past winning patterns and strategic configurations match a "${ctx.angle}" campaign for ${who} driving to ${offer}? Name what won, what lost, and why.${briefTail}`
+    case 'spark':
+      return `Which winning creative structures, hooks, openings, and visual patterns should shape a "${ctx.angle}" campaign for ${who} at ${stage} awareness? Name the creatives and the repeatable DNA in each.${briefTail}`
+    case 'echo':
+      return `Which proven messaging patterns, emotional drivers, and objection-handling moves fit a "${ctx.angle}" campaign for ${who} at ${stage} awareness driving to ${offer}? Quote the copy and name the pattern.${briefTail}`
     default:
       return `What matters most for a "${ctx.angle}" campaign aimed at ${who}?${briefTail}`
   }
