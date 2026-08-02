@@ -99,13 +99,19 @@ const MAX_TURNS = 12
  * limit we control, so an overrun degrades to partial output instead of
  * vanishing.
  *
- * Default 55s clears the strictest common ceiling. Raise it wherever the host
- * genuinely allows longer (Vercel Pro serves the full 300s):
+ * Default 50s targets the strictest common ceiling (Hobby's 60s) with real
+ * headroom. The budget only guards the orchestrator LOOP — the NEURO scoring
+ * pass runs after the final turn and is not counted — so a default that sat
+ * flush against the ceiling could still be killed mid-scoring, losing the run
+ * it had just finished. 50s leaves room for that tail to land.
+ *
+ * Raise it wherever the host genuinely allows longer (Vercel Pro serves the
+ * full 300s):
  *   REACTOR_BUDGET_MS=280000
  */
 const RUN_BUDGET_MS = (() => {
   const raw = Number(process.env.REACTOR_BUDGET_MS)
-  return Number.isFinite(raw) && raw >= 10_000 ? raw : 55_000
+  return Number.isFinite(raw) && raw >= 10_000 ? raw : 50_000
 })()
 
 /** Past this share of the budget, OPUS is told to stop exploring and submit. */
