@@ -23,7 +23,7 @@ import { INTELLIGENCE, INTELLIGENCE_IDS, type IntelligenceId } from '@/lib/agent
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:3000'
 
 /** Layers the platform guarantees on every build (see MANDATORY_LAYERS). */
-const MANDATORY: IntelligenceId[] = ['atlas', 'nova', 'oracle']
+const MANDATORY: IntelligenceId[] = ['atlas', 'nova', 'spark', 'echo', 'oracle']
 
 interface SseEvent {
   type: string
