@@ -624,6 +624,15 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
 
+  // One scroll container is reused for every step, so its scroll position
+  // carries over between them — you scroll down to reach "Next" on one step and
+  // the next step opens already scrolled to the bottom. Reset it to the top on
+  // every step change so each step starts at its heading.
+  const bodyScrollRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    bodyScrollRef.current?.scrollTo({ top: 0 })
+  }, [step])
+
   if (!open || !mounted) return null
 
   const fire = () => {
@@ -736,7 +745,10 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
         </div>
 
         {/* Body */}
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-7 sm:py-6">
+        <div
+          ref={bodyScrollRef}
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-7 sm:py-6"
+        >
           {step === 1 && (
             <div className="animate-fade-up space-y-6">
               <div>
