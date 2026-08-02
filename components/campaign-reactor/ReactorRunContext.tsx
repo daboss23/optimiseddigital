@@ -245,7 +245,15 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
             chunkEvents.push(ev)
             if (ev.type === 'step') chunkTelemetry.push({ text: ev.text as string, kind: 'step' })
             else if (ev.type === 'retrieval')
-              chunkTelemetry.push({ text: `${ev.system} · ${ev.title}`, kind: 'retrieval' })
+              chunkTelemetry.push({
+                // Name the layer that made the retrieval — the layers are
+                // briefed in parallel, so a bare system·title line in the
+                // chronological feed reads as if one agent found everything.
+                text: ev.agent
+                  ? `${ev.agent} · ${ev.system} · ${ev.title}`
+                  : `${ev.system} · ${ev.title}`,
+                kind: 'retrieval',
+              })
             else if (ev.type === 'delegate')
               chunkTelemetry.push({
                 text:

@@ -58,14 +58,36 @@ function candidateModelIds(requested?: string): string[] {
   return Array.from(new Set([first, ...rest].filter(Boolean) as string[]))
 }
 
+/**
+ * The closest ratio a given model can actually render.
+ *
+ * The brief only ever offers ratios the CHOSEN model supports — but when that
+ * model fails and the oven falls through to another provider, the requested
+ * ratio can be one the substitute doesn't declare (GPT Image has no 4:3/3:4).
+ * Sending it anyway is a guaranteed provider rejection, so we snap to a
+ * supported ratio of the same orientation instead of losing the render.
+ */
+export function supportedRatio(modelId: string, aspectRatio: AspectRatio): AspectRatio {
+  const model = getImageModel(modelId)
+  if (!model || model.aspectRatios.includes(aspectRatio)) return aspectRatio
+  const orientation = (r: string) => {
+    const [w, h] = r.split(':').map(Number)
+    return w > h ? 'landscape' : w < h ? 'portrait' : 'square'
+  }
+  const want = orientation(aspectRatio)
+  const match = model.aspectRatios.find((r) => orientation(r) === want)
+  return (match ?? model.aspectRatios[0] ?? '1:1') as AspectRatio
+}
+
 /** Render with a single specific model; returns the URL and any failure reason. */
 async function renderWithModel(
   id: string,
   prompt: string,
-  aspectRatio: AspectRatio,
+  requestedRatio: AspectRatio,
 ): Promise<{ url: string | null; error?: string }> {
   const model = getImageModel(id)
   if (!model) return { url: null, error: `Unknown image model "${id}"` }
+  const aspectRatio = supportedRatio(id, requestedRatio)
   if (model.provider === 'fal') return generateFalImage(prompt, aspectRatio)
   if (model.provider === 'kie') return generateKieImage(id, prompt, aspectRatio)
   if (model.provider === 'higgsfield') {
@@ -156,7 +178,7 @@ export async function startImageJob(
   if (!id || !model || model.provider !== 'kie') {
     return { taskId: null, modelId: id ?? '', provider: model?.provider ?? '', error: 'Not a Kie model' }
   }
-  const { taskId, error } = await startKieImage(id, prompt, aspectRatio)
+  const { taskId, error } = await startKieImage(id, prompt, supportedRatio(id, aspectRatio))
   return { taskId, modelId: id, provider: 'kie', error }
 }
 

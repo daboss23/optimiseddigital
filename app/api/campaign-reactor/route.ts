@@ -1331,14 +1331,15 @@ export async function POST(request: NextRequest) {
           })
             .then((configs) => {
               if (configs.length > 0) {
+                // A step, NOT a second ORACLE delegate report. The memory
+                // lookup runs alongside ORACLE's own preflight consult, so
+                // emitting it as a delegate produced two Strategic Memory
+                // cards for one layer — and whichever landed last overwrote
+                // the other's confidence, so a failed consult could downgrade
+                // a successful memory hit to "Layer unavailable / Exploratory".
                 sse(controller, {
-                  type: 'delegate',
-                  agent: 'ORACLE',
-                  id: 'oracle',
-                  label: 'Strategic Memory',
-                  status: 'done',
-                  confidence: 'High',
-                  summary: `Retrieved ${configs.length} matching historical winner${configs.length === 1 ? '' : 's'} — feeding configurations into generation.`,
+                  type: 'step',
+                  text: `ORACLE memory · retrieved ${configs.length} matching historical winner${configs.length === 1 ? '' : 's'} — feeding configurations into generation.`,
                 })
               }
               return configs

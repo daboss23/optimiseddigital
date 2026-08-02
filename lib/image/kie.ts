@@ -37,6 +37,43 @@ const KIE_MODEL_SLUGS: Record<string, string> = {
   'kie-gpt-image': process.env.KIE_MODEL_GPT_IMAGE || 'gpt-image-2-text-to-image',
 }
 
+/**
+ * Kie's models do NOT share one sizing vocabulary. Some take the ratio string
+ * verbatim ("1:1"), others take a named size from a fixed enum and reject
+ * anything else with "This image_size is not within the range of allowed
+ * options" — which is exactly how a brief that picked a perfectly valid ratio
+ * still failed to render. Each model declares which vocabulary it speaks, and
+ * a rejection on sizing retries once with the other one, so a vendor changing
+ * its schema degrades to one wasted call instead of a dead deliverable.
+ */
+type SizeVocab = 'ratio' | 'named'
+
+const NAMED_SIZE: Record<string, string> = {
+  '1:1': 'square_hd',
+  '9:16': 'portrait_16_9',
+  '16:9': 'landscape_16_9',
+  '4:3': 'landscape_4_3',
+  '3:4': 'portrait_4_3',
+}
+
+const KIE_SIZE_VOCAB: Record<string, SizeVocab> = {
+  'kie-nano-banana-pro': 'ratio',
+  'kie-nano-banana': 'ratio',
+  'kie-gpt-image': 'ratio',
+  'kie-seedream-v4': 'named',
+  'kie-flux-kontext-max': 'named',
+}
+
+function sizeValue(modelId: string, aspectRatio: AspectRatio, vocab: SizeVocab): string {
+  if (vocab === 'ratio') return aspectRatio
+  return NAMED_SIZE[aspectRatio] ?? NAMED_SIZE['1:1']
+}
+
+/** True when a Kie failure is about the size argument rather than the render. */
+function isSizeRejection(msg: string | undefined): boolean {
+  return Boolean(msg && /image_?size|aspect|not within the range/i.test(msg))
+}
+
 function kieKey(): string | undefined {
   return process.env.KIE_API_KEY || process.env.KIE_KEY
 }
@@ -109,30 +146,43 @@ export async function startKieImage(
   const slug = KIE_MODEL_SLUGS[modelId]
   if (!slug) return { taskId: null, error: `Unknown Kie model "${modelId}"` }
 
-  try {
-    const createRes = await fetch(CREATE_URL, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: slug,
-        input: { prompt, image_size: aspectRatio, output_format: 'png', num_images: 1 },
-      }),
-      cache: 'no-store',
-    })
-    const createBody = (await createRes.json().catch(() => null)) as
-      | { code?: number; msg?: string; data?: { taskId?: string } }
-      | null
-    if (!createRes.ok) {
-      return { taskId: null, error: `Kie createTask ${createRes.status}: ${createBody?.msg ?? 'error'}` }
+  const primary = KIE_SIZE_VOCAB[modelId] ?? 'ratio'
+  const attempts: SizeVocab[] = primary === 'ratio' ? ['ratio', 'named'] : ['named', 'ratio']
+
+  let lastError: string | undefined
+  for (const vocab of attempts) {
+    try {
+      const createRes = await fetch(CREATE_URL, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: slug,
+          input: {
+            prompt,
+            image_size: sizeValue(modelId, aspectRatio, vocab),
+            output_format: 'png',
+            num_images: 1,
+          },
+        }),
+        cache: 'no-store',
+      })
+      const createBody = (await createRes.json().catch(() => null)) as
+        | { code?: number; msg?: string; data?: { taskId?: string } }
+        | null
+      const taskId = createRes.ok ? createBody?.data?.taskId : undefined
+      if (taskId) return { taskId }
+
+      lastError = createRes.ok
+        ? `Kie createTask returned no taskId (${createBody?.msg ?? 'unknown'})`
+        : `Kie createTask ${createRes.status}: ${createBody?.msg ?? 'error'}`
+      // Only a sizing rejection is worth a second shot — anything else (bad
+      // slug, no credit) will fail identically with the other vocabulary.
+      if (!isSizeRejection(createBody?.msg)) return { taskId: null, error: lastError }
+    } catch (err) {
+      return { taskId: null, error: `Kie request error: ${err instanceof Error ? err.message : String(err)}` }
     }
-    const taskId = createBody?.data?.taskId
-    if (!taskId) {
-      return { taskId: null, error: `Kie createTask returned no taskId (${createBody?.msg ?? 'unknown'})` }
-    }
-    return { taskId }
-  } catch (err) {
-    return { taskId: null, error: `Kie request error: ${err instanceof Error ? err.message : String(err)}` }
   }
+  return { taskId: null, error: lastError }
 }
 
 /** One render state for a Kie task. `pending` means keep polling. */
