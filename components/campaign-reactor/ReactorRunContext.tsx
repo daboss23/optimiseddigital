@@ -404,6 +404,8 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
         const raw = await r.text()
         let res: {
           success?: boolean
+          pending?: boolean
+          taskId?: string
           imageUrl?: string | null
           model?: string
           provider?: string
@@ -417,9 +419,52 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
             success: false,
             error:
               r.status === 504 || r.status === 408
-                ? 'Image render timed out on the host (the provider took too long). Try a faster model — fal-flux renders well under the limit.'
+                ? 'Image render timed out on the host (the provider took too long).'
                 : `Image service returned ${r.status || 'an error'}. ${raw.slice(0, 140)}`.trim(),
           }
+        }
+
+        // Async (Kie) render: the task was started and charged; poll it to
+        // completion across short requests so a slow model can't be lost to the
+        // host ceiling. The image persists on Kie against the taskId.
+        if (res.pending && res.taskId) {
+          const taskId = res.taskId
+          const model = res.model
+          const provider = res.provider
+          for (let i = 0; i < 80; i++) {
+            await new Promise((rr) => setTimeout(rr, 3000))
+            try {
+              const poll = await fetch(
+                `/api/generate-image?taskId=${encodeURIComponent(taskId)}`,
+              ).then((rr) => rr.json())
+              if (poll.status === 'completed' && poll.imageUrl) {
+                setCreatives((p) => ({
+                  ...p,
+                  [c.text]: { status: 'done', url: poll.imageUrl, model, provider },
+                }))
+                return
+              }
+              if (poll.status === 'failed') {
+                setCreatives((p) => ({
+                  ...p,
+                  [c.text]: { status: 'error', message: poll.error || 'Render failed' },
+                }))
+                return
+              }
+              // pending → keep polling.
+            } catch {
+              /* transient — keep polling */
+            }
+          }
+          setCreatives((p) => ({
+            ...p,
+            [c.text]: {
+              status: 'error',
+              message:
+                'Render is taking unusually long. The credit was charged at Kie, so the image likely finished — check your Kie dashboard.',
+            },
+          }))
+          return
         }
 
         if (res.success && res.imageUrl) {

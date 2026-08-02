@@ -85,33 +85,37 @@ function firstResultUrl(resultJson: unknown): string | null {
   return null
 }
 
-export async function generateKieImage(
+/** Result of starting a Kie task: the taskId to poll, or a reason it failed. */
+export interface KieStartResult {
+  taskId: string | null
+  error?: string
+}
+
+/**
+ * Create a Kie render task and return its taskId WITHOUT polling. This is the
+ * async path: because Kie persists the finished image against the taskId, the
+ * client can poll `pollKieImage` across many short requests and never needs a
+ * single function to outlive the render — so a slow model can no longer be
+ * killed at the host ceiling with the image (and the charged credit) lost.
+ */
+export async function startKieImage(
   modelId: string,
   prompt: string,
   aspectRatio: AspectRatio = '1:1',
-): Promise<KieImageResult> {
+): Promise<KieStartResult> {
   const key = kieKey()
-  if (!key) return { url: null, error: 'KIE_API_KEY is not set' }
-  if (!prompt) return { url: null, error: 'Empty prompt' }
+  if (!key) return { taskId: null, error: 'KIE_API_KEY is not set' }
+  if (!prompt) return { taskId: null, error: 'Empty prompt' }
   const slug = KIE_MODEL_SLUGS[modelId]
-  if (!slug) return { url: null, error: `Unknown Kie model "${modelId}"` }
+  if (!slug) return { taskId: null, error: `Unknown Kie model "${modelId}"` }
 
   try {
-    // 1 — create the task.
     const createRes = await fetch(CREATE_URL, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${key}`,
-        'Content-Type': 'application/json',
-      },
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: slug,
-        input: {
-          prompt,
-          image_size: aspectRatio,
-          output_format: 'png',
-          num_images: 1,
-        },
+        input: { prompt, image_size: aspectRatio, output_format: 'png', num_images: 1 },
       }),
       cache: 'no-store',
     })
@@ -119,39 +123,75 @@ export async function generateKieImage(
       | { code?: number; msg?: string; data?: { taskId?: string } }
       | null
     if (!createRes.ok) {
-      return { url: null, error: `Kie createTask ${createRes.status}: ${createBody?.msg ?? 'error'}` }
+      return { taskId: null, error: `Kie createTask ${createRes.status}: ${createBody?.msg ?? 'error'}` }
     }
     const taskId = createBody?.data?.taskId
-    if (!taskId) return { url: null, error: `Kie createTask returned no taskId (${createBody?.msg ?? 'unknown'})` }
-
-    // 2 — poll until success/fail or timeout.
-    const deadline = Date.now() + POLL_TIMEOUT_MS
-    while (Date.now() < deadline) {
-      await sleep(POLL_INTERVAL_MS)
-      const pollRes = await fetch(`${RECORD_URL}?taskId=${encodeURIComponent(taskId)}`, {
-        headers: { Authorization: `Bearer ${key}` },
-        cache: 'no-store',
-      })
-      const pollBody = (await pollRes.json().catch(() => null)) as
-        | { data?: { state?: string; resultJson?: string; failMsg?: string } }
-        | null
-      const data = pollBody?.data
-      const state = data?.state
-      if (state === 'success') {
-        const url = firstResultUrl(data?.resultJson)
-        return url ? { url } : { url: null, error: 'Kie succeeded but returned no image URL' }
-      }
-      if (state === 'fail') {
-        return { url: null, error: `Kie job failed: ${data?.failMsg ?? 'unknown'}` }
-      }
-      // waiting | queuing | generating → keep polling.
+    if (!taskId) {
+      return { taskId: null, error: `Kie createTask returned no taskId (${createBody?.msg ?? 'unknown'})` }
     }
-    return {
-      url: null,
-      error:
-        'Kie render exceeded the time limit. Kie charges a credit when the job starts, so the image likely finished on Kie’s side — check your Kie dashboard. For reliable inline rendering under a 60s host limit, use a faster model (fal-flux).',
-    }
+    return { taskId }
   } catch (err) {
-    return { url: null, error: `Kie request error: ${err instanceof Error ? err.message : String(err)}` }
+    return { taskId: null, error: `Kie request error: ${err instanceof Error ? err.message : String(err)}` }
+  }
+}
+
+/** One render state for a Kie task. `pending` means keep polling. */
+export interface KiePollResult {
+  status: 'pending' | 'completed' | 'failed'
+  url?: string
+  error?: string
+}
+
+/** Poll a Kie task ONCE. Cheap and fast — safe to call repeatedly from a client. */
+export async function pollKieImage(taskId: string): Promise<KiePollResult> {
+  const key = kieKey()
+  if (!key) return { status: 'failed', error: 'KIE_API_KEY is not set' }
+  if (!taskId) return { status: 'failed', error: 'taskId is required' }
+  try {
+    const pollRes = await fetch(`${RECORD_URL}?taskId=${encodeURIComponent(taskId)}`, {
+      headers: { Authorization: `Bearer ${key}` },
+      cache: 'no-store',
+    })
+    const pollBody = (await pollRes.json().catch(() => null)) as
+      | { data?: { state?: string; resultJson?: string; failMsg?: string } }
+      | null
+    const data = pollBody?.data
+    const state = data?.state
+    if (state === 'success') {
+      const url = firstResultUrl(data?.resultJson)
+      return url
+        ? { status: 'completed', url }
+        : { status: 'failed', error: 'Kie succeeded but returned no image URL' }
+    }
+    if (state === 'fail') return { status: 'failed', error: `Kie job failed: ${data?.failMsg ?? 'unknown'}` }
+    return { status: 'pending' }
+  } catch {
+    // Transient — the caller keeps polling.
+    return { status: 'pending' }
+  }
+}
+
+export async function generateKieImage(
+  modelId: string,
+  prompt: string,
+  aspectRatio: AspectRatio = '1:1',
+): Promise<KieImageResult> {
+  // 1 — create the task (charges a credit at Kie).
+  const start = await startKieImage(modelId, prompt, aspectRatio)
+  if (!start.taskId) return { url: null, error: start.error }
+
+  // 2 — poll until success/fail or the (sub-ceiling) timeout.
+  const deadline = Date.now() + POLL_TIMEOUT_MS
+  while (Date.now() < deadline) {
+    await sleep(POLL_INTERVAL_MS)
+    const res = await pollKieImage(start.taskId)
+    if (res.status === 'completed') return { url: res.url ?? null }
+    if (res.status === 'failed') return { url: null, error: res.error }
+    // pending → keep polling.
+  }
+  return {
+    url: null,
+    error:
+      'Kie render exceeded the time limit. Kie charges a credit when the job starts, so the image likely finished on Kie’s side — check your Kie dashboard. For reliable inline rendering under a 60s host limit, use a faster model (fal-flux).',
   }
 }
