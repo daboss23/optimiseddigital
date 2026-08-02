@@ -384,7 +384,7 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
 
       setCreatives((p) => ({ ...p, [c.text]: { status: 'working' } }))
       try {
-        const res = await fetch('/api/generate-image', {
+        const r = await fetch('/api/generate-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -395,12 +395,37 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
             aspectRatio: opts.aspectRatio ?? '1:1',
             model: opts.imageModel,
           }),
-        }).then((r) => r.json())
+        })
+
+        // A killed function (Vercel's per-plan wall-clock ceiling — the image
+        // route can outrun it on a slow provider) returns an error page, not
+        // JSON. Read as text first so that surfaces as an actionable timeout
+        // message instead of a bare "Generation failed" from a thrown .json().
+        const raw = await r.text()
+        let res: {
+          success?: boolean
+          imageUrl?: string | null
+          model?: string
+          provider?: string
+          error?: string
+          demo?: boolean
+        }
+        try {
+          res = JSON.parse(raw)
+        } catch {
+          res = {
+            success: false,
+            error:
+              r.status === 504 || r.status === 408
+                ? 'Image render timed out on the host (the provider took too long). Try a faster model — fal-flux renders well under the limit.'
+                : `Image service returned ${r.status || 'an error'}. ${raw.slice(0, 140)}`.trim(),
+          }
+        }
 
         if (res.success && res.imageUrl) {
           setCreatives((p) => ({
             ...p,
-            [c.text]: { status: 'done', url: res.imageUrl, model: res.model, provider: res.provider },
+            [c.text]: { status: 'done', url: res.imageUrl!, model: res.model, provider: res.provider },
           }))
         } else {
           setCreatives((p) => ({
@@ -415,8 +440,16 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
             },
           }))
         }
-      } catch {
-        setCreatives((p) => ({ ...p, [c.text]: { status: 'error', message: 'Generation failed' } }))
+      } catch (err) {
+        setCreatives((p) => ({
+          ...p,
+          [c.text]: {
+            status: 'error',
+            message: `Couldn't reach the image service (${
+              err instanceof Error ? err.message : 'network error'
+            }).`,
+          },
+        }))
       }
     },
     [generateVideoCreative],
