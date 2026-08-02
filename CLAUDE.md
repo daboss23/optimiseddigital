@@ -103,10 +103,10 @@ META_LINK_URL                # Optional — destination link on pushed creatives
 META_APP_SECRET              # Optional — adds appsecret_proof request signing
 META_INGEST_MIN_SPEND        # Optional — spend floor to grade an ad (default 50)
 META_INGEST_DATE_PRESET      # Optional — Graph date_preset for the sync (default last_30d)
-REACTOR_BUDGET_MS            # Optional — wall-clock budget for one Reactor run (default 55000)
+REACTOR_BUDGET_MS            # Optional — wall-clock budget for one Reactor run (default 50000)
                              #   MUST sit under the host's function ceiling: Vercel Hobby
                              #   kills functions at 60s, Pro serves the full 300s.
-                             #   Hobby → 50000 · Pro → 280000
+                             #   Hobby → leave unset (50000 default) · Pro → 280000
                              #   Under 90000 the run takes the FAST PATH: orchestrates on
                              #   Opus 4.8 (Fable 5's always-on thinking is too slow to land
                              #   inside a minute), submits straight from the preflight
