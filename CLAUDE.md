@@ -101,8 +101,10 @@ MUAPIAPP_API_KEY             # Muapi unified image + video gateway — CURRENT D
                              #   key and both ovens fall back to Kie/fal/Higgsfield automatically.
                              #   Optional overrides (vendor slugs drift; no code change needed):
                              #   MUAPI_API_BASE, MUAPI_POLL_TIMEOUT_MS,
-                             #   MUAPI_MODEL_FLUX_DEV / _FLUX_KONTEXT_MAX / _SEEDREAM /
-                             #   _GPT4O / _MIDJOURNEY (images),
+                             #   MUAPI_MODEL_NANO_BANANA_PRO / _NANO_BANANA_2 / _GPT_IMAGE_2 /
+                             #   _MIDJOURNEY / _SEEDREAM / _FLUX_KONTEXT_MAX / _FLUX_DEV (images
+                             #   — only _FLUX_DEV's slug is confirmed; set any that 404 to the
+                             #   slug shown in the Muapi dashboard),
                              #   MUAPI_VIDEO_VEO3_T2V / _VEO3_I2V / _KLING_T2V / _KLING_I2V /
                              #   _SEEDANCE_T2V / _SEEDANCE_I2V / _WAN_T2V / _WAN_I2V (video)
 PIPEBOARD_API_TOKEN          # Meta Ads MCP (live ad performance) — optional

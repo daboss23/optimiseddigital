@@ -18,26 +18,38 @@ export const IMAGE_MODELS: ImageModel[] = [
   // Muapi unified gateway — one MUAPIAPP_API_KEY, many frontier models. On
   // trial as the primary still generator.
   //
-  // These are Muapi's five STRONGEST image models for ad creative, ordered
-  // best-first. Order is load-bearing: the oven resolves the first configured
-  // model and falls through this list on failure, so the leader is both the
-  // default and the first fallback. (It previously led with FLUX.1 Dev — the
-  // fastest, not the best — which made the weakest model the platform default.)
+  // These are the FRONTIER image models — the latest generation from Google and
+  // OpenAI first, then Midjourney and Seedream — ordered best-first.
+  //
+  // Order is load-bearing: the oven resolves the first configured model and
+  // falls through this list on failure, and the Formats-step picker defaults to
+  // the leader. So whatever sits at the top is what actually renders.
+  //
+  // The FLUX entries are kept below deliberately: their slugs are confirmed
+  // working, so they are the safety net if a frontier slug is wrong.
   {
-    id: 'muapi-seedream',
-    label: 'Seedream 4.0 (Muapi)',
+    id: 'muapi-nano-banana-pro',
+    label: 'Nano Banana Pro (Muapi)',
     provider: 'muapi',
     aspectRatios: ['1:1', '16:9', '4:3', '9:16', '3:4'],
     tier: 'flagship',
-    notes: 'ByteDance Seedream 4.0 — the strongest all-round ad still: cinematic photoreal realism and composition for premium proof/founder creative.',
+    notes: 'Google Nano Banana Pro — the strongest all-round ad still: top-tier prompt adherence, in-image text rendering and photoreal detail.',
   },
   {
-    id: 'muapi-gpt4o',
-    label: 'GPT-4o Image (Muapi)',
+    id: 'muapi-nano-banana-2',
+    label: 'Nano Banana 2 (Muapi)',
+    provider: 'muapi',
+    aspectRatios: ['1:1', '16:9', '4:3', '9:16', '3:4'],
+    tier: 'flagship',
+    notes: 'Google Nano Banana 2 — latest-generation Gemini image model. Excellent scene coherence and legible on-ad copy.',
+  },
+  {
+    id: 'muapi-gpt-image-2',
+    label: 'GPT Image 2 (Muapi)',
     provider: 'muapi',
     aspectRatios: ['1:1', '16:9', '9:16'],
     tier: 'flagship',
-    notes: 'OpenAI GPT-4o image — the best in-image text and instruction-following. First choice for headline/offer creatives that must render copy legibly.',
+    notes: "OpenAI's latest image model — next-gen photorealism with the sharpest in-image text and instruction-following. First choice for headline/offer creatives.",
   },
   {
     id: 'muapi-midjourney',
@@ -46,6 +58,14 @@ export const IMAGE_MODELS: ImageModel[] = [
     aspectRatios: ['1:1', '16:9', '4:3', '9:16', '3:4'],
     tier: 'flagship',
     notes: 'Midjourney — the most stylised, art-directed look. Highest scroll-stop ceiling when the angle wants a brand image rather than a literal scene.',
+  },
+  {
+    id: 'muapi-seedream',
+    label: 'Seedream 4.0 (Muapi)',
+    provider: 'muapi',
+    aspectRatios: ['1:1', '16:9', '4:3', '9:16', '3:4'],
+    tier: 'flagship',
+    notes: 'ByteDance Seedream 4.0 — cinematic photoreal realism and composition for premium proof/founder creative.',
   },
   {
     id: 'muapi-flux-kontext-max',
@@ -61,7 +81,7 @@ export const IMAGE_MODELS: ImageModel[] = [
     provider: 'muapi',
     aspectRatios: ['1:1', '16:9', '4:3', '9:16', '3:4'],
     tier: 'fast',
-    notes: 'FLUX.1 Dev — the fast, high-volume workhorse. Lower ceiling than the four above; use it for bulk creative variations.',
+    notes: 'FLUX.1 Dev — the fast, high-volume workhorse. Lower ceiling than the models above; use it for bulk creative variations.',
   },
   // Kie.ai flagship image market — the most powerful models, one KIE_API_KEY.
   {
@@ -122,11 +142,11 @@ export const IMAGE_MODELS: ImageModel[] = [
   },
 ]
 
-// Muapi's strongest model is the current default while Muapi is on trial as the
-// main still generator. When MUAPIAPP_API_KEY is absent the oven automatically
-// falls through to the next configured provider (Kie → fal → Higgsfield), so
-// this is a preference, never a hard dependency.
-export const DEFAULT_IMAGE_MODEL = 'muapi-seedream'
+// The frontier model leads while Muapi is on trial as the main still generator.
+// When MUAPIAPP_API_KEY is absent the oven automatically falls through to the
+// next configured provider (Kie → fal → Higgsfield), so this is a preference,
+// never a hard dependency.
+export const DEFAULT_IMAGE_MODEL = 'muapi-nano-banana-pro'
 
 export function getImageModel(id: string): ImageModel | undefined {
   return IMAGE_MODELS.find((m) => m.id === id)

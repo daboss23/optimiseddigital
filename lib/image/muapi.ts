@@ -31,14 +31,26 @@ import type { AspectRatio } from './types'
 
 const API_BASE = process.env.MUAPI_API_BASE || 'https://api.muapi.ai/api/v1'
 
-/** Map our internal muapi model ids → Muapi endpoint slugs (env-overridable). */
+/**
+ * Map our internal muapi model ids → Muapi endpoint slugs (env-overridable).
+ *
+ * `flux-dev-image` is CONFIRMED working (it rendered). The rest follow Muapi's
+ * `<alias>-image` convention but are unverified, because muapi.ai is not
+ * reachable from every build environment — which is exactly why each one has
+ * its own env override. If a model 404s, set its variable to the slug shown in
+ * the Muapi dashboard and the fix ships without a code change. A wrong slug is
+ * never fatal: the oven falls through to the next configured model.
+ */
 const MUAPI_MODEL_ENDPOINTS: Record<string, string> = {
-  'muapi-flux-dev': process.env.MUAPI_MODEL_FLUX_DEV || 'flux-dev-image',
+  'muapi-nano-banana-pro':
+    process.env.MUAPI_MODEL_NANO_BANANA_PRO || 'nano-banana-pro-image',
+  'muapi-nano-banana-2': process.env.MUAPI_MODEL_NANO_BANANA_2 || 'nano-banana-2-image',
+  'muapi-gpt-image-2': process.env.MUAPI_MODEL_GPT_IMAGE_2 || 'gpt-image-2-image',
+  'muapi-midjourney': process.env.MUAPI_MODEL_MIDJOURNEY || 'midjourney-image',
+  'muapi-seedream': process.env.MUAPI_MODEL_SEEDREAM || 'seedream-image',
   'muapi-flux-kontext-max':
     process.env.MUAPI_MODEL_FLUX_KONTEXT_MAX || 'flux-kontext-max-image',
-  'muapi-seedream': process.env.MUAPI_MODEL_SEEDREAM || 'seedream-image',
-  'muapi-gpt4o': process.env.MUAPI_MODEL_GPT4O || 'gpt4o-image',
-  'muapi-midjourney': process.env.MUAPI_MODEL_MIDJOURNEY || 'midjourney-image',
+  'muapi-flux-dev': process.env.MUAPI_MODEL_FLUX_DEV || 'flux-dev-image',
 }
 
 function muapiKey(): string | undefined {
