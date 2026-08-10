@@ -90,9 +90,13 @@ export function SparkAnalyzer() {
             <input
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              placeholder="Meta Ad Library / TikTok / YouTube URL"
+              placeholder="Paste a YouTube URL — SPARK pulls the transcript for you"
               className={selectClass}
             />
+            <p className="mt-1 text-[11px] text-white/35">
+              YouTube links auto-transcribe (no pasting needed). Other URLs read page text where
+              available.
+            </p>
           </div>
           <div>
             <p className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-white/40">

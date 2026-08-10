@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { fetchYouTubeTranscript } from '@/lib/youtube'
+import { fetchYouTubeTranscript, structureTranscriptForVault } from '@/lib/youtube'
 
 export const runtime = 'nodejs'
-export const maxDuration = 30
+export const maxDuration = 60
 
 // Transcribe a YouTube video for the Knowledge Vault. The transcript-fetching
-// logic lives in lib/youtube.ts so NOVA's market research can reuse it.
+// logic lives in lib/youtube.ts so NOVA's market research can reuse it. The raw
+// captions are then structured into clean, readable knowledge (core ideas,
+// frameworks, claims) rather than a run-on caption wall — the reading of the
+// content, not the caption dump. Structuring degrades to the raw transcript
+// when the model/keys are absent, so the Vault always works end to end.
 export async function POST(request: NextRequest) {
   try {
-    const { url } = await request.json()
+    const { url, title } = (await request.json()) as { url?: string; title?: string }
     if (!url?.trim()) {
       return NextResponse.json({ success: false, error: 'YouTube URL is required' }, { status: 400 })
     }
@@ -18,9 +22,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: result.error }, { status: 400 })
     }
 
-    const raw = result.content
-    const content =
-      raw.length > 8000 ? raw.slice(0, 8000) + '\n\n[transcript truncated at 8000 chars]' : raw
+    const content = await structureTranscriptForVault(result.content, title)
 
     return NextResponse.json({ success: true, content })
   } catch (error) {

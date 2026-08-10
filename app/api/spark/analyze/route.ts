@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { extractCreativeDNA, storeCreativeDNA } from '@/lib/spark'
+import { extractVideoId, fetchYouTubeTranscript } from '@/lib/youtube'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -49,8 +50,14 @@ export async function POST(request: NextRequest) {
     }
 
     let text = (body.text ?? '').trim()
-    if (text.length < 40 && body.url?.trim()) {
-      const fetched = await fetchUrlText(body.url.trim())
+    const url = body.url?.trim()
+    if (text.length < 40 && url) {
+      // YouTube URLs get the real transcript via the innertube caption fetcher
+      // (lib/youtube.ts) — a generic page scrape never returns the spoken words.
+      // Everything else falls back to best-effort page text.
+      const fetched = extractVideoId(url)
+        ? (await fetchYouTubeTranscript(url)).content
+        : await fetchUrlText(url)
       text = `${text}\n${fetched}`.trim()
     }
 

@@ -159,3 +159,43 @@ export async function fetchYouTubeTranscript(url: string): Promise<TranscriptRes
 
   return { ok: true, content: raw, videoId }
 }
+
+// Turn a raw caption dump into clean, readable Knowledge Vault content — the
+// core ideas, frameworks, and claims, not a wall of run-on caption text. Used
+// by the Vault YouTube ingest so a pasted URL lands as usable knowledge.
+// Never throws — returns the raw transcript when the model/keys are absent so
+// the platform always works end to end.
+export async function structureTranscriptForVault(
+  transcript: string,
+  title?: string,
+): Promise<string> {
+  const raw = transcript.trim()
+  if (!process.env.ANTHROPIC_API_KEY || raw.length < 200) return raw
+
+  try {
+    const { default: Anthropic } = await import('@anthropic-ai/sdk')
+    const { INTELLIGENCE_MODEL } = await import('@/lib/models')
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+    const response = await anthropic.messages.create({
+      model: INTELLIGENCE_MODEL,
+      max_tokens: 2000,
+      system:
+        'You structure a raw YouTube caption transcript into clean, retrievable knowledge for a marketing/coaching knowledge base (The Professional Builder — coaching for trades/construction business owners). ' +
+        'Read the transcript as what was said, then read across it for structure: how it opens, how it holds attention, where it turns, how it closes. ' +
+        'Output well-organized Markdown: a one-line summary, then the core ideas / frameworks / steps as tight bullet points, then any notable claims, numbers, or hooks worth reusing. ' +
+        'Report only what the transcript actually states — never invent detail. Mark anything you infer as an inference. Do not add preamble; output only the structured notes.',
+      messages: [
+        {
+          role: 'user',
+          content: `${title ? `Video title: ${title}\n\n` : ''}Transcript:\n"""${raw.slice(0, 24000)}"""`,
+        },
+      ],
+    })
+    const textBlock = response.content.find((b) => b.type === 'text')
+    const out = textBlock && 'text' in textBlock ? textBlock.text.trim() : ''
+    return out.length > 40 ? out : raw
+  } catch (err) {
+    console.error('Transcript structuring failed, using raw transcript:', err)
+    return raw
+  }
+}
