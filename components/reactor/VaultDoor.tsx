@@ -93,7 +93,13 @@ export function VaultDoor({ children }: { children: React.ReactNode }) {
   return createPortal(
     <div className="fixed inset-0 z-[100] overflow-hidden bg-[#04060c]">
       {/* ---- Living vault interior backdrop / door clip --------------------- */}
-      <div className="absolute inset-0" onClick={started && !entered ? skip : undefined}>
+      {/* Once inside, the backdrop is purely decorative — it must NOT capture
+          clicks, right-clicks, or paste, or the browser targets the dimmed
+          <video> (showing its media context menu) instead of the UI on top. */}
+      <div
+        className={`absolute inset-0 ${entered ? 'pointer-events-none' : ''}`}
+        onClick={started && !entered ? skip : undefined}
+      >
         {useVideo && (
           <video
             ref={videoRef}
