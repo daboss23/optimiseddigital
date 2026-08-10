@@ -101,19 +101,24 @@ const MAX_TURNS = 12
  * limit we control, so an overrun degrades to partial output instead of
  * vanishing.
  *
- * Default 50s targets the strictest common ceiling (Hobby's 60s) with real
- * headroom. The budget only guards the orchestrator LOOP — the NEURO scoring
- * pass runs after the final turn and is not counted — so a default that sat
- * flush against the ceiling could still be killed mid-scoring, losing the run
- * it had just finished. 50s leaves room for that tail to land.
+ * Default 280s targets the 300s ceiling Vercel serves on EVERY plan, Hobby
+ * included, once Fluid compute is on — which it is by default. The old 50s
+ * default was written against the pre-Fluid 60s Hobby limit and is now simply
+ * wrong on a stock deployment: it forced the fast path (one turn, no revision
+ * pass) onto a host with five minutes to spare.
  *
- * Raise it wherever the host genuinely allows longer (Vercel Pro serves the
- * full 300s):
- *   REACTOR_BUDGET_MS=280000
+ * The budget only guards the orchestrator LOOP — the NEURO scoring pass runs
+ * after the final turn and is not counted — so the default leaves 20s of tail
+ * for that scoring to land rather than sitting flush against the ceiling.
+ *
+ * LOWER it on a host that genuinely kills functions sooner (a legacy 60s
+ * plan, a self-hosted runner, a proxy with a shorter idle timeout). Anything
+ * under 90s engages the FAST PATH described below:
+ *   REACTOR_BUDGET_MS=50000
  */
 const RUN_BUDGET_MS = (() => {
   const raw = Number(process.env.REACTOR_BUDGET_MS)
-  return Number.isFinite(raw) && raw >= 10_000 ? raw : 50_000
+  return Number.isFinite(raw) && raw >= 10_000 ? raw : 280_000
 })()
 
 /** Past this share of the budget, OPUS is told to stop exploring and submit. */
