@@ -95,6 +95,16 @@ OPENAI_API_KEY               # Comparison copy / image (GPT Image)
 GEMINI_API_KEY               # Nano Banana 2 image model (Gemini) — or GOOGLE_API_KEY
 HF_CREDENTIALS               # Higgsfield image + video ("KEY_ID:KEY_SECRET")
 FAL_KEY                      # fal.ai gateway → Seedance/Kling/Veo/Wan video models
+MUAPIAPP_API_KEY             # Muapi unified image + video gateway — CURRENT DEFAULT for both
+                             #   ovens (on trial). Sandbox keys return mock data instantly and
+                             #   spend no credits — use one for integration testing. Remove the
+                             #   key and both ovens fall back to Kie/fal/Higgsfield automatically.
+                             #   Optional overrides (vendor slugs drift; no code change needed):
+                             #   MUAPI_API_BASE, MUAPI_POLL_TIMEOUT_MS,
+                             #   MUAPI_MODEL_FLUX_DEV / _FLUX_KONTEXT_MAX / _SEEDREAM /
+                             #   _GPT4O / _MIDJOURNEY (images),
+                             #   MUAPI_VIDEO_VEO3_T2V / _VEO3_I2V / _KLING_T2V / _KLING_I2V /
+                             #   _SEEDANCE_T2V / _SEEDANCE_I2V / _WAN_T2V / _WAN_I2V (video)
 PIPEBOARD_API_TOKEN          # Meta Ads MCP (live ad performance) — optional
 META_ACCESS_TOKEN            # Meta Marketing API (System User token) — /meta dashboard + performance ingest + creative publish
 META_AD_ACCOUNT_ID           # Ad account for "Push Creative to Meta" (with or without act_ prefix)

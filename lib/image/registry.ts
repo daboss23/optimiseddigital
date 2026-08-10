@@ -4,14 +4,60 @@ import type { ImageModel } from './types'
  * The image model menu — TPB's still-creative equivalent of the video registry.
  * Each model is a different provider; one key per provider unlocks it.
  *
- * Stills run through fal.ai (one FAL_KEY unlocks frontier image models),
- * Higgsfield, or Kie.ai (one KIE_API_KEY unlocks its whole model market — the
- * five flagship image models below). Every provider is one key.
+ * Stills run through Muapi (one MUAPIAPP_API_KEY), fal.ai (one FAL_KEY unlocks
+ * frontier image models), Higgsfield, or Kie.ai (one KIE_API_KEY unlocks its
+ * whole model market). Every provider is one key.
+ *
+ * Muapi is listed FIRST and is the current default — it is on trial as the main
+ * still generator. The other providers stay wired and become automatic
+ * fallbacks, so removing MUAPIAPP_API_KEY restores the previous behaviour
+ * without a code change.
  */
 
 export const IMAGE_MODELS: ImageModel[] = [
+  // Muapi unified gateway — one MUAPIAPP_API_KEY, many frontier models.
+  // On trial as the primary still generator.
+  {
+    id: 'muapi-flux-dev',
+    label: 'FLUX.1 Dev (Muapi)',
+    provider: 'muapi',
+    aspectRatios: ['1:1', '16:9', '4:3', '9:16', '3:4'],
+    tier: 'flagship',
+    notes: 'FLUX.1 Dev via Muapi — photoreal humans and scenes through one unified key. Strong all-round ad still.',
+  },
+  {
+    id: 'muapi-flux-kontext-max',
+    label: 'FLUX Kontext Max (Muapi)',
+    provider: 'muapi',
+    aspectRatios: ['1:1', '16:9', '4:3', '9:16', '3:4'],
+    tier: 'flagship',
+    notes: 'FLUX.1 Kontext Max via Muapi — precise, editable photoreal generation with excellent typography control.',
+  },
+  {
+    id: 'muapi-seedream',
+    label: 'Seedream (Muapi)',
+    provider: 'muapi',
+    aspectRatios: ['1:1', '16:9', '4:3', '9:16', '3:4'],
+    tier: 'flagship',
+    notes: 'ByteDance Seedream via Muapi — cinematic realism for premium proof/founder stills.',
+  },
+  {
+    id: 'muapi-gpt4o',
+    label: 'GPT-4o Image (Muapi)',
+    provider: 'muapi',
+    aspectRatios: ['1:1', '16:9', '9:16'],
+    tier: 'flagship',
+    notes: 'OpenAI GPT-4o image via Muapi — sharp in-image text and instruction-following for headline/offer creatives.',
+  },
+  {
+    id: 'muapi-midjourney',
+    label: 'Midjourney (Muapi)',
+    provider: 'muapi',
+    aspectRatios: ['1:1', '16:9', '4:3', '9:16', '3:4'],
+    tier: 'flagship',
+    notes: 'Midjourney via Muapi — the most stylised, art-directed look for scroll-stopping brand creative.',
+  },
   // Kie.ai flagship image market — the most powerful models, one KIE_API_KEY.
-  // Listed first so the oven prefers them when Kie is configured.
   {
     id: 'kie-nano-banana-pro',
     label: 'Nano Banana Pro (Kie)',
@@ -70,9 +116,11 @@ export const IMAGE_MODELS: ImageModel[] = [
   },
 ]
 
-// Kept as the demo/fallback default; when Kie is configured the recommender and
-// the oven's provider ordering prefer the Kie flagships above.
-export const DEFAULT_IMAGE_MODEL = 'kie-nano-banana-pro'
+// Muapi is the current default while it is on trial as the main still
+// generator. When MUAPIAPP_API_KEY is absent the oven automatically falls
+// through to the next configured provider (Kie → fal → Higgsfield), so this is
+// a preference, never a hard dependency.
+export const DEFAULT_IMAGE_MODEL = 'muapi-flux-dev'
 
 export function getImageModel(id: string): ImageModel | undefined {
   return IMAGE_MODELS.find((m) => m.id === id)

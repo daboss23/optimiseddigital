@@ -9,7 +9,7 @@
 
 export type AspectRatio = '1:1' | '9:16' | '16:9' | '4:3' | '3:4'
 
-export type VideoProvider = 'fal' | 'higgsfield'
+export type VideoProvider = 'fal' | 'higgsfield' | 'muapi'
 
 /**
  * How a clip is produced: from a written prompt, from a single still, or from a

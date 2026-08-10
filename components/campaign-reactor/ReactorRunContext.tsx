@@ -432,9 +432,10 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        // Async (Kie) render: the task was started and charged; poll it to
-        // completion across short requests so a slow model can't be lost to the
-        // host ceiling. The image persists on Kie against the taskId.
+        // Async (Kie / Muapi) render: the task was started and charged; poll it
+        // to completion across short requests so a slow model can't be lost to
+        // the host ceiling. The image persists at the provider against the
+        // taskId — which is why the provider is sent back with every poll.
         if (res.pending && res.taskId) {
           const taskId = res.taskId
           const model = res.model
@@ -443,7 +444,9 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
             await new Promise((rr) => setTimeout(rr, 3000))
             try {
               const poll = await fetch(
-                `/api/generate-image?taskId=${encodeURIComponent(taskId)}`,
+                `/api/generate-image?taskId=${encodeURIComponent(taskId)}${
+                  provider ? `&provider=${encodeURIComponent(provider)}` : ''
+                }`,
               ).then((rr) => rr.json())
               if (poll.status === 'completed' && poll.imageUrl) {
                 setCreatives((p) => ({

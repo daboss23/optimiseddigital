@@ -15,6 +15,69 @@ import type { VideoModel } from './types'
 const env = (key: string, fallback: string) => process.env[key] || fallback
 
 export const VIDEO_MODELS: VideoModel[] = [
+  // Muapi unified gateway — one MUAPIAPP_API_KEY unlocks Veo / Kling / Seedance
+  // / Wan. On trial as the primary video generator, so these lead the menu; the
+  // fal and Higgsfield models below stay wired as automatic fallbacks.
+  {
+    id: 'muapi-veo3',
+    label: 'Veo 3 (Muapi)',
+    provider: 'muapi',
+    endpoints: {
+      'text-to-video': env('MUAPI_VIDEO_VEO3_T2V', 'veo3'),
+      'image-to-video': env('MUAPI_VIDEO_VEO3_I2V', 'veo3-image-to-video'),
+    },
+    modes: ['text-to-video', 'image-to-video'],
+    maxDurationSec: 8,
+    aspectRatios: ['9:16', '16:9'],
+    audio: true,
+    tier: 'flagship',
+    notes: 'Google Veo 3 via Muapi — native synchronized audio + dialogue. Best for people speaking / UGC voices.',
+  },
+  {
+    id: 'muapi-kling-pro',
+    label: 'Kling Pro (Muapi)',
+    provider: 'muapi',
+    endpoints: {
+      'text-to-video': env('MUAPI_VIDEO_KLING_T2V', 'kling-pro'),
+      'image-to-video': env('MUAPI_VIDEO_KLING_I2V', 'kling-pro-image-to-video'),
+    },
+    modes: ['text-to-video', 'image-to-video'],
+    maxDurationSec: 10,
+    aspectRatios: ['1:1', '9:16', '16:9'],
+    audio: false,
+    tier: 'flagship',
+    notes: 'Kling Pro via Muapi — top-tier motion consistency and prompt adherence for UGC and action.',
+  },
+  {
+    id: 'muapi-seedance-pro',
+    label: 'Seedance Pro (Muapi)',
+    provider: 'muapi',
+    endpoints: {
+      'text-to-video': env('MUAPI_VIDEO_SEEDANCE_T2V', 'seedance-pro'),
+      'image-to-video': env('MUAPI_VIDEO_SEEDANCE_I2V', 'seedance-pro-image-to-video'),
+    },
+    modes: ['text-to-video', 'image-to-video'],
+    maxDurationSec: 12,
+    aspectRatios: ['1:1', '9:16', '16:9'],
+    audio: true,
+    tier: 'flagship',
+    notes: 'ByteDance Seedance Pro via Muapi — cinematic realism and real-world physics for on-site builder B-roll.',
+  },
+  {
+    id: 'muapi-wan',
+    label: 'Wan 2.2 (Muapi)',
+    provider: 'muapi',
+    endpoints: {
+      'text-to-video': env('MUAPI_VIDEO_WAN_T2V', 'wan2.2'),
+      'image-to-video': env('MUAPI_VIDEO_WAN_I2V', 'wan2.2-image-to-video'),
+    },
+    modes: ['text-to-video', 'image-to-video'],
+    maxDurationSec: 10,
+    aspectRatios: ['1:1', '9:16', '16:9'],
+    audio: false,
+    tier: 'budget',
+    notes: 'Wan 2.2 via Muapi — strong quality-to-cost ratio for high-volume variant generation.',
+  },
   {
     id: 'seedance-2.0',
     label: 'Seedance 2.0 (ByteDance)',
@@ -153,8 +216,13 @@ export const VIDEO_MODELS: VideoModel[] = [
   },
 ]
 
-/** Default model when the caller does not specify one. */
-export const DEFAULT_VIDEO_MODEL = 'seedance-2.0'
+/**
+ * Default model when the caller does not specify one. Muapi is on trial as the
+ * main video generator; when MUAPIAPP_API_KEY is absent the oven falls through
+ * to the next configured provider (fal → Higgsfield), so this is a preference,
+ * never a hard dependency.
+ */
+export const DEFAULT_VIDEO_MODEL = 'muapi-veo3'
 
 export function getVideoModel(id: string): VideoModel | undefined {
   return VIDEO_MODELS.find((m) => m.id === id)

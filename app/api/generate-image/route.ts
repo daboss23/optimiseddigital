@@ -80,15 +80,19 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Poll an async (Kie) render started by POST: /api/generate-image?taskId=...
-// Each call is one fast recordInfo lookup, so the render is retrieved across
-// many short requests instead of one long-lived function.
+// Poll an async (Kie / Muapi) render started by POST:
+//   /api/generate-image?taskId=...&provider=...
+// Each call is one fast status lookup, so the render is retrieved across many
+// short requests instead of one long-lived function. `provider` comes straight
+// back from the start response so the id is polled against the gateway that
+// actually holds it.
 export async function GET(request: NextRequest) {
   const taskId = request.nextUrl.searchParams.get('taskId')
+  const provider = request.nextUrl.searchParams.get('provider') ?? undefined
   if (!taskId) {
     return NextResponse.json({ success: false, error: 'taskId is required' }, { status: 400 })
   }
-  const res = await pollImageJob(taskId)
+  const res = await pollImageJob(taskId, provider)
   if (res.status === 'completed' && res.url) {
     return NextResponse.json({ success: true, status: 'completed', imageUrl: res.url })
   }

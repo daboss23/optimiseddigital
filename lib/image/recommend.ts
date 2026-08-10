@@ -5,10 +5,12 @@ import type { ImageModelAvailability } from './types'
  * runs on client and server.
  *
  * Heuristic (best configured wins, in order):
- *  - Kie flagships lead when a KIE_API_KEY is present — one key unlocks the most
- *    powerful market models, so text-heavy creative → Nano Banana Pro / GPT
- *    Image (in-image text), photographic → Seedream 4.0 / Nano Banana Pro.
- *  - Then Higgsfield Soul (premium founder/testimonial look) and FLUX via fal.
+ *  - Muapi leads while it is on trial as the main still generator — one
+ *    MUAPIAPP_API_KEY unlocks FLUX / Seedream / GPT-4o / Midjourney, so
+ *    text-heavy creative → GPT-4o / FLUX Kontext Max (in-image text),
+ *    photographic → Seedream / FLUX Dev.
+ *  - Then the Kie flagships, Higgsfield Soul (premium founder/testimonial look)
+ *    and FLUX via fal.
  * Prefers configured models; falls back to the ideal for display when none have
  * keys yet.
  */
@@ -34,6 +36,8 @@ export function recommendImageModel(
 
   const preference: { id: string; reason: string }[] = wantsText
     ? [
+        { id: 'muapi-gpt4o', reason: 'sharp in-image text for headline/offer creatives via Muapi' },
+        { id: 'muapi-flux-kontext-max', reason: 'precise typography control via Muapi' },
         { id: 'kie-nano-banana-pro', reason: 'best-in-class prompt adherence and in-image text via Kie' },
         { id: 'kie-gpt-image', reason: 'clean in-image text for headline/offer creatives via Kie' },
         { id: 'fal-flux', reason: 'photoreal stills with strong prompt adherence via one fal key' },
@@ -41,12 +45,16 @@ export function recommendImageModel(
       ]
     : wantsPhoto
       ? [
+          { id: 'muapi-seedream', reason: 'cinematic photoreal founder/testimonial stills via Muapi' },
+          { id: 'muapi-flux-dev', reason: 'photoreal humans and scenes via Muapi' },
           { id: 'kie-seedream-v4', reason: 'cinematic photoreal founder/testimonial stills via Kie' },
           { id: 'kie-nano-banana-pro', reason: 'top-tier photoreal detail via Kie' },
           { id: 'higgsfield-soul', reason: 'premium photographic look for founder/testimonial ads' },
           { id: 'fal-flux', reason: 'photoreal founder/testimonial stills in-house via one fal key' },
         ]
       : [
+          { id: 'muapi-flux-dev', reason: 'strongest all-round ad still via one Muapi key' },
+          { id: 'muapi-seedream', reason: 'cinematic realism via Muapi' },
           { id: 'kie-nano-banana-pro', reason: 'strongest all-round ad still via Kie' },
           { id: 'kie-seedream-v4', reason: 'cinematic realism via Kie' },
           { id: 'fal-flux', reason: 'photoreal variants in-house via one fal key' },

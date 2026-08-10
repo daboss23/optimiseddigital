@@ -4,6 +4,7 @@ import {
   higgsfieldConfigured,
 } from '@/lib/higgsfield'
 import { falConfigured, falSubmit, falStatus } from './fal'
+import { muapiVideoConfigured, muapiSubmit, muapiStatus } from './muapi'
 import { DEFAULT_VIDEO_MODEL, VIDEO_MODELS, getVideoModel } from './registry'
 import type { JobStatus, ModelAvailability, VideoInput, VideoJob } from './types'
 
@@ -28,12 +29,13 @@ export { VIDEO_MODELS, DEFAULT_VIDEO_MODEL, getVideoModel } from './registry'
 
 /** True if ANY video provider is configured. */
 export function videoConfigured(): boolean {
-  return higgsfieldConfigured() || falConfigured()
+  return higgsfieldConfigured() || falConfigured() || muapiVideoConfigured()
 }
 
 function providerConfigured(provider: string): boolean {
   if (provider === 'higgsfield') return higgsfieldConfigured()
   if (provider === 'fal') return falConfigured()
+  if (provider === 'muapi') return muapiVideoConfigured()
   return false
 }
 
@@ -81,6 +83,18 @@ export async function startVideoJob(
     }
   }
 
+  if (model.provider === 'muapi') {
+    const started = await muapiSubmit(endpoint, { ...input, mode })
+    if (!started) return null
+    return {
+      provider: 'muapi',
+      modelId: id,
+      requestId: started.requestId,
+      status: started.status,
+      videoUrl: null,
+    }
+  }
+
   // fal-backed models
   const started = await falSubmit(endpoint, { ...input, mode })
   if (!started) return null
@@ -114,6 +128,11 @@ export async function getVideoJob(
   if (model.provider === 'higgsfield') {
     const state = await higgsfieldStatus(requestId)
     return { ...base, status: normalizeHiggsfieldStatus(state.status), videoUrl: state.videoUrl }
+  }
+
+  if (model.provider === 'muapi') {
+    const state = await muapiStatus(requestId)
+    return { ...base, status: state.status, videoUrl: state.videoUrl }
   }
 
   // fal: prefer the authoritative responseUrl; fall back to the endpoint base.

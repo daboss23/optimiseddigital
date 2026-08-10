@@ -7,6 +7,12 @@ import {
   pollKieImage,
   type KiePollResult,
 } from './kie'
+import {
+  generateMuapiImage,
+  muapiImageConfigured,
+  startMuapiImage,
+  pollMuapiImage,
+} from './muapi'
 import { DEFAULT_IMAGE_MODEL, IMAGE_MODELS, getImageModel } from './registry'
 import type { AspectRatio, ImageModelAvailability } from './types'
 
@@ -15,20 +21,23 @@ export { IMAGE_MODELS, DEFAULT_IMAGE_MODEL, getImageModel } from './registry'
 
 /**
  * Unified image "oven" — dispatches a still render to whichever provider backs
- * the requested model (fal / FLUX, Higgsfield). Callers never branch on
- * provider. Never throws on missing keys — returns null.
+ * the requested model (Muapi, fal / FLUX, Kie, Higgsfield). Callers never
+ * branch on provider. Never throws on missing keys — returns null.
  */
 
 export function providerConfigured(provider: string): boolean {
   if (provider === 'higgsfield') return higgsfieldConfigured()
   if (provider === 'fal') return falImageConfigured()
   if (provider === 'kie') return kieImageConfigured()
+  if (provider === 'muapi') return muapiImageConfigured()
   return false
 }
 
 /** True if ANY image provider is configured. */
 export function imageConfigured(): boolean {
-  return higgsfieldConfigured() || falImageConfigured() || kieImageConfigured()
+  return (
+    higgsfieldConfigured() || falImageConfigured() || kieImageConfigured() || muapiImageConfigured()
+  )
 }
 
 /** The image model menu annotated with whether each model's key is present. */
@@ -90,6 +99,7 @@ async function renderWithModel(
   const aspectRatio = supportedRatio(id, requestedRatio)
   if (model.provider === 'fal') return generateFalImage(prompt, aspectRatio)
   if (model.provider === 'kie') return generateKieImage(id, prompt, aspectRatio)
+  if (model.provider === 'muapi') return generateMuapiImage(id, prompt, aspectRatio)
   if (model.provider === 'higgsfield') {
     const url = await higgsfieldImage(prompt, aspectRatio)
     return { url, error: url ? undefined : 'Higgsfield returned no image' }
@@ -145,10 +155,13 @@ export async function generateImageWith(
 }
 
 /* ------------------------- Async (start + poll) path ----------------------- */
-/* Kie persists a finished render against its taskId, so a slow model can be    */
-/* started in one short request and polled in later ones — the render never     */
-/* has to survive a single function under the host ceiling. Only Kie models     */
-/* support this; fal/Higgsfield return inline and use the synchronous path.     */
+/* Kie and Muapi both persist a finished render against a task/request id, so a */
+/* slow model can be started in one short request and polled in later ones —    */
+/* the render never has to survive a single function under the host ceiling.    */
+/* fal/Higgsfield return inline and use the synchronous path above.             */
+
+/** Providers whose renders are started once and polled separately. */
+const ASYNC_PROVIDERS = ['kie', 'muapi'] as const
 
 export interface StartedImageJob {
   taskId: string | null
@@ -157,16 +170,17 @@ export interface StartedImageJob {
   error?: string
 }
 
-/** True when the resolved model renders via Kie (the async-capable provider). */
+/** True when the resolved model renders via an async-capable provider. */
 export function isAsyncImageModel(requested?: string): boolean {
   const id = resolveModelId(requested)
   const model = id ? getImageModel(id) : null
-  return model?.provider === 'kie'
+  return Boolean(model && (ASYNC_PROVIDERS as readonly string[]).includes(model.provider))
 }
 
 /**
- * Start an async Kie render and return its taskId. Resolves the requested model
- * to a configured Kie model; returns an error (never throws) when none applies.
+ * Start an async render and return its task/request id. Resolves the requested
+ * model to a configured async-capable model; returns an error (never throws)
+ * when none applies.
  */
 export async function startImageJob(
   requested: string | undefined,
@@ -175,14 +189,29 @@ export async function startImageJob(
 ): Promise<StartedImageJob> {
   const id = resolveModelId(requested)
   const model = id ? getImageModel(id) : null
-  if (!id || !model || model.provider !== 'kie') {
-    return { taskId: null, modelId: id ?? '', provider: model?.provider ?? '', error: 'Not a Kie model' }
+  if (!id || !model || !(ASYNC_PROVIDERS as readonly string[]).includes(model.provider)) {
+    return {
+      taskId: null,
+      modelId: id ?? '',
+      provider: model?.provider ?? '',
+      error: 'Not an async-capable image model',
+    }
   }
-  const { taskId, error } = await startKieImage(id, prompt, supportedRatio(id, aspectRatio))
+  const ratio = supportedRatio(id, aspectRatio)
+  if (model.provider === 'muapi') {
+    const { requestId, error } = await startMuapiImage(id, prompt, ratio)
+    return { taskId: requestId, modelId: id, provider: 'muapi', error }
+  }
+  const { taskId, error } = await startKieImage(id, prompt, ratio)
   return { taskId, modelId: id, provider: 'kie', error }
 }
 
-/** Poll a previously started Kie render once. */
-export async function pollImageJob(taskId: string): Promise<KiePollResult> {
+/**
+ * Poll a previously started render once. `provider` says which gateway holds
+ * the job — it is round-tripped through the client from the start response, so
+ * a Muapi id is never polled against Kie's endpoint (and vice versa).
+ */
+export async function pollImageJob(taskId: string, provider?: string): Promise<KiePollResult> {
+  if (provider === 'muapi') return pollMuapiImage(taskId)
   return pollKieImage(taskId)
 }

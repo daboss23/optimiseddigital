@@ -6,7 +6,7 @@
 
 export type AspectRatio = '1:1' | '9:16' | '16:9' | '4:3' | '3:4'
 
-export type ImageProvider = 'higgsfield' | 'fal' | 'kie'
+export type ImageProvider = 'higgsfield' | 'fal' | 'kie' | 'muapi'
 
 export type ModelTier = 'flagship' | 'fast' | 'budget'
 
