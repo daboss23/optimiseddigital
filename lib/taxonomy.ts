@@ -23,6 +23,12 @@
 // vocab). The Claude-backed classifier that consumes these lists lives in the
 // server-only module lib/taxonomy-classify.ts to keep the SDK out of the client
 // bundle — mirroring how lib/spark.ts isolates its Anthropic call.
+//
+// The VisualDNA import below is `import type` — erased at compile time, so it
+// carries no runtime dependency on lib/spark.ts (and its Anthropic import) into
+// the client bundle. Keep it type-only.
+
+import type { VisualDNA } from '@/lib/spark'
 
 /* ------------------------------- Vocabularies ------------------------------ */
 
@@ -195,6 +201,12 @@ export interface CloneReference {
   summary?: string
   taxonomy?: CreativeTaxonomy
   sourceLabel?: string
+  /**
+   * The DESIGN read of the reference, when SPARK actually saw the ad (palette,
+   * layout, element placement, scroll-stop mechanism). Drives the production
+   * brief the image models render from — see `visualDirectionBlock`.
+   */
+  visual?: VisualDNA
 }
 
 /** sessionStorage key handing a clone reference from the Ad Library to the reactor. */
@@ -355,6 +367,70 @@ export function isolationBlock(input: {
  * concepts that match the reference's Creative DNA/structure, varying only what
  * the strategist's edits or the isolation axis specify.
  */
+/**
+ * The design direction block emitted when SPARK actually SAW the reference ad.
+ *
+ * This is what turns a visual read into creative the platform can render: the
+ * palette, the layout archetype, where each element sits, and the scroll-stop
+ * mechanism are handed to OPUS as evidence, and OPUS is told to carry them into
+ * the production brief — which is what the image models render from.
+ *
+ * Deliberately NOT a lock. OPUS is the strategist: it may depart from the
+ * reference when the campaign's angle, awareness stage, or placement calls for
+ * a different design, provided it says why in the concept's basis. Proven design
+ * is the default, not a cage.
+ */
+export function visualDirectionBlock(visual: VisualDNA): string {
+  const lines = [
+    'VISUAL REFERENCE — SPARK analyzed the actual winning ad. This is the DESIGN that earned the scroll-stop. Treat it as proven direction for the creative you produce.',
+    `- Format: ${visual.format} · native ratio ${visual.aspectRatio}`,
+    `- Layout archetype: ${visual.layout}`,
+  ]
+
+  if (visual.palette.length) {
+    lines.push(
+      `- Palette (reuse these roles; exact hexes unless the brand demands otherwise): ${visual.palette
+        .map((c) => `${c.hex} → ${c.role}`)
+        .join(' · ')}`,
+    )
+  }
+
+  if (visual.elements.length) {
+    lines.push('- Element placement (rebuild this hierarchy):')
+    for (const el of visual.elements) {
+      lines.push(
+        `    · ${el.element} — sits ${el.position} (${el.zone} zone); ${el.treatment}${
+          el.text ? `. Reference wording: "${el.text}" — match the ROLE and LENGTH, write fresh TPB copy.` : ''
+        }`,
+      )
+    }
+  }
+
+  lines.push(
+    `- Typography: ${visual.typography}`,
+    `- Imagery: ${visual.imagery}`,
+    `- Eye flow: ${visual.focalFlow}`,
+    `- Text density: ${visual.textDensity}`,
+    `- Contrast device (what makes it pop in-feed): ${visual.contrastDevice}`,
+    `- Why it stops the scroll: ${visual.scrollStopReason}`,
+  )
+
+  if (visual.designPrinciples.length) {
+    lines.push(`- Design principles to preserve: ${visual.designPrinciples.join(' | ')}`)
+  }
+  lines.push(`- Rebuilding it for TPB: ${visual.replicationNotes}`)
+
+  lines.push(
+    'HOW TO USE THIS:',
+    '1. Carry the layout, palette roles, element placement and contrast device into the productionBrief for every visual concept — name the zone each piece of copy occupies and what fills the rest of the frame. The brief is what the image model renders, so design detail left out of the brief does not reach the ad.',
+    '2. Write the adPackage copy to FIT the placements above — headline length must survive the headline zone, the hook must land where the reference puts it.',
+    '3. Never reproduce the reference\'s words, brand, or logo. Reproduce its STRUCTURE.',
+    '4. You are the strategist: if the campaign angle, awareness stage or placement means a different design will perform better, use the better design and state the reason in that concept\'s basis. Proven design is the default, not a constraint.',
+  )
+
+  return lines.join('\n')
+}
+
 export function cloneBlock(reference: {
   hook?: string
   storyStructure?: string
@@ -364,6 +440,7 @@ export function cloneBlock(reference: {
   offerPresentation?: string
   summary?: string
   taxonomy?: CreativeTaxonomy
+  visual?: VisualDNA
 }): string {
   const lines = [
     'CLONE REFERENCE — match this proven structure. Reproduce the STRUCTURE and ENERGY, never the exact words; write fresh TPB copy that follows the same beats.',
@@ -380,5 +457,11 @@ export function cloneBlock(reference: {
   lines.push(
     '- For any video / UGC / founder / testimonial concept, make the production brief SHOOT-READY: timestamped beats mirroring the reference pacing (e.g. HOOK 0-3s, PROBLEM 3-10s, PROOF, CTA), each frame with the exact on-screen action and spoken line, so a creator could shoot it as-is.',
   )
+  // The design read, when SPARK saw the ad, is appended as its own section so
+  // the layout/palette direction reaches the production brief the image models
+  // render from — not just the copy structure above.
+  if (reference.visual) {
+    lines.push('', visualDirectionBlock(reference.visual))
+  }
   return lines.join('\n')
 }

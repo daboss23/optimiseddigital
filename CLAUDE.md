@@ -301,6 +301,8 @@ To run the *real* agent end to end: set `ANTHROPIC_API_KEY` (agent),
 - [x] Strategic Intelligence Panel before Fire (`/api/campaign-reactor/intelligence`) — pain/desire/pattern/structures/positioning/consulted-assets/confidence
 - [x] Intelligence-based telemetry (Market/Creative/Copy/Knowledge/Pattern updates + confidence); "Agent's pick" language removed
 - [x] SPARK Winning Creative Intelligence — Creative DNA extraction + store (`lib/spark.ts`, `/api/spark/analyze`, SparkAnalyzer UI)
+- [x] SPARK **visual ad ingest** — drag / drop / paste / upload a winning ad (or a direct image link) and a vision model reads the DESIGN: palette hexes, layout archetype, every element's zone + placement + treatment, on-ad copy transcribed verbatim, eye flow, contrast device, scroll-stop mechanism (`VisualDNA` in `lib/spark.ts`, intake in `lib/ad-image.ts`). Stored as a retrievable `creative` chunk alongside the written DNA, and carried into OPUS via `visualDirectionBlock()` (`lib/taxonomy.ts`) so the design reaches the **production brief the image models render from** — OPUS may override it when the angle calls for a better design, stating why in the concept basis. "Build a campaign from this ad" hands the reference to the Reactor over the existing clone rail
+- [x] SPARK **multi-ad dissection** — a swipe-board / ad-library / contact-sheet screenshot is separated into its individual creatives and each one is dissected on its own (never averaged into a blended pattern), up to `MAX_ADS_PER_READ` (12). Every ad is classified and stored as its own retrievable pattern, so one board screenshot fills the Vault with N winners; the analyzer shows an ad picker and sends the selected ad's structure + design to the Reactor. Uploads are downscaled to 1568px (Claude's native vision ceiling) to keep headline copy legible in dense grids
 - [x] Production Brief system — frame-by-frame briefs drive image/video generation
 - [x] Performance Intelligence (ORACLE): expanded outcome verdicts, strategic attributes, pattern confidence, strategic memory page
 - [x] Agent Network page (`/network`) — living visibility dashboard grounded in live vault + outcome data
@@ -343,7 +345,7 @@ To run the *real* agent end to end: set `ANTHROPIC_API_KEY` (agent),
       and deliverable counts match the brief
 
 **Still open**
-- [ ] SPARK URL-only ingestion for JS-rendered sources (Meta Ad Library / TikTok via oEmbed/transcript APIs; pasted script works today)
+- [ ] SPARK URL-only ingestion for JS-rendered sources (Meta Ad Library / TikTok / shared boards via oEmbed/transcript APIs or a headless render). Uploads, pasted screenshots, direct image links and YouTube transcripts all work today; a client-rendered page has no images in its served HTML, so `lib/ad-image.ts` scrapes og:image/`<img>`/inlined-JSON URLs and otherwise returns a note telling the user to screenshot it
 - [ ] Scheduled auto-sync for the Meta performance ingest (manual one-click sync done; cron/Vercel scheduled function pending)
 - [ ] More dashboards reading live `knowledge_chunks` counts (Agent Network does; Research/Copy/Pattern still curated)
 - [ ] Deployed + tested end to end with real keys

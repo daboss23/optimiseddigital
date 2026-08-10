@@ -42,6 +42,7 @@ import {
   cloneBlock,
   type IterationAxis,
   type CreativeTaxonomy,
+  type CloneReference,
 } from '@/lib/taxonomy'
 
 // ORACLE strategic memory injected into OPUS at fire time — past winning
@@ -188,23 +189,11 @@ interface IsolateInput {
   notes?: string
 }
 
-/**
- * A cloned reference's Creative DNA the run should reproduce STRUCTURALLY (never
- * verbatim). Sourced from a Meta Ad Library ad (extracted) or a past winner
- * (already stored). Additive — absent = no clone constraint.
- */
-interface CloneReference {
-  hook?: string
-  opening?: string
-  storyStructure?: string
-  ctaStructure?: string
-  editingStyle?: string
-  offerPresentation?: string
-  visualStyle?: string
-  summary?: string
-  taxonomy?: CreativeTaxonomy
-  sourceLabel?: string
-}
+// A cloned reference's Creative DNA the run reproduces STRUCTURALLY (never
+// verbatim) — sourced from a SPARK visual read, a Meta Ad Library ad, or a past
+// winner. The shape lives in lib/taxonomy.ts and is shared by the Ad Library UI,
+// the SPARK analyzer, the sessionStorage handoff and this payload so it cannot
+// drift. Additive — absent = no clone constraint.
 
 interface ReactorRequest {
   angle: string
@@ -1012,6 +1001,13 @@ async function runDemo(controller: ReadableStreamDefaultController, body: Reacto
       } — concepts match its DNA (demo).`,
     })
     await pace(700)
+    if (body.cloneReference.visual) {
+      sse(controller, {
+        type: 'step',
+        text: `SPARK design read applied — ${body.cloneReference.visual.layout} (demo).`,
+      })
+      await pace(600)
+    }
   }
 
   // What the demo layers actually search for. The angle alone is not a query
@@ -1407,6 +1403,16 @@ export async function POST(request: NextRequest) {
               body.cloneReference.sourceLabel ? ` · ${body.cloneReference.sourceLabel}` : ''
             } — concepts will match its DNA.`,
           })
+          if (body.cloneReference.visual) {
+            const v = body.cloneReference.visual
+            sse(controller, {
+              type: 'step',
+              text: `SPARK design read applied — ${v.layout} · ${v.palette
+                .slice(0, 3)
+                .map((c) => c.hex)
+                .join(' ')} · driving the production brief.`,
+            })
+          }
         }
         if (body.isolate) {
           sse(controller, {
