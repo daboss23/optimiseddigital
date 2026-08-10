@@ -320,34 +320,50 @@ export interface DirectiveOption {
   description?: string
 }
 
+/**
+ * Awareness — Eugene Schwartz. How much the prospect already knows about their
+ * problem and your solution, and therefore how much the ad has to EXPLAIN
+ * before it can sell. Distinct from sophistication (what you may claim).
+ */
 export const awarenessOptions: DirectiveOption[] = [
   {
     label: NO_PREFERENCE,
+    description: 'The system reads the brief and angle and picks the awareness stage for you.',
     directive:
       'The user has no awareness-stage preference — determine the most appropriate awareness stage from the campaign brief and angle. If no clear signal, default to Problem-Aware for cold traffic.',
   },
   {
     label: 'Unaware',
+    description:
+      'They don’t know they have this problem yet. Open on a felt moment, not a solution.',
     directive:
       'The audience does not yet name their problem. Open on a felt symptom or a relatable scene — a moment in their day that mirrors the pain. Do NOT name a solution, a method, or a product category early. Goal: make them recognise themselves before they know why they’re watching.',
   },
   {
     label: 'Problem-Aware',
+    description:
+      'They feel the pain but don’t know a fix exists. Name the pain, then reveal a path.',
     directive:
       'The audience feels the pain but doesn’t know structured solutions exist. Open by naming the pain with precision and agitating the real cost of staying there — time, margin, relationships, identity. Then reveal that a path exists. Do not lead with the offer.',
   },
   {
     label: 'Solution-Aware',
+    description:
+      'They know solutions exist and are comparing. Lead with your mechanism, skip the problem build.',
     directive:
       'The audience knows solutions exist and is comparing approaches — coaching, hiring, DIY systems. Lead with mechanism: the specific reason THIS approach beats the alternatives they are already weighing. Skip the problem build.',
   },
   {
     label: 'Product-Aware',
+    description:
+      'They know TPB and haven’t committed. Lead with proof, risk reversal and a reason to act now.',
     directive:
       'The audience knows TPB and has considered it but hasn’t committed. Lead with proof — named member results, specific figures. Add risk reversal and a clear reason to act now. Minimise problem education.',
   },
   {
     label: 'Most-Aware',
+    description:
+      'They’re ready to buy. Lead with the offer and the deadline. Nothing else.',
     directive:
       'The audience is ready. Lead directly with the offer and a reason to act now. Short, punchy, direct. Skip the problem and mechanism build entirely.',
   },

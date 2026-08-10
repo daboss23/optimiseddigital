@@ -1029,6 +1029,10 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
             <div className="animate-fade-up space-y-6">
               <div>
                 <SectionLabel thinking={form.suggesting}>Awareness Stage</SectionLabel>
+                <p className="-mt-1 mb-2.5 text-sm text-white/40">
+                  How much the prospect already knows — it decides how much the ad has to explain
+                  before it can sell. The system reads your brief and picks the stage for you.
+                </p>
                 <StrategicSelect field={form.awarenessField} />
               </div>
 

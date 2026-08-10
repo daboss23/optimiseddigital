@@ -689,6 +689,11 @@ export function Workbench() {
 
   const awarenessField: StrategicField = {
     options: awarenessOptions.slice(1).map((o) => o.label),
+    descriptions: Object.fromEntries(
+      awarenessOptions
+        .filter((o) => o.description)
+        .map((o) => [o.label, o.description as string]),
+    ),
     value: awareness === awarenessOptions[0] ? '' : awareness.label,
     recommended: rec.awareness ?? null,
     noPreference: awareness === awarenessOptions[0],

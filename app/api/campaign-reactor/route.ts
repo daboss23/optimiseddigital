@@ -120,6 +120,17 @@ const RUN_BUDGET_MS = (() => {
 const BUDGET_NUDGE_AT = 0.65
 /** Past this share, the run closes cleanly with whatever it has. */
 const BUDGET_CLOSE_AT = 0.88
+/**
+ * Ceiling on the preflight briefing as a share of the whole budget.
+ *
+ * The briefing is three parallel model calls plus retrieval, and on a slow one
+ * it used to be allowed to run until the clock was gone — the loop then found
+ * no room for even a first turn and the run ended with full intelligence and
+ * ZERO ads. Research that costs the entire generation window is not research,
+ * it is a failed run, so it is now cut off with the majority of the budget
+ * still unspent.
+ */
+const PREFLIGHT_MAX_SHARE = 0.45
 
 /**
  * FAST PATH — for hosts with a hard short ceiling (Vercel Hobby caps functions
@@ -926,12 +937,34 @@ async function preflightBriefing(
   controller: ReadableStreamDefaultController,
   ctx: { angle: string; audience?: string; awareness?: string; offer?: string; brief?: string },
   builderId: string | null,
+  /**
+   * Hard cap on the briefing. The briefing is research, not output — a layer
+   * still thinking when this expires is abandoned so the run can spend what is
+   * left of the clock actually writing ads. Whatever landed in time is kept.
+   */
+  deadlineMs: number,
 ): Promise<string> {
   const results = await Promise.all(
     MANDATORY_LAYERS.map(async (id) => {
       const question = preflightQuestion(id, ctx)
       try {
-        const findings = await runIntelligence(anthropic, controller, id, question, builderId)
+        const findings = await Promise.race([
+          runIntelligence(anthropic, controller, id, question, builderId),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), deadlineMs)),
+        ])
+        if (findings === null) {
+          const agent = INTELLIGENCE[id]
+          sse(controller, {
+            type: 'delegate',
+            agent: agent.codename,
+            id,
+            label: agent.intelligenceLabel,
+            status: 'done',
+            summary: 'Still working when the briefing window closed — the run moved on to generation.',
+            confidence: 'Exploratory',
+          })
+          return null
+        }
         return { id, findings }
       } catch (err) {
         const agent = INTELLIGENCE[id]
@@ -1414,6 +1447,7 @@ export async function POST(request: NextRequest) {
               brief: ri?.brief,
             },
             body.builderId ?? null,
+            Math.max(8_000, RUN_BUDGET_MS * PREFLIGHT_MAX_SHARE - elapsed()),
           ).catch(() => ''),
         ])
         const oracleMemory = memoryBlock(winningConfigs)
@@ -1520,10 +1554,36 @@ export async function POST(request: NextRequest) {
         let opusModel: string = FAST_PATH ? OPUS_FALLBACK_MODEL : OPUS_MODEL
         let fallbackAnnounced = false
 
+        // The briefing already spent the clock — there is room for exactly one
+        // turn, so ask for the submission on it rather than letting OPUS open
+        // with retrieval it will never get to use.
+        if (overNudge()) {
+          nudged = true
+          sse(controller, {
+            type: 'step',
+            text: 'Briefing used the run’s time budget — OPUS is submitting straight from the evidence in hand.',
+          })
+          // Appended to the opening message rather than pushed as a second user
+          // turn — nothing has been sent yet, so this is one instruction, not a
+          // conversation.
+          const first = messages[0]
+          if (typeof first.content === 'string') {
+            first.content += ' TIME BUDGET REACHED BEFORE GENERATION. Do not consult any layer. Call submit_concepts on this turn with the strongest concepts you can write from the briefing above, covering every requested output type. Partial, grounded work shipped beats a perfect run that never lands.'
+          }
+        }
+
         for (let turn = 0; turn < MAX_TURNS; turn++) {
           // Out of time before another round trip could land — stop here and
           // report it, rather than starting a turn the host will cut short.
-          if (cannotFitAnotherTurn()) {
+          //
+          // The FIRST turn is exempt. This guard exists so the run degrades to
+          // partial output instead of being killed mid-stream, but skipping
+          // turn 0 skips the only turn that can produce an ad — the run then
+          // ends with a complete intelligence briefing and zero concepts, which
+          // is the one outcome the budget was supposed to prevent. If the clock
+          // is already spent, ask for the concepts anyway: a submission that
+          // lands late still ships, and one that never happens cannot.
+          if (turn > 0 && cannotFitAnotherTurn()) {
             const shipped = flushPendingConcepts()
             sse(controller, {
               type: shipped ? 'step' : 'error',
