@@ -530,9 +530,28 @@ export function Workbench() {
     setTimeout(() => setCopied(null), 1500)
   }
 
-  // A concept whose brief is a moving creative (Video / Testimonial) renders a
-  // video ad; everything else renders a still.
-  const isVideoConcept = (c: Concept) => /video|testimonial/i.test(c.type)
+  // A concept whose brief is a moving creative (Video / Testimonial / UGC)
+  // renders a video ad; everything else renders a still.
+  const isVideoConcept = (c: Concept) => /video|testimonial|ugc/i.test(c.type)
+
+  /**
+   * Does this concept carry a visual deliverable that should auto-render?
+   *
+   * The brief's deliverables are named in the "Creative" vocabulary (Static
+   * Creative, Video Creative, UGC Creative, Carousel Creatives, Creative
+   * Variations — see `reactorOutputTypes`), while the reactor's internal
+   * taxonomy still emits the older "Concept" names (Static / Founder /
+   * Testimonial Concept). Both are real, so both must render — gating on the
+   * literal word "Concept" silently skipped every live "Static Creative" run
+   * and left the card on its "renders when a provider is configured"
+   * placeholder with no error to explain it.
+   *
+   * Copy-only deliverables (Hooks, Headlines) are excluded: they have no
+   * production brief to render from. "Montage / Scene Flow" is deliberately
+   * excluded too — it has its own Creative Canvas scene pipeline.
+   */
+  const isVisualConcept = (c: Concept) =>
+    /concept|creative/i.test(c.type) && !/hook|headline|primary text|angle/i.test(c.type)
 
   // The render size for a concept — the first ratio picked on the Formats step
   // for its deliverable family, falling back to the platform defaults.
@@ -574,7 +593,7 @@ export function Workbench() {
     const canImage = imageModels.some((m) => m.configured)
     const canVideo = videoModels.some((m) => m.configured)
     for (const c of concepts) {
-      if (!c.type.includes('Concept')) continue
+      if (!isVisualConcept(c)) continue
       if (autoGenRef.current.has(c.text)) continue
       if (isVideoConcept(c) ? !canVideo : !canImage) continue
       autoGenRef.current.add(c.text)
