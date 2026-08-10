@@ -10,6 +10,7 @@ const VALID_SYSTEMS: KnowledgeSystem[] = [
   'research',
   'transformation',
   'creative',
+  'design',
   'copy',
   'pattern',
   'learning',

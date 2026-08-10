@@ -167,6 +167,13 @@ export const vaultCategories: VaultCategory[] = [
     ],
   },
   {
+    // The visual section of the Vault. Starts empty on purpose — it fills from
+    // real ads you ingest, and a curated number here would be a design nobody
+    // can retrieve.
+    group: 'Ad Design DNA',
+    items: [{ name: 'Ingested Ad Designs', count: 0 }],
+  },
+  {
     group: 'Copy Assets',
     items: [
       { name: 'Hooks', count: 689 },

@@ -1,6 +1,7 @@
 import { Database } from 'lucide-react'
 import { PageHeader, Panel, PanelHeader, Pill } from '@/components/reactor/ui'
 import { vaultStats } from '@/lib/knowledge'
+import { AdIngest } from '@/components/spark/AdIngest'
 import { UploadGrid } from './UploadGrid'
 import { VaultManager } from './VaultManager'
 
@@ -22,6 +23,11 @@ export default async function KnowledgeVaultPage() {
           {stats.live ? 'assets stored' : 'assets mapped'}
         </Pill>
       </div>
+
+      {/* Visual intelligence enters here, alongside documents: the design of a
+          winning ad is Vault knowledge in exactly the same sense a framework is,
+          and the Reactor pulls a banked design when a brief calls for one. */}
+      <AdIngest variant="vault" />
 
       <Panel>
         <PanelHeader

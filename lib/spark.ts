@@ -16,8 +16,12 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { ingestKnowledge, type IngestResult } from '@/lib/knowledge'
 import { parseModelJson } from '@/lib/parse'
-import { INTELLIGENCE_MODEL } from '@/lib/models'
+import { INTELLIGENCE_MODEL, VISION_MODEL } from '@/lib/models'
+import { describeMeasuredPalette, reconcilePalette, type MeasuredSwatch } from '@/lib/palette'
 import type { AdImage } from '@/lib/ad-image'
+// Type-only, so this is erased at compile time and adds no runtime cycle with
+// lib/taxonomy.ts (which imports VisualDNA from here the same way).
+import type { CreativeTaxonomy } from '@/lib/taxonomy'
 
 const MODEL = INTELLIGENCE_MODEL
 
@@ -161,9 +165,18 @@ function heuristicDNA(text: string): CreativeDNA {
   }
 }
 
-// A structurally valid Visual DNA used when no key is configured, so the UI and
-// the downstream design block always have a coherent shape to render.
-function heuristicVisualDNA(): VisualDNA {
+/**
+ * A structurally valid Visual DNA used when the vision read is unavailable, so
+ * the UI and the downstream design block always have a coherent shape to
+ * render. This is a SAMPLE, never a read of the user's ad — callers must carry
+ * `live: false` through to the UI so it can never be mistaken for one. When the
+ * browser measured the upload's real colours they are used here, because those
+ * ARE from the ad even when nothing else is.
+ */
+function heuristicVisualDNA(measured: MeasuredSwatch[] = []): VisualDNA {
+  const palette = measured.length
+    ? measured.map((m) => ({ hex: m.hex, role: 'Measured from the upload' }))
+    : null
   return {
     format: 'Static image ad, text-led.',
     aspectRatio: '1:1',
@@ -191,7 +204,7 @@ function heuristicVisualDNA(): VisualDNA {
         treatment: 'Solid accent button with short imperative label',
       },
     ],
-    palette: [
+    palette: palette ?? [
       { hex: '#0a0a0a', role: 'Background' },
       { hex: '#ffffff', role: 'Headline text' },
       { hex: '#f59e0b', role: 'Accent / CTA' },
@@ -221,7 +234,18 @@ const VISUAL_KEYS = `{"format":"...","aspectRatio":"1:1|4:5|9:16|16:9","layout":
 
 const SYSTEM_BASE = `You are SPARK, the Creative Intelligence layer for The Professional Builder (coaching for trades/construction business owners). You study creatives that have ALREADY WON and extract their repeatable DNA — the structure, never the words.`
 
-function visionSystemPrompt(count: number): string {
+function visionSystemPrompt(count: number, hasMeasuredPalette: boolean): string {
+  // With measured colours in the prompt the palette is a LABELLING job, not a
+  // sampling job — the model stops guessing hexes and starts naming what each
+  // real colour does. Without them it has to estimate, and is told to say so.
+  const paletteRules = hasMeasuredPalette
+    ? `PALETTE — the colours below each image were sampled from its actual pixels. They are ground truth.
+- Every hex in "palette" MUST be copied exactly from that image's measured list. Never invent a hex, never round one to a "nicer" value.
+- Give each one the JOB it does in the design: Background, Headline text, Highlight block behind the headline, CTA button, Badge, Bullet tick, Product, and so on.
+- Account for EVERY vivid measured colour. A saturated colour covering only a few percent of the frame is almost always the scroll-stop device — a red band behind one word, a yellow CTA pill, a green tick row. Dropping it is the single worst mistake you can make here.
+- On a multi-ad sheet the measured list spans the whole screenshot, so assign each colour to the ad that actually uses it and leave it off the others.`
+    : `PALETTE — no measured colours are available for these images, so estimate the hexes as accurately as you can and prefer naming the vivid accent colours over the neutrals.`
+
   return `${SYSTEM_BASE}
 
 You are looking at ${count > 1 ? `${count} images` : 'an image'} of winning ad creatives. Read them the way a senior art director reverse-engineers a competitor's control ads.
@@ -234,11 +258,13 @@ FIRST, SEPARATE THE ADS. An image may hold ONE ad, or it may be a screenshot of 
 - Analyze at most ${MAX_ADS_PER_READ} ads. If there are more, take the ${MAX_ADS_PER_READ} most prominent and say so in the last entry's replicationNotes.
 
 THEN, FOR EACH AD, report what is ACTUALLY THERE — never invent an element you cannot see:
-- Transcribe on-ad copy VERBATIM into each element's "text" (headline, hook, bullets, CTA label, badges). If an element is absent, omit it rather than inventing it.
-- Sample real colours as #rrggbb hex and name the job each one does.
+- Transcribe on-ad copy VERBATIM into each element's "text" (headline, hook, bullets, CTA label, badges). Keep the original line breaks and casing. If an element is absent, omit it rather than inventing it.
 - Locate every element by zone and describe its treatment precisely enough to rebuild the layout without the original.
+- When type sits inside a coloured block, band, highlight or pill, SAY SO and name that block's colour in the treatment. Highlighting one word of a headline in a hot colour is a deliberate device, and rebuilding the ad without it loses the design.
 - Explain the scroll-stop MECHANISM (contrast, face, colour break, type scale) — not praise.
 - If an ad is too small or too low-resolution to read its copy reliably, still report the layout and palette, and say so plainly in that ad's replicationNotes rather than guessing at the words.
+
+${paletteRules}
 
 Classify each ad's patternType as ONE of: ${CREATIVE_PATTERNS.join(', ')}.
 
@@ -272,9 +298,20 @@ function strList(raw: unknown, limit = 6): string[] {
   return raw.map((v) => str(v)).filter(Boolean).slice(0, limit)
 }
 
-/** Coerce a model's visual object into a valid VisualDNA, filling any gaps. */
-function normaliseVisual(raw: Partial<VisualDNA> | undefined): VisualDNA {
-  const fb = heuristicVisualDNA()
+/**
+ * Coerce a model's visual object into a valid VisualDNA, filling any gaps.
+ *
+ * `measured` is the palette sampled from the real pixels. Reported colours are
+ * snapped onto it, and on a single-ad read any measured colour the model missed
+ * is added back — so the design read can no longer be missing a colour that is
+ * plainly on the ad.
+ */
+function normaliseVisual(
+  raw: Partial<VisualDNA> | undefined,
+  measured: MeasuredSwatch[] = [],
+  singleAd = false,
+): VisualDNA {
+  const fb = heuristicVisualDNA(measured)
   if (!raw || typeof raw !== 'object') return fb
 
   const elements: LayoutElement[] = Array.isArray(raw.elements)
@@ -290,12 +327,17 @@ function normaliseVisual(raw: Partial<VisualDNA> | undefined): VisualDNA {
         .slice(0, 12)
     : []
 
-  const palette: ColorSwatch[] = Array.isArray(raw.palette)
+  const reported: ColorSwatch[] = Array.isArray(raw.palette)
     ? raw.palette
         .map((c) => ({ hex: normaliseHex((c as ColorSwatch)?.hex), role: str((c as ColorSwatch)?.role, 'Colour') }))
         .filter((c): c is ColorSwatch => Boolean(c.hex))
         .slice(0, 8)
     : []
+
+  // Fill only on a single-ad read: on a board screenshot the measured palette
+  // spans every creative on the sheet, so a neighbour's colour must not be
+  // grafted onto this ad.
+  const palette = reconcilePalette(reported, measured, { fill: singleAd }) as ColorSwatch[]
 
   return {
     format: str(raw.format, fb.format),
@@ -374,8 +416,17 @@ export interface AnalyzedAd {
 export interface VisualAnalysis {
   /** One entry per distinct ad detected. Never empty. */
   ads: AnalyzedAd[]
-  /** False when no API key was configured and the shapes are heuristic. */
+  /**
+   * True only when a vision model actually LOOKED at the creative. False means
+   * `ads` is a structurally valid sample, not a read of the user's ad — callers
+   * must surface that rather than presenting it as a teardown, and must not
+   * store it as knowledge.
+   */
   live: boolean
+  /** Why the read isn't live, in words a strategist can act on. */
+  reason?: string
+  /** The colours measured from the pixels, when the browser sampled them. */
+  measured: MeasuredSwatch[]
 }
 
 /**
@@ -392,18 +443,31 @@ export async function extractVisualDNA(
   images: AdImage[],
   context = '',
 ): Promise<VisualAnalysis> {
-  const fallback: VisualAnalysis = {
+  // Every colour measured across the uploads, biggest first. A single upload is
+  // the common case and the one where fill-back is safe.
+  const measured = images
+    .flatMap((img) => img.palette ?? [])
+    .sort((a, b) => b.share - a.share)
+
+  const sample = (reason: string): VisualAnalysis => ({
     ads: [
       {
-        label: 'Ad 1',
+        label: 'Sample ad',
         dna: heuristicDNA(context || 'Winning ad creative'),
-        visual: heuristicVisualDNA(),
+        visual: heuristicVisualDNA(measured),
       },
     ],
     live: false,
-  }
+    reason,
+    measured,
+  })
 
-  if (!images.length || !process.env.ANTHROPIC_API_KEY) return fallback
+  if (!images.length) return sample('No image reached SPARK, so there was nothing to look at.')
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return sample(
+      'ANTHROPIC_API_KEY is not configured, so no vision model looked at this ad. What follows is a sample structure, not a read of your creative.',
+    )
+  }
 
   try {
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -416,6 +480,16 @@ export async function extractVisualDNA(
         type: 'image',
         source: { type: 'base64', media_type: img.mediaType, data: img.data },
       })
+      // The measured palette rides directly after its own image so there is no
+      // ambiguity about which sheet the colours belong to.
+      if (img.palette?.length) {
+        content.push({
+          type: 'text',
+          text: `Colours measured from the pixels of ${
+            images.length > 1 ? `Image ${i + 1}` : 'this image'
+          } (ground truth — copy these hexes exactly):\n${describeMeasuredPalette(img.palette)}`,
+        })
+      }
     })
     content.push({
       type: 'text',
@@ -425,10 +499,10 @@ export async function extractVisualDNA(
     })
 
     const response = await anthropic.messages.create({
-      model: MODEL,
+      model: VISION_MODEL,
       // Scales with how many ads a sheet can hold — a 12-ad teardown is long.
       max_tokens: 8000,
-      system: visionSystemPrompt(images.length),
+      system: visionSystemPrompt(images.length, measured.length > 0),
       messages: [{ role: 'user', content }],
     })
 
@@ -437,20 +511,26 @@ export async function extractVisualDNA(
       ads?: { label?: string; dna?: Partial<CreativeDNA>; visual?: Partial<VisualDNA> }[]
     }>(out)
 
-    const ads: AnalyzedAd[] = Array.isArray(parsed?.ads)
-      ? parsed.ads.slice(0, MAX_ADS_PER_READ).map((a, i) => ({
-          label: str(a?.label, `Ad ${i + 1}`),
-          dna: mergeDNA(a?.dna, heuristicDNA(context || `Winning ad creative ${i + 1}`)),
-          visual: normaliseVisual(a?.visual),
-        }))
-      : []
+    const found = Array.isArray(parsed?.ads) ? parsed.ads.slice(0, MAX_ADS_PER_READ) : []
+    const singleAd = found.length === 1 && images.length === 1
+    const ads: AnalyzedAd[] = found.map((a, i) => ({
+      label: str(a?.label, `Ad ${i + 1}`),
+      dna: mergeDNA(a?.dna, heuristicDNA(context || `Winning ad creative ${i + 1}`)),
+      visual: normaliseVisual(a?.visual, measured, singleAd),
+    }))
 
-    // A well-formed response with zero ads means nothing ad-like was found —
-    // fall back rather than hand the UI an empty result.
-    return ads.length ? { ads, live: true } : fallback
+    // A well-formed response with zero ads means nothing ad-like was found. Say
+    // that plainly instead of handing back an invented teardown.
+    return ads.length
+      ? { ads, live: true, measured }
+      : sample('The vision read found no ad creative in that image. Try a fuller screenshot of the ad.')
   } catch (err) {
-    console.error('SPARK visual analysis failed, using heuristic:', err)
-    return fallback
+    console.error('SPARK visual analysis failed:', err)
+    return sample(
+      `The vision read failed — ${
+        err instanceof Error ? err.message : 'unknown error'
+      }. Nothing below was read from your ad.`,
+    )
   }
 }
 
@@ -486,11 +566,18 @@ export function visualDnaLines(visual: VisualDNA): string[] {
 // Persist extracted Creative DNA into the knowledge layer as a `creative` chunk.
 // When a visual read is supplied, the design intelligence is stored alongside it
 // so retrieval surfaces layout and palette, not just copy structure.
+//
+// The design is written TWICE on purpose: as prose in the chunk body, which is
+// what gets embedded and retrieved semantically, and as the exact VisualDNA
+// object in `metadata.visualDna`, which is what lib/visual-library.ts reads back
+// to hand a real design — palette, zones, placements — to a future run. Prose
+// alone would force the orchestrator to re-derive a layout from a paragraph.
 export async function storeCreativeDNA(
   dna: CreativeDNA,
   source: SparkSource,
   builderId: string | null = null,
   visual?: VisualDNA | null,
+  taxonomy?: CreativeTaxonomy,
 ): Promise<IngestResult> {
   const title = source.title?.trim() || dna.summary.slice(0, 80) || `Creative DNA — ${dna.patternType}`
   const content = [
@@ -510,16 +597,25 @@ export async function storeCreativeDNA(
     .join('\n')
 
   return ingestKnowledge({
-    system: 'creative',
+    // A read that SAW the ad is design knowledge and files under `design`; a
+    // text-only read of a script is creative knowledge and stays in `creative`.
+    // SPARK consults both, so nothing is lost either way.
+    system: visual ? 'design' : 'creative',
     category: dna.patternType,
     title,
     content,
     builderId,
     metadata: {
       source: 'spark',
-      platform: source.platform ?? null,
+      platform: source.platform ?? 'Meta Ads',
       url: source.url ?? null,
       visual: visual ? 'true' : 'false',
+      // The structured design, kept verbatim so a later run can rebuild this
+      // layout exactly rather than paraphrasing it out of the prose above.
+      visualDna: visual ?? null,
+      pattern: dna.patternType,
+      taxonomy: taxonomy ?? null,
+      summary: dna.summary,
     },
   })
 }

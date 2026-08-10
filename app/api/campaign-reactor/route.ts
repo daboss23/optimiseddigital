@@ -44,6 +44,7 @@ import {
   type CreativeTaxonomy,
   type CloneReference,
 } from '@/lib/taxonomy'
+import { bestVisualReferenceFor } from '@/lib/visual-library'
 
 // ORACLE strategic memory injected into OPUS at fire time — past winning
 // configurations matching the brief, so generation reuses what worked.
@@ -993,7 +994,9 @@ async function runDemo(controller: ReadableStreamDefaultController, body: Reacto
   const wantsMontage = outputs.some((o) => /montage|scene/i.test(o))
   sse(controller, { type: 'step', text: 'OPUS online (demo mode — set ANTHROPIC_API_KEY for the live network)' })
   await pace(1100)
-  if (body.cloneReference) {
+  // A design auto-pulled from the Vault already announced itself upstream, and
+  // it is direction rather than a clone order — don't report it as one.
+  if (body.cloneReference && !body.cloneReference.designOnly) {
     sse(controller, {
       type: 'step',
       text: `Cloning reference structure${
@@ -1262,6 +1265,34 @@ export async function POST(request: NextRequest) {
         return true
       }
 
+      // No reference attached by hand? Pull the strongest banked ad design that
+      // fits this brief out of the Vault. Every ad SPARK has read is stored with
+      // its full design, so a run that would otherwise invent a layout starts
+      // from one that already earned its scroll-stop. Silent when the Vault has
+      // none, so a cold platform behaves exactly as before.
+      if (!body.cloneReference) {
+        const match = await bestVisualReferenceFor({
+          angle: body.angle,
+          brief: body.reactorInputs?.brief,
+          audience: body.reactorInputs?.audienceType,
+          outputs,
+          taxonomy: body.isolate?.lockedTaxonomy,
+        })
+        if (match) {
+          body.cloneReference = {
+            designOnly: true,
+            summary: match.reference.summary || match.reference.title,
+            visual: match.reference.visual,
+            taxonomy: match.reference.taxonomy,
+            sourceLabel: `Vault design · ${match.reference.title}`,
+          }
+          sse(controller, {
+            type: 'step',
+            text: `Proven design pulled from the Vault — ${match.reference.title} (${match.why}) — driving the production brief.`,
+          })
+        }
+      }
+
       try {
         if (!process.env.ANTHROPIC_API_KEY) {
           await runDemo(controller, body)
@@ -1396,7 +1427,7 @@ export async function POST(request: NextRequest) {
         // One test ID per isolation run — stamped onto every submitted concept so
         // outcomes attribute back to which single variable was under test.
         const runTestId = body.isolate ? mintTestId() : ''
-        if (body.cloneReference) {
+        if (body.cloneReference && !body.cloneReference.designOnly) {
           sse(controller, {
             type: 'step',
             text: `Cloning reference structure${

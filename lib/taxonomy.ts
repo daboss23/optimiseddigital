@@ -207,6 +207,13 @@ export interface CloneReference {
    * brief the image models render from — see `visualDirectionBlock`.
    */
   visual?: VisualDNA
+  /**
+   * True when this reference was pulled from the Vault by the platform rather
+   * than attached by the strategist. Only its DESIGN carries — the copy beats
+   * of an unrelated winner are not what the brief asked to clone — so
+   * `cloneBlock` renders it as design direction instead of a clone order.
+   */
+  designOnly?: boolean
 }
 
 /** sessionStorage key handing a clone reference from the Ad Library to the reactor. */
@@ -441,7 +448,22 @@ export function cloneBlock(reference: {
   summary?: string
   taxonomy?: CreativeTaxonomy
   visual?: VisualDNA
+  designOnly?: boolean
 }): string {
+  // A design the platform pulled from the Vault is direction, not an order to
+  // clone someone else's campaign: emit the design read alone, and say where it
+  // came from so OPUS can weigh it against the angle.
+  if (reference.designOnly) {
+    const header = [
+      `PROVEN DESIGN FROM THE VAULT${
+        reference.summary ? ` — ${reference.summary}` : ''
+      }. This is the strongest banked ad design for this brief. Build the visual concepts on it unless the angle genuinely calls for a different design, in which case say why in that concept's basis.`,
+    ]
+    return reference.visual
+      ? [...header, '', visualDirectionBlock(reference.visual)].join('\n')
+      : header.join('\n')
+  }
+
   const lines = [
     'CLONE REFERENCE — match this proven structure. Reproduce the STRUCTURE and ENERGY, never the exact words; write fresh TPB copy that follows the same beats.',
   ]

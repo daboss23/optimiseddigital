@@ -72,8 +72,11 @@ export const INTELLIGENCE: Record<IntelligenceId, AgentDef> = {
     codename: 'SPARK',
     role: 'Creative Intelligence',
     mission:
-      'Study winning creatives and extract repeatable Creative DNA — hooks, openings, structures, visual patterns.',
-    systems: ['creative', 'website'],
+      'Study winning creatives and extract repeatable Creative DNA — hooks, openings, structures, visual patterns — and the DESIGN DNA of ads that have won: palette, layout, placement, contrast device.',
+    // `design` is the visual section of the Vault: SPARK is the layer that reads
+    // it, so a brief asking "what should this ad LOOK like" is answered from
+    // banked designs rather than invented from scratch.
+    systems: ['creative', 'design', 'website'],
     intelligenceLabel: 'Creative Intelligence',
     accent: '#FBBF24',
   },

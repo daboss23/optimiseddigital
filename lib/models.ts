@@ -24,6 +24,13 @@ export const ORCHESTRATOR_MODEL = 'claude-fable-5'
 export const ORCHESTRATOR_FALLBACK_MODEL = 'claude-opus-4-8'
 export const INTELLIGENCE_MODEL = 'claude-sonnet-5'
 
+// VISION_MODEL — SPARK's design read of an uploaded ad. This one runs once per
+// ingest, and everything downstream (the stored pattern, the production brief,
+// the cloned render) inherits whatever it gets wrong, so it is worth the
+// stronger tier: reading a dense contact sheet and transcribing on-ad copy
+// exactly is precision work, not bulk work.
+export const VISION_MODEL = ORCHESTRATOR_FALLBACK_MODEL
+
 // Messages API beta that lets a Fable 5 request name substitute models — a
 // safety-classifier decline is re-served by the fallback model inside the same
 // call instead of failing the run.

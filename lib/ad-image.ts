@@ -7,6 +7,8 @@
 // plus a human-readable note explaining what to do instead (drop the
 // screenshot in). The analyzer always stays usable.
 
+import type { MeasuredSwatch } from '@/lib/palette'
+
 /** A normalised image ready to be sent to a vision model. */
 export interface AdImage {
   mediaType: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif'
@@ -14,6 +16,12 @@ export interface AdImage {
   data: string
   /** Where this image came from, for telemetry and the source label. */
   label: string
+  /**
+   * The colours measured from this image's actual pixels, when the browser
+   * could sample them before upload. Ground truth for the design read — see
+   * lib/palette.ts. Absent for images fetched server-side from a link.
+   */
+  palette?: MeasuredSwatch[]
 }
 
 export interface ResolvedAdImages {
@@ -230,6 +238,12 @@ export async function imagesFromPage(pageUrl: string, limit: number): Promise<Ad
  */
 export async function resolveAdImages(input: {
   images?: string[]
+  /**
+   * Palettes measured in the browser, indexed to match `images`. Kept aligned
+   * by index rather than merged into the payload so an older client that sends
+   * plain data URLs keeps working unchanged.
+   */
+  palettes?: (MeasuredSwatch[] | undefined)[]
   url?: string
   max?: number
 }): Promise<ResolvedAdImages> {
@@ -238,21 +252,23 @@ export async function resolveAdImages(input: {
   const notes: string[] = []
   let rejectedUploads = 0
 
-  for (const raw of input.images ?? []) {
+  const sources = input.images ?? []
+  for (let i = 0; i < sources.length; i += 1) {
     if (images.length >= limit) break
-    const value = raw?.trim()
+    const value = sources[i]?.trim()
     if (!value) continue
+    const palette = input.palettes?.[i]
 
     if (value.startsWith('data:')) {
       const parsed = parseDataUrl(value, `Uploaded image ${images.length + 1}`)
-      if (parsed) images.push(parsed)
+      if (parsed) images.push({ ...parsed, palette })
       else rejectedUploads += 1
       continue
     }
 
     if (/^https?:\/\//i.test(value)) {
       const fetched = await fetchImage(value)
-      if (fetched) images.push(fetched)
+      if (fetched) images.push({ ...fetched, palette })
       else rejectedUploads += 1
     }
   }

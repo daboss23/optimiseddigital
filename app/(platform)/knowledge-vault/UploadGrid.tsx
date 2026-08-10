@@ -1,6 +1,7 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   Clapperboard,
   FileText,
@@ -67,6 +68,8 @@ function UploadTile({ title, accept, icon }: { title: string; accept: string; ic
   const inputRef = useRef<HTMLInputElement>(null)
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
   const [drag, setDrag] = useState(false)
+  // Nothing enters the vault without a yes — a dropped file waits here first.
+  const [pending, setPending] = useState<File | null>(null)
 
   const route = routing[title] ?? { system: 'vault' as KnowledgeSystem, category: 'Vault Asset' }
 
@@ -111,6 +114,7 @@ function UploadTile({ title, accept, icon }: { title: string; accept: string; ic
   }
 
   return (
+    <>
     <button
       type="button"
       onClick={() => inputRef.current?.click()}
@@ -122,9 +126,9 @@ function UploadTile({ title, accept, icon }: { title: string; accept: string; ic
       onDrop={(e) => {
         e.preventDefault()
         setDrag(false)
-        if (e.dataTransfer.files?.[0]) ingest(e.dataTransfer.files[0])
+        if (e.dataTransfer.files?.[0]) setPending(e.dataTransfer.files[0])
       }}
-      className={`glass glass-hover group flex flex-col items-center justify-center gap-2 rounded-xl border-dashed p-5 text-center transition-all ${
+      className={`glass glass-hover group flex h-full flex-col items-center justify-center gap-2 rounded-xl border-dashed p-5 text-center transition-all ${
         drag ? 'border-glow shadow-glow' : 'border-border'
       }`}
     >
@@ -164,10 +168,92 @@ function UploadTile({ title, accept, icon }: { title: string; accept: string; ic
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0]
-          if (f) ingest(f)
+          if (f) setPending(f)
+          e.target.value = ''
         }}
       />
     </button>
+
+    {pending && (
+      <ConfirmIngest
+        fileName={pending.name}
+        destination={route.category}
+        onCancel={() => setPending(null)}
+        onConfirm={() => {
+          const file = pending
+          setPending(null)
+          void ingest(file)
+        }}
+      />
+    )}
+    </>
+  )
+}
+
+/**
+ * Yes/no gate before anything is embedded. A drop is easy to do by accident and
+ * an ingest is a write into shared memory — so the vault always asks first.
+ */
+function ConfirmIngest({
+  fileName,
+  destination,
+  onConfirm,
+  onCancel,
+}: {
+  fileName: string
+  destination: string
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onCancel])
+
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Confirm vault ingest"
+      className="fixed inset-0 z-[120] grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
+      onClick={onCancel}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-sm rounded-xl border border-border bg-card p-5 text-center shadow-glow"
+      >
+        <span className="panel-icon acc-blue mx-auto mb-3 grid h-11 w-11 place-items-center rounded-lg">
+          <UploadCloud size={18} />
+        </span>
+        <p className="text-[15px] font-semibold text-white">
+          Ingest “{fileName}” into the vault?
+        </p>
+        <p className="mt-1.5 text-[12.5px] text-white/55">
+          It is embedded and filed under {destination}, then retrievable by every agent.
+        </p>
+        <div className="mt-5 flex justify-center gap-2.5">
+          <button
+            type="button"
+            onClick={onConfirm}
+            autoFocus
+            className="fire-btn fire-btn--md tap-target inline-flex items-center gap-2 font-display font-bold uppercase tracking-wide text-white"
+          >
+            Yes
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="tap-target inline-flex min-h-[44px] items-center rounded-xl border border-border px-5 text-sm font-semibold text-white/70 transition-colors hover:border-white/25 hover:text-white"
+          >
+            No
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   )
 }
 

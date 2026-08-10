@@ -27,6 +27,14 @@ export type KnowledgeSystem =
   | 'pattern'
   | 'learning'
   | 'website'
+  // 'design' is the VISUAL knowledge section — the design DNA of ads that have
+  // already won: measured palette, layout archetype, every element's zone and
+  // treatment, the on-ad copy, the contrast device. It is its own section
+  // rather than a corner of `creative` because it answers a different question:
+  // `creative` is how a winning ad is WRITTEN, `design` is how it LOOKS. SPARK
+  // reads both, and lib/visual-library.ts reads this one structurally so a run
+  // can rebuild a proven layout instead of paraphrasing a description of it.
+  | 'design'
 
 export interface KnowledgeHit {
   system: string

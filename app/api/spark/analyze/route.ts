@@ -9,6 +9,7 @@ import {
 import { extractVideoId, fetchYouTubeTranscript } from '@/lib/youtube'
 import { resolveAdImages, MAX_AD_IMAGES } from '@/lib/ad-image'
 import { classifyTaxonomy } from '@/lib/taxonomy-classify'
+import type { MeasuredSwatch } from '@/lib/palette'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120
@@ -64,13 +65,15 @@ export async function POST(request: NextRequest) {
       text?: string
       url?: string
       images?: string[]
-      platform?: string
+      /** Palettes measured in the browser, indexed to match `images`. */
+      palettes?: (MeasuredSwatch[] | undefined)[]
       title?: string
       builderId?: string | null
     }
 
     const url = body.url?.trim()
     const uploads = Array.isArray(body.images) ? body.images.slice(0, MAX_AD_IMAGES) : []
+    const palettes = Array.isArray(body.palettes) ? body.palettes.slice(0, MAX_AD_IMAGES) : []
     let text = (body.text ?? '').trim()
     const notes: string[] = []
 
@@ -78,6 +81,7 @@ export async function POST(request: NextRequest) {
     //    link is only scraped for images when there is still room.
     const { images, notes: imageNotes } = await resolveAdImages({
       images: uploads,
+      palettes,
       // Only mine the URL for images when the user didn't already upload any;
       // a YouTube link is a transcript source, never an image source.
       url: uploads.length === 0 && url && !extractVideoId(url) ? url : undefined,
@@ -117,14 +121,20 @@ export async function POST(request: NextRequest) {
     // One shape for both reads: the written path simply has no design read.
     let ads: { label: string; dna: CreativeDNA; visual: VisualDNA | null }[]
     let live = false
+    let reason: string | undefined
 
     if (images.length) {
       const analysis = await extractVisualDNA(images, text)
       ads = analysis.ads
       live = analysis.live
+      reason = analysis.reason
     } else {
       ads = [{ label: 'Ad 1', dna: await extractCreativeDNA(text), visual: null }]
       live = Boolean(process.env.ANTHROPIC_API_KEY)
+      if (!live) {
+        reason =
+          'ANTHROPIC_API_KEY is not configured, so this is a heuristic read of your text rather than a real extraction.'
+      }
     }
 
     // Each detected ad is classified and stored on its own, so a board
@@ -132,6 +142,9 @@ export async function POST(request: NextRequest) {
     // one averaged blur. Classification runs off everything known about that
     // ad — the transcribed on-ad copy included — so an image-only reference
     // still lands a real taxonomy tag.
+    // A read that never happened must never become Vault knowledge — storing an
+    // invented teardown would poison every future retrieval with a design no ad
+    // ever used. The sample still renders, clearly flagged, but stays unstored.
     const results = await Promise.all(
       ads.map(async (ad, i) => {
         const visual = ad.visual
@@ -144,24 +157,28 @@ export async function POST(request: NextRequest) {
           .filter(Boolean)
           .join('\n')
 
-        const [taxonomy, stored] = await Promise.all([
-          classifyTaxonomy(classifierText),
-          storeCreativeDNA(
-            ad.dna,
-            {
-              url: body.url,
-              platform: body.platform,
-              // Keep each stored chunk distinguishable when one sheet yields many.
-              title: body.title
-                ? ads.length > 1
-                  ? `${body.title} — ${ad.label}`
-                  : body.title
-                : undefined,
-            },
-            body.builderId ?? null,
-            visual,
-          ),
-        ])
+        // Classified BEFORE the write, not alongside it, so the taxonomy lands
+        // in the stored chunk's metadata and the design is retrievable by
+        // persona / pain / format later, not just by prose similarity.
+        const taxonomy = await classifyTaxonomy(classifierText)
+        const stored = live
+          ? await storeCreativeDNA(
+              ad.dna,
+              {
+                url: body.url,
+                platform: 'Meta Ads',
+                // Keep each stored chunk distinguishable when one sheet yields many.
+                title: body.title
+                  ? ads.length > 1
+                    ? `${body.title} — ${ad.label}`
+                    : body.title
+                  : undefined,
+              },
+              body.builderId ?? null,
+              visual,
+              taxonomy,
+            )
+          : { stored: false, chunks: 0 }
 
         return {
           label: ad.label || `Ad ${i + 1}`,
@@ -186,6 +203,7 @@ export async function POST(request: NextRequest) {
       stored: results.some((r) => r.stored),
       chunks: results.reduce((n, r) => n + r.chunks, 0),
       live,
+      reason,
       imageCount: images.length,
       notes,
     })
