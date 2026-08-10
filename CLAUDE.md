@@ -99,12 +99,25 @@ MUAPIAPP_API_KEY             # Muapi unified image + video gateway — CURRENT D
                              #   ovens (on trial). Sandbox keys return mock data instantly and
                              #   spend no credits — use one for integration testing. Remove the
                              #   key and both ovens fall back to Kie/fal/Higgsfield automatically.
+                             #   Endpoint slugs come VERBATIM from muapi.ai/llms.txt — there is no
+                             #   derivable convention. They previously carried an invented "-image"
+                             #   suffix, so every frontier model 404'd and the oven fell through to
+                             #   FLUX.1 Dev — the weakest text renderer — which is what shipped ads
+                             #   with misspelled headlines. `npm run muapi:slugs` probes your key
+                             #   and prints the override to set if one drifts again.
                              #   Optional overrides (vendor slugs drift; no code change needed):
                              #   MUAPI_API_BASE, MUAPI_POLL_TIMEOUT_MS,
-                             #   MUAPI_MODEL_NANO_BANANA_PRO / _NANO_BANANA_2 / _GPT_IMAGE_2 /
-                             #   _MIDJOURNEY / _SEEDREAM / _FLUX_KONTEXT_MAX / _FLUX_DEV (images
-                             #   — only _FLUX_DEV's slug is confirmed; set any that 404 to the
-                             #   slug shown in the Muapi dashboard),
+                             #   MUAPI_IMAGE_RESOLUTION (1k/2k/4k, default 2k — 1k is where
+                             #     headline letterforms go soft; unsupported by a model = auto-retry
+                             #     without it),
+                             #   MUAPI_MODEL_NANO_BANANA_PRO / _GPT_IMAGE_2 / _IMAGEN4_ULTRA /
+                             #   _NANO_BANANA_2 / _SEEDREAM / _FLUX_3 / _FLUX_KONTEXT_MAX /
+                             #   _MIDJOURNEY / _FLUX_DEV (images — slugs are taken verbatim from
+                             #   muapi.ai/llms.txt and follow NO single convention: bare
+                             #   (nano-banana-pro), mode-suffixed (gpt-image-2-text-to-image),
+                             #   versioned (midjourney-v8), vendor-prefixed
+                             #   (bytedance-seedream-5.0-pro). Never "tidy" one into a pattern —
+                             #   guessing is what caused the misspelled-headline bug),
                              #   MUAPI_VIDEO_VEO3_T2V / _VEO3_I2V / _KLING_T2V / _KLING_I2V /
                              #   _SEEDANCE_T2V / _SEEDANCE_I2V / _WAN_T2V / _WAN_I2V (video)
 PIPEBOARD_API_TOKEN          # Meta Ads MCP (live ad performance) — optional
@@ -162,6 +175,16 @@ end. For destructive writes (Supabase inserts), surface errors clearly.
 - `lib/image/index.ts` dispatches `generateImageWith(modelId, prompt, aspectRatio)` → `{ imageUrl, modelId, provider }`, picking the best configured model when none/an unconfigured one is requested, with automatic fallback to any other configured provider. Never throws — returns null.
 - Exposed to the agent as `generate_image` with a `model` selector; `lib/image/recommend.ts` suggests a model from the requested output types (Higgsfield Soul for photographic founder/testimonial, FLUX/fal for everything else).
 - API: `GET /api/image/models` lists the menu + configured status; `POST /api/generate-image` is model-aware and returns `{ model, provider }` (backward compatible — prompt only renders on the default/best model).
+- **4:5 is a first-class still ratio** — Meta's tall feed unit, the largest footprint a static ad gets in the mobile feed, and the default for Static Creative + Creative Variations. It is deliberately IMAGE-ONLY: `lib/video/types.ts` keeps its own ratio union, and the reactor's `generate_video` narrows 4:5 → 9:16 rather than handing a video model a ratio it cannot render. A still model that doesn't declare 4:5 (GPT Image 2) snaps to its nearest portrait via `supportedRatio()`.
+- Every model carries a **`textFidelity`** (`strong` / `moderate` / `weak`) alongside its tier — a separate axis, because quality is not spelling: Midjourney is flagship-grade and cannot set a headline; FLUX.1 Dev mangles anything past two words. When a prompt carries literal copy (`promptCarriesCopy()`), the fallback chain is re-ordered so text-strong models come first, on BOTH the sync and async paths.
+- A render that does not run on the model it was asked for is **reported, never silent**: `generateImageDetailed` / `startImageJob` return `requestedModelId`, `fellBack` and a builder-facing `note`, `/api/generate-image` passes them through, and the concept card shows a warning under the still. A silent downgrade to a weak-text model is exactly how an ad ships with a misspelled headline.
+
+### On-image text (why ads used to render as gibberish)
+- **`lib/render-prompt.ts` is the ONE prompt path for stills.** It compiles a `ProductionBrief` into a prompt instead of concatenating it. The old `briefToPrompt` (removed from `lib/reactor-inputs.ts`) flattened every frame into one paragraph, handing the model 4–5 quoted strings buried in prose plus a contradictory "room for text overlay" — which is what produced "NOT DISORGARUSED" headlines and noise-band fine print.
+- The compiler: separates SCENE from COPY (a copy-carrying frame never also appears as a scene beat — describing the headline slot twice causes doubled lettering), lists the literal strings under an `ON-IMAGE TEXT` header marked "reproduce exactly", enforces **`MAX_RENDERED_TEXT_BLOCKS` (2)** inside **`MAX_RENDERED_TEXT_CHARS` (95)**, folds an emphasised word quoted inside a headline into a treatment note rather than a second block, and DROPS fine print / compliance strips / logo lettering entirely (unrenderable at ad resolution). Everything dropped comes back in `omitted` with a reason — the full compliant copy still ships in the concept's `adPackage` for the caption, the Studio overlay and the Meta push.
+- A brief with no on-image copy gets the opposite instruction: render no lettering at all, leave clean space for the overlay.
+- OPUS declares on-image copy in **`productionBrief.onImageText`** (role / text / placement), constrained by `ON_IMAGE_TEXT_RULE` in the orchestrator prompt. Absent that, the compiler recovers the copy from quoted strings in the frames — both paths are covered.
+- Guarded by `npm run selftest:render` (`scripts/render-prompt-selftest.ts`), which asserts the discipline against the exact brief that rendered wrong.
 
 ### Video models (multi-provider "oven")
 - The video layer lives in `lib/video/` and is provider-agnostic. `lib/video/registry.ts` is the model menu (Seedance 2.0, Kling 2.5, Veo 3, Wan 2.5, Higgsfield DoP) with capabilities (modes, max duration, aspect ratios, native audio). Endpoints are env-overridable since vendor model paths drift.

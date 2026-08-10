@@ -45,14 +45,45 @@ export function listImageModels(): ImageModelAvailability[] {
   return IMAGE_MODELS.map((m) => ({ ...m, configured: providerConfigured(m.provider) }))
 }
 
+/* --------------------------- Text-aware routing ---------------------------- */
+
+/**
+ * A prompt "carries copy" when it asks the model to set literal words on the
+ * image. `lib/render-prompt.ts` marks those prompts explicitly; the SPARK clone
+ * writer phrases it its own way, so both spellings are detected.
+ *
+ * This matters because the fallback chain is otherwise ordered by quality, and
+ * quality is not spelling: a headline creative that falls through to FLUX.1 Dev
+ * renders a beautiful photo with a mangled headline, which looks like a working
+ * render and is unusable.
+ */
+const CARRIES_COPY = /ON-IMAGE TEXT|rendered exactly|render(?:ed)? these strings exactly|on-ad text/i
+
+export function promptCarriesCopy(prompt: string): boolean {
+  return CARRIES_COPY.test(prompt)
+}
+
+const FIDELITY_RANK: Record<string, number> = { strong: 0, moderate: 1, weak: 2 }
+
+/** Configured ids reordered so the models that can spell come first. */
+function textCapableFirst(ids: string[]): string[] {
+  return [...ids].sort((a, b) => {
+    const fa = FIDELITY_RANK[getImageModel(a)?.textFidelity ?? 'weak'] ?? 2
+    const fb = FIDELITY_RANK[getImageModel(b)?.textFidelity ?? 'weak'] ?? 2
+    return fa - fb
+  })
+}
+
 /** Pick a usable model: the requested one if configured, else first configured. */
-function resolveModelId(requested?: string): string | null {
+function resolveModelId(requested?: string, carriesCopy = false): string | null {
   const tryIds = [requested, DEFAULT_IMAGE_MODEL].filter(Boolean) as string[]
   for (const id of tryIds) {
     const m = getImageModel(id)
     if (m && providerConfigured(m.provider)) return id
   }
-  return IMAGE_MODELS.find((m) => providerConfigured(m.provider))?.id ?? null
+  const configured = IMAGE_MODELS.filter((m) => providerConfigured(m.provider)).map((m) => m.id)
+  const ordered = carriesCopy ? textCapableFirst(configured) : configured
+  return ordered[0] ?? null
 }
 
 /**
@@ -60,10 +91,17 @@ function resolveModelId(requested?: string): string | null {
  * first, then every other configured model as a fallback. This makes the oven
  * resilient — if the chosen provider is out of credit or rejects, it
  * automatically tries another configured provider before giving up.
+ *
+ * When the prompt carries copy the FALLBACKS are re-ordered by text fidelity,
+ * so a run whose frontier model 404s lands on the next model that can actually
+ * set a headline instead of falling all the way to the fast workhorse. (The
+ * explicitly requested model still goes first — an explicit pick is a decision,
+ * not a default.)
  */
-function candidateModelIds(requested?: string): string[] {
-  const first = resolveModelId(requested)
-  const rest = IMAGE_MODELS.filter((m) => providerConfigured(m.provider)).map((m) => m.id)
+function candidateModelIds(requested?: string, carriesCopy = false): string[] {
+  const first = resolveModelId(requested, carriesCopy)
+  const configured = IMAGE_MODELS.filter((m) => providerConfigured(m.provider)).map((m) => m.id)
+  const rest = carriesCopy ? textCapableFirst(configured) : configured
   return Array.from(new Set([first, ...rest].filter(Boolean) as string[]))
 }
 
@@ -117,6 +155,15 @@ export interface ImageAttempt {
   image: GeneratedImage | null
   /** Human-readable failure reason when image is null (surfaced to the UI). */
   error?: string
+  /**
+   * Set when the render did NOT run on the model that was asked for — the
+   * requested model's id, plus a builder-facing note saying what happened.
+   * A silent downgrade is how a text-bearing ad ends up on a model that cannot
+   * spell, so the substitution is always reported rather than swallowed.
+   */
+  requestedModelId?: string
+  fellBack?: boolean
+  note?: string
 }
 
 /**
@@ -128,16 +175,33 @@ export async function generateImageDetailed(
   prompt: string,
   aspectRatio: AspectRatio = '1:1',
 ): Promise<ImageAttempt> {
-  const candidates = candidateModelIds(modelId)
+  const carriesCopy = promptCarriesCopy(prompt)
+  const candidates = candidateModelIds(modelId, carriesCopy)
   if (candidates.length === 0) return { image: null, error: 'No image provider is configured' }
 
+  const intended = candidates[0]
   const errors: string[] = []
   for (const id of candidates) {
     const model = getImageModel(id)
     if (!model) continue
     const { url, error } = await renderWithModel(id, prompt, aspectRatio)
     if (url) {
-      return { image: { imageUrl: url, modelId: id, provider: model.provider } }
+      const fellBack = id !== intended
+      const weakText = carriesCopy && model.textFidelity === 'weak'
+      return {
+        image: { imageUrl: url, modelId: id, provider: model.provider },
+        requestedModelId: intended,
+        fellBack,
+        note: fellBack
+          ? `${getImageModel(intended)?.label ?? intended} was unavailable — rendered on ${model.label}.${
+              weakText
+                ? ' That model is weak at in-image text, so check the headline spelling (fix the failing model’s slug, or render the copy as a Studio overlay).'
+                : ''
+            } Reason: ${errors[0] ?? 'unknown'}`
+          : weakText
+            ? `${model.label} is weak at in-image text — check the headline spelling, or overlay the copy in the Studio.`
+            : undefined,
+      }
     }
     errors.push(`${model.label}: ${error ?? 'no image'}`)
   }
@@ -168,6 +232,10 @@ export interface StartedImageJob {
   modelId: string
   provider: string
   error?: string
+  /** The model this render was meant to run on, when it fell back. */
+  requestedModelId?: string
+  fellBack?: boolean
+  note?: string
 }
 
 /** True when the resolved model renders via an async-capable provider. */
@@ -178,32 +246,65 @@ export function isAsyncImageModel(requested?: string): boolean {
 }
 
 /**
- * Start an async render and return its task/request id. Resolves the requested
- * model to a configured async-capable model; returns an error (never throws)
- * when none applies.
+ * Start an async render and return its task/request id.
+ *
+ * This walks the SAME fallback chain as the synchronous oven rather than trying
+ * one model and giving up. A gateway slug that has drifted (Muapi's frontier
+ * endpoints are env-overridable precisely because they do) used to fail the
+ * start, drop the whole render onto the synchronous path, and re-fail every
+ * model above the workhorse before landing there — which is how a text-heavy ad
+ * ended up rendered by a model that cannot spell. Never throws.
  */
 export async function startImageJob(
   requested: string | undefined,
   prompt: string,
   aspectRatio: AspectRatio = '1:1',
 ): Promise<StartedImageJob> {
-  const id = resolveModelId(requested)
-  const model = id ? getImageModel(id) : null
-  if (!id || !model || !(ASYNC_PROVIDERS as readonly string[]).includes(model.provider)) {
-    return {
-      taskId: null,
-      modelId: id ?? '',
-      provider: model?.provider ?? '',
-      error: 'Not an async-capable image model',
+  const carriesCopy = promptCarriesCopy(prompt)
+  const candidates = candidateModelIds(requested, carriesCopy).filter((id) => {
+    const m = getImageModel(id)
+    return m && (ASYNC_PROVIDERS as readonly string[]).includes(m.provider)
+  })
+  if (candidates.length === 0) {
+    return { taskId: null, modelId: '', provider: '', error: 'Not an async-capable image model' }
+  }
+
+  const intended = candidates[0]
+  const errors: string[] = []
+  for (const id of candidates) {
+    const model = getImageModel(id)!
+    const ratio = supportedRatio(id, aspectRatio)
+    const { taskId, error } =
+      model.provider === 'muapi'
+        ? await startMuapiImage(id, prompt, ratio).then((r) => ({ taskId: r.requestId, error: r.error }))
+        : await startKieImage(id, prompt, ratio)
+    if (taskId) {
+      const fellBack = id !== intended
+      const weakText = carriesCopy && model.textFidelity === 'weak'
+      return {
+        taskId,
+        modelId: id,
+        provider: model.provider,
+        requestedModelId: intended,
+        fellBack,
+        note: fellBack
+          ? `${getImageModel(intended)?.label ?? intended} was unavailable — rendering on ${model.label}.${
+              weakText ? ' That model is weak at in-image text, so check the headline spelling.' : ''
+            } Reason: ${errors[0] ?? 'unknown'}`
+          : weakText
+            ? `${model.label} is weak at in-image text — check the headline spelling, or overlay the copy in the Studio.`
+            : undefined,
+      }
     }
+    errors.push(`${model.label}: ${error ?? 'no task id'}`)
   }
-  const ratio = supportedRatio(id, aspectRatio)
-  if (model.provider === 'muapi') {
-    const { requestId, error } = await startMuapiImage(id, prompt, ratio)
-    return { taskId: requestId, modelId: id, provider: 'muapi', error }
+
+  return {
+    taskId: null,
+    modelId: intended,
+    provider: getImageModel(intended)?.provider ?? '',
+    error: errors.join(' · '),
   }
-  const { taskId, error } = await startKieImage(id, prompt, ratio)
-  return { taskId, modelId: id, provider: 'kie', error }
 }
 
 /**

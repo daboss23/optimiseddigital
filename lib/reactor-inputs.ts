@@ -42,12 +42,31 @@ export interface ProductionFrame {
   description: string
 }
 
+/**
+ * A literal piece of copy that must appear ON the creative, declared separately
+ * from the prose frames so the render prompt can quote it exactly instead of
+ * digging it back out of a paragraph. See `lib/render-prompt.ts`.
+ */
+export interface OnImageTextSlot {
+  /** e.g. "Headline", "CTA button", "Compliance line". */
+  role: string
+  /** The exact words to set on the image. */
+  text: string
+  /** Where it sits, e.g. "top third, left aligned". */
+  placement?: string
+}
+
 export interface ProductionBrief {
   creativeType: string
   pattern: string
   audience: string
   awareness: string
   frames: ProductionFrame[]
+  /**
+   * The ad's on-image copy. Optional and additive — when absent the render
+   * compiler recovers the copy from the quoted strings in `frames`.
+   */
+  onImageText?: OnImageTextSlot[]
 }
 
 /**
@@ -91,14 +110,13 @@ export const NEURO_AXES: { key: keyof Pick<NeuroScore, 'attention' | 'emotion' |
   { key: 'hook', label: 'Hook' },
 ]
 
-/** Turn a production brief into a single rich generation prompt. */
-export function briefToPrompt(brief: ProductionBrief | undefined, fallback: string): string {
-  if (!brief?.frames?.length) return fallback
-  const frames = brief.frames
-    .map((f, i) => `Frame ${i + 1} — ${f.label}: ${f.description}`)
-    .join('\n')
-  return `${brief.creativeType} ad creative for The Professional Builder. Pattern: ${brief.pattern}. Audience: ${brief.audience}. Awareness: ${brief.awareness}.\n${frames}\n\nRender premium, photographic, on-site builder context, high contrast, room for text overlay.`
-}
+/*
+ * NOTE: `briefToPrompt` used to live here. It flattened every frame into one
+ * paragraph — including the ad's quoted copy — which is what produced garbled
+ * on-image text. It now lives in `lib/render-prompt.ts`, which separates the
+ * scene from the literal copy and budgets that copy so it renders correctly.
+ * Import it from there.
+ */
 
 export interface ReactorInputs {
   /** Human-facing campaign label (the first question in the guided flow). */
@@ -236,7 +254,7 @@ export const outputTypeOptions = [
    step shows only the sizes relevant to the deliverables the user selected.
 --------------------------------------------------------------------------- */
 
-export type CreativeRatio = '1:1' | '9:16' | '16:9'
+export type CreativeRatio = '1:1' | '4:5' | '9:16' | '16:9'
 
 export interface CreativeSize {
   ratio: CreativeRatio
@@ -247,6 +265,7 @@ export interface CreativeSize {
 
 export const CREATIVE_SIZES: Record<string, CreativeSize[]> = {
   'Static Creative': [
+    { ratio: '4:5', label: 'Tall feed', use: 'Meta feed — largest mobile footprint', dims: '1080×1350' },
     { ratio: '1:1', label: 'Square', use: 'Feed', dims: '1080×1080' },
     { ratio: '9:16', label: 'Vertical', use: 'Stories', dims: '1080×1920' },
     { ratio: '16:9', label: 'Landscape', use: 'Desktop / in-stream', dims: '1920×1080' },
@@ -261,6 +280,7 @@ export const CREATIVE_SIZES: Record<string, CreativeSize[]> = {
     { ratio: '1:1', label: 'Square', use: 'Feed', dims: '1080×1080' },
   ],
   'Carousel Creatives': [
+    { ratio: '4:5', label: 'Tall feed', use: 'Feed carousel — largest mobile footprint', dims: '1080×1350' },
     { ratio: '1:1', label: 'Square', use: 'Feed carousel', dims: '1080×1080' },
     { ratio: '9:16', label: 'Vertical', use: 'Stories carousel', dims: '1080×1920' },
   ],
@@ -270,6 +290,7 @@ export const CREATIVE_SIZES: Record<string, CreativeSize[]> = {
     { ratio: '16:9', label: 'Landscape', use: 'In-stream / YouTube', dims: '1920×1080' },
   ],
   'Creative Variations': [
+    { ratio: '4:5', label: 'Tall feed', use: 'Meta feed — largest mobile footprint', dims: '1080×1350' },
     { ratio: '1:1', label: 'Square', use: 'Feed', dims: '1080×1080' },
     { ratio: '9:16', label: 'Vertical', use: 'Stories / Reels', dims: '1080×1920' },
     { ratio: '16:9', label: 'Landscape', use: 'Desktop / in-stream', dims: '1920×1080' },
@@ -277,13 +298,17 @@ export const CREATIVE_SIZES: Record<string, CreativeSize[]> = {
 }
 
 // The size pre-selected for a deliverable so the Formats step is never blank.
+// Stills default to 4:5 — the tall feed unit occupies the most vertical space
+// a static ad can hold in the Meta mobile feed, so it is the format to beat.
+// Carousels stay square: Meta crops every card to a single ratio and 1:1 is the
+// safest across placements.
 export const DEFAULT_SIZE: Record<string, CreativeRatio> = {
-  'Static Creative': '1:1',
+  'Static Creative': '4:5',
   'Video Creative': '9:16',
   'UGC Creative': '9:16',
   'Carousel Creatives': '1:1',
   'Montage / Scene Flow': '9:16',
-  'Creative Variations': '1:1',
+  'Creative Variations': '4:5',
 }
 
 /* ------------------------------- Slide 2 ---------------------------------- */

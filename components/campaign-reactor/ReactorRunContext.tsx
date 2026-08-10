@@ -1,7 +1,8 @@
 'use client'
 
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
-import { briefToPrompt, type ProductionBrief, type ReactorInputs, type NeuroScore } from '@/lib/reactor-inputs'
+import type { ProductionBrief, ReactorInputs, NeuroScore } from '@/lib/reactor-inputs'
+import { briefToPrompt, compileRenderPrompt } from '@/lib/render-prompt'
 import type { MetaAdPackage } from '@/lib/meta-ads'
 import type { Verdict, OutcomeAttributes } from '@/lib/outcomes'
 import {
@@ -52,13 +53,15 @@ export type CreativeState = {
   message?: string
   model?: string
   provider?: string
+  /** Why this render is not on the model that was asked for / what to check. */
+  note?: string
 }
 
 // A generated still plus which model/provider produced it (for the card chip).
 export type ImageMedia = { url: string; model?: string; provider?: string }
 
 /** Provider/model that produced the asset currently shown on a concept card. */
-export type MediaMeta = { model?: string; provider?: string }
+export type MediaMeta = { model?: string; provider?: string; note?: string }
 
 type RunPhase = 'idle' | 'firing' | 'done'
 
@@ -396,10 +399,15 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            prompt: briefToPrompt(
+            // The brief is compiled, not concatenated: the scene and the ad's
+            // literal copy are separated so the model is told exactly which
+            // characters to set (and told to set nothing else). See
+            // lib/render-prompt.ts — flattening them is what produced garbled
+            // headlines.
+            prompt: compileRenderPrompt(
               c.productionBrief,
-              `${c.text}\n\nRender as a premium Meta ad creative for The Professional Builder — photographic, on-site builder context, high contrast, leave room for text overlay.`,
-            ),
+              `${c.text}\n\nRender as a premium Meta ad creative for The Professional Builder — photographic, on-site builder context, high contrast, leave room for a text overlay.`,
+            ).prompt,
             aspectRatio: opts.aspectRatio ?? '1:1',
             model: opts.imageModel,
           }),
@@ -417,6 +425,7 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
           imageUrl?: string | null
           model?: string
           provider?: string
+          note?: string
           error?: string
           demo?: boolean
         }
@@ -440,6 +449,7 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
           const taskId = res.taskId
           const model = res.model
           const provider = res.provider
+          const note = res.note
           for (let i = 0; i < 80; i++) {
             await new Promise((rr) => setTimeout(rr, 3000))
             try {
@@ -451,7 +461,7 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
               if (poll.status === 'completed' && poll.imageUrl) {
                 setCreatives((p) => ({
                   ...p,
-                  [c.text]: { status: 'done', url: poll.imageUrl, model, provider },
+                  [c.text]: { status: 'done', url: poll.imageUrl, model, provider, note },
                 }))
                 return
               }
@@ -481,7 +491,13 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
         if (res.success && res.imageUrl) {
           setCreatives((p) => ({
             ...p,
-            [c.text]: { status: 'done', url: res.imageUrl!, model: res.model, provider: res.provider },
+            [c.text]: {
+              status: 'done',
+              url: res.imageUrl!,
+              model: res.model,
+              provider: res.provider,
+              note: res.note,
+            },
           }))
         } else {
           setCreatives((p) => ({
@@ -633,7 +649,8 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
         return { model: agent.model, provider: agent.provider }
       }
       const cr = creatives[c.text]
-      if (cr?.url && (cr.model || cr.provider)) return { model: cr.model, provider: cr.provider }
+      if (cr?.url && (cr.model || cr.provider))
+        return { model: cr.model, provider: cr.provider, note: cr.note }
       return undefined
     },
     [agentMedia, creatives],

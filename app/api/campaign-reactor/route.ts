@@ -397,7 +397,11 @@ function buildTools(
       input_schema: {
         type: 'object',
         properties: {
-          prompt: { type: 'string', description: 'A vivid, specific image prompt for the creative.' },
+          prompt: {
+            type: 'string',
+            description:
+              'A vivid, specific image prompt. Describe the SCENE in prose, then list the on-image copy under a line reading "ON-IMAGE TEXT — reproduce these strings EXACTLY as written:" with at most two quoted strings (headline + CTA button, ~95 chars total), and finish with "Render no other text anywhere in the image." More text than that, or copy left buried in the scene description, renders as gibberish.',
+          },
           conceptType: { type: 'string', description: 'The output type this image is for (must match the concept type you will submit).' },
           model: {
             type: 'string',
@@ -480,6 +484,20 @@ function buildTools(
                       required: ['label', 'description'],
                     },
                   },
+                  onImageText: {
+                    type: 'array',
+                    description:
+                      'The copy that must appear ON the image, declared separately from the frames so the renderer can set it exactly. AT MOST 2 entries: the headline and the CTA button label. Keep them SHORT — around 95 characters across both, or the image model degrades every letter. Never list fine print, compliance lines, disclaimers or logo text here: those are overlaid after the render, not generated.',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        role: { type: 'string', description: '"Headline" or "CTA button".' },
+                        text: { type: 'string', description: 'The exact words to set on the image.' },
+                        placement: { type: 'string', description: 'e.g. "top third, left aligned".' },
+                      },
+                      required: ['role', 'text'],
+                    },
+                  },
                 },
                 required: ['creativeType', 'frames'],
               },
@@ -511,6 +529,19 @@ function buildTools(
   return tools
 }
 
+/**
+ * How OPUS must declare the words that get BURNED INTO the image.
+ *
+ * Image models render text reliably only when there is little of it and it is
+ * stated literally. A brief that buries four quoted strings in prose — headline,
+ * subhead, CTA and a compliance strip — produces the failure we shipped:
+ * plausible-looking gibberish across the whole creative. The full compliant copy
+ * still ships in the concept's adPackage (caption, headline, description) and is
+ * overlaid in the Studio; only the headline and the button belong in the pixels.
+ */
+const ON_IMAGE_TEXT_RULE = `
+- ON-IMAGE COPY — the words burned into the creative: declare them in productionBrief.onImageText, never only inside the frame prose. AT MOST TWO entries: the headline and the CTA button label, roughly 95 characters across both. Image models mangle every letter once you ask for more, so a third line costs you the first two. NEVER ask the image for fine print, compliance lines, disclaimers, sub-paragraphs, logos or wordmarks — those are overlaid after the render and the platform strips them from the prompt. Write the frames as pure art direction (subject, setting, light, framing, where the type sits) and let onImageText carry the words.`
+
 function coordinatorPrompt(
   outputs: string[],
   caps: {
@@ -533,9 +564,9 @@ function coordinatorPrompt(
       ? ` The user has selected the "${caps.preferredImageModel}" image model — use it unless a concept clearly needs a different one.`
       : ''
   const imageLine = caps.image
-    ? `\n- For visual output types (Static Concept, Founder Concept, Campaign Concept): FIRST write a frame-by-frame production brief for the concept, THEN build the generate_image prompt FROM that brief. Available models: ${caps.imageModels.join(', ')}. Pass the concept type as conceptType, include the returned imageUrl, and attach the productionBrief to the submitted concept.${preferredImageLine}`
+    ? `\n- For visual output types (Static Concept, Founder Concept, Campaign Concept): FIRST write a frame-by-frame production brief for the concept, THEN build the generate_image prompt FROM that brief. Available models: ${caps.imageModels.join(', ')}. Pass the concept type as conceptType, include the returned imageUrl, and attach the productionBrief to the submitted concept.${preferredImageLine}${ON_IMAGE_TEXT_RULE}`
     : caps.imageRendersFromBrief
-      ? `\n- For visual output types (Static Concept, Founder Concept, Campaign Concept): the platform renders the still FROM the production brief the moment you submit, so the brief IS the creative — you have no image tool and do not need one. Write it as if directing a photographer: name the subject, the setting, the light, the framing, and what occupies the space reserved for text. A vague brief renders a vague ad. Attach it as productionBrief on every visual concept.`
+      ? `\n- For visual output types (Static Concept, Founder Concept, Campaign Concept): the platform renders the still FROM the production brief the moment you submit, so the brief IS the creative — you have no image tool and do not need one. Write it as if directing a photographer: name the subject, the setting, the light, the framing, and what occupies the space reserved for text. A vague brief renders a vague ad. Attach it as productionBrief on every visual concept.${ON_IMAGE_TEXT_RULE}`
       : ''
   const preferredLine =
     caps.preferredVideoModel && caps.videoModels.includes(caps.preferredVideoModel)
@@ -1684,7 +1715,11 @@ export async function POST(request: NextRequest) {
                 type: 'step',
                 text: `Rendering ${mode} via ${model ?? 'default model'}${conceptType ? ` · ${conceptType}` : ''}…`,
               })
-              const started = await startVideoJob(model, { mode, prompt, imageUrl, aspectRatio })
+              // 4:5 is a stills-only ratio (Meta's tall feed); no video model
+              // renders it, so a request for it falls back to the nearest
+              // vertical rather than being passed through and rejected.
+              const videoRatio = aspectRatio === '4:5' ? '9:16' : aspectRatio
+              const started = await startVideoJob(model, { mode, prompt, imageUrl, aspectRatio: videoRatio })
               if (!started) {
                 return {
                   type: 'tool_result',

@@ -38,8 +38,9 @@ export function recommendImageModel(
     ? [
         { id: 'muapi-gpt-image-2', reason: "OpenAI's latest — the sharpest in-image text for headline/offer creatives" },
         { id: 'muapi-nano-banana-pro', reason: 'best-in-class prompt adherence and in-image text via Muapi' },
+        { id: 'muapi-imagen4-ultra', reason: 'Imagen 4 Ultra renders headline type accurately' },
         { id: 'muapi-nano-banana-2', reason: 'latest-generation Gemini image model with legible on-ad copy' },
-        { id: 'muapi-flux-kontext-max', reason: 'precise typography control via Muapi' },
+        { id: 'muapi-seedream', reason: 'Seedream 5.0 Pro pairs cinematic realism with precise typography' },
         { id: 'kie-nano-banana-pro', reason: 'best-in-class prompt adherence and in-image text via Kie' },
         { id: 'kie-gpt-image', reason: 'clean in-image text for headline/offer creatives via Kie' },
         { id: 'fal-flux', reason: 'photoreal stills with strong prompt adherence via one fal key' },
@@ -48,7 +49,8 @@ export function recommendImageModel(
     : wantsPhoto
       ? [
           { id: 'muapi-nano-banana-pro', reason: 'top-tier photoreal detail via Muapi' },
-          { id: 'muapi-seedream', reason: 'cinematic photoreal founder/testimonial stills via Muapi' },
+          { id: 'muapi-seedream', reason: 'Seedream 5.0 Pro — cinematic photoreal founder/testimonial stills' },
+          { id: 'muapi-imagen4-ultra', reason: 'Imagen 4 Ultra photorealism and texture' },
           { id: 'muapi-nano-banana-2', reason: 'latest-generation photoreal scene coherence via Muapi' },
           { id: 'kie-seedream-v4', reason: 'cinematic photoreal founder/testimonial stills via Kie' },
           { id: 'kie-nano-banana-pro', reason: 'top-tier photoreal detail via Kie' },
@@ -57,9 +59,10 @@ export function recommendImageModel(
         ]
       : [
           { id: 'muapi-nano-banana-pro', reason: 'strongest all-round ad still via one Muapi key' },
-          { id: 'muapi-nano-banana-2', reason: 'latest-generation Gemini image model via Muapi' },
           { id: 'muapi-gpt-image-2', reason: "OpenAI's latest image model via Muapi" },
-          { id: 'muapi-seedream', reason: 'cinematic realism via Muapi' },
+          { id: 'muapi-imagen4-ultra', reason: "Google's flagship Imagen 4 Ultra via Muapi" },
+          { id: 'muapi-nano-banana-2', reason: 'latest-generation Gemini image model via Muapi' },
+          { id: 'muapi-seedream', reason: 'Seedream 5.0 Pro cinematic realism via Muapi' },
           { id: 'kie-nano-banana-pro', reason: 'strongest all-round ad still via Kie' },
           { id: 'kie-seedream-v4', reason: 'cinematic realism via Kie' },
           { id: 'fal-flux', reason: 'photoreal variants in-house via one fal key' },

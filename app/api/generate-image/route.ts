@@ -48,13 +48,20 @@ export async function POST(request: NextRequest) {
           taskId: job.taskId,
           model: job.modelId,
           provider: job.provider,
+          requestedModel: job.requestedModelId,
+          fellBack: job.fellBack,
+          note: job.note,
         })
       }
       // Start failed (e.g. Kie rejected) — fall through to the synchronous
       // oven, which will try any other configured provider before giving up.
     }
 
-    const { image, error } = await generateImageDetailed(model, prompt, aspectRatio ?? '1:1')
+    const { image, error, requestedModelId, fellBack, note } = await generateImageDetailed(
+      model,
+      prompt,
+      aspectRatio ?? '1:1',
+    )
     if (!image) {
       return NextResponse.json({
         success: false,
@@ -70,6 +77,11 @@ export async function POST(request: NextRequest) {
       imageUrl: image.imageUrl,
       model: image.modelId,
       provider: image.provider,
+      // Which model was MEANT to render this, and why it didn't. A downgrade to
+      // a model that can't set legible copy has to be visible, not silent.
+      requestedModel: requestedModelId,
+      fellBack,
+      note,
     })
   } catch (error) {
     console.error('Image generation error:', error)

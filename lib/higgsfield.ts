@@ -16,7 +16,9 @@ const IMAGE_ENDPOINT = process.env.HIGGSFIELD_IMAGE_ENDPOINT || '/v1/text2image/
 const VIDEO_ENDPOINT = process.env.HIGGSFIELD_VIDEO_ENDPOINT || '/v1/image2video/dop'
 const VIDEO_MODEL = process.env.HIGGSFIELD_VIDEO_MODEL || 'dop-turbo'
 
-export type AspectRatio = '1:1' | '9:16' | '16:9' | '4:3' | '3:4'
+// Mirrors lib/image/types — 4:5 is Meta's tall feed still (video renders never
+// request it, so nothing downstream of startVideo sees it).
+export type AspectRatio = '1:1' | '9:16' | '16:9' | '4:3' | '3:4' | '4:5'
 export type VideoStatus = 'queued' | 'in_progress' | 'completed' | 'failed' | 'nsfw' | 'unknown'
 
 const ASPECT_DIMENSIONS: Record<AspectRatio, string> = {
@@ -25,6 +27,7 @@ const ASPECT_DIMENSIONS: Record<AspectRatio, string> = {
   '16:9': '1920x1080',
   '4:3': '1440x1080',
   '3:4': '1080x1440',
+  '4:5': '1080x1350',
 }
 
 /** Resolve credentials from any of the supported env shapes. */

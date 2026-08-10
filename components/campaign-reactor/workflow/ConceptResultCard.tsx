@@ -273,6 +273,14 @@ export function ConceptResultCard({
           <img src={image} alt={c.type} className="w-full rounded-lg border border-border" />
         </div>
       )}
+      {/* A render that did not run on the model it was meant to — or ran on one
+          that cannot set legible copy — says so. A silent downgrade is exactly
+          how an ad ships with a misspelled headline. */}
+      {image && imageMeta?.note && (
+        <p className="mt-2 rounded-lg border border-warning/30 bg-warning/[0.06] p-2 text-[11px] text-warning">
+          {imageMeta.note}
+        </p>
+      )}
       {video?.status === 'done' && video.url && (
         <div className="relative mt-2">
           <ProviderChip model={video.model} provider={video.provider} />

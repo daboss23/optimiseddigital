@@ -65,6 +65,7 @@ export const montageMotionKey = (deliverable: string) => `${deliverable}${MONTAG
 export const MONTAGE_RATIO_LABELS: Record<string, CreativeSize> = {
   '9:16': { ratio: '9:16', label: 'Vertical', use: 'Reels / TikTok', dims: '1080×1920' },
   '1:1': { ratio: '1:1', label: 'Square', use: 'Feed', dims: '1080×1080' },
+  '4:5': { ratio: '4:5', label: 'Tall feed', use: 'Meta feed — largest mobile footprint', dims: '1080×1350' },
   '16:9': { ratio: '16:9', label: 'Landscape', use: 'In-stream / YouTube', dims: '1920×1080' },
   '4:3': { ratio: '1:1', label: 'Classic', use: 'Feed', dims: '1440×1080' },
   '3:4': { ratio: '9:16', label: 'Portrait', use: 'Feed / Stories', dims: '1080×1440' },

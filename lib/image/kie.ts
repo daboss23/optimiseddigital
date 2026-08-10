@@ -54,6 +54,7 @@ const NAMED_SIZE: Record<string, string> = {
   '16:9': 'landscape_16_9',
   '4:3': 'landscape_4_3',
   '3:4': 'portrait_4_3',
+  '4:5': 'portrait_4_3',
 }
 
 const KIE_SIZE_VOCAB: Record<string, SizeVocab> = {

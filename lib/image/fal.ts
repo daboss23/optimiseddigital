@@ -31,6 +31,9 @@ const FAL_SIZE: Record<AspectRatio, string> = {
   '16:9': 'landscape_16_9',
   '4:3': 'landscape_4_3',
   '3:4': 'portrait_4_3',
+  // fal has no 4:5 named size; the registry does not offer 4:5 on fal models,
+  // so this is only reached if a fallback lands here — nearest portrait wins.
+  '4:5': 'portrait_4_3',
 }
 
 export interface FalImageResult {

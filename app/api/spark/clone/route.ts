@@ -79,6 +79,19 @@ function referenceSlots(visual: VisualDNA): string {
  * loop. Used when no Anthropic key is configured — the clone still renders,
  * it just carries generic copy the strategist replaces.
  */
+/**
+ * The literal-text guard: names the exact strings the render must set and bans
+ * everything else. Image models only spell correctly when the copy is quoted,
+ * short, and explicitly marked as characters to reproduce.
+ */
+const RENDER_TEXT_GUARD = (copy: CloneCopy): string =>
+  [
+    'ON-IMAGE TEXT — reproduce these strings exactly, character for character:',
+    `1. Headline — "${copy.headline}"`,
+    `2. CTA button — "${copy.cta}"`,
+    'Sharp, correctly-kerned, correctly-spelled type, legible at thumbnail size. Render no other text anywhere in the image: no fine print, no captions, no logos, no watermarks, no invented or garbled lettering.',
+  ].join('\n')
+
 function deterministicPrompt(visual: VisualDNA, goal: string, copy: CloneCopy): string {
   const palette = visual.palette.map((c) => `${c.hex} (${c.role})`).join(', ')
   const placements = visual.elements
@@ -182,7 +195,12 @@ Reply with ONLY a JSON object, no prose, no markdown fences:
 
     return {
       copy,
-      prompt: parsed?.imagePrompt?.trim() || deterministicPrompt(visual, goal, copy),
+      // Whatever the writer returns still gets the literal-text guard appended —
+      // a model-authored prompt that merely mentions the copy renders it as
+      // gibberish. `deterministicPrompt` already carries the guard.
+      prompt: parsed?.imagePrompt?.trim()
+        ? `${parsed.imagePrompt.trim()}\n\n${RENDER_TEXT_GUARD(copy)}`
+        : deterministicPrompt(visual, goal, copy),
       rationale: parsed?.rationale?.trim() || '',
     }
   } catch (err) {

@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "selftest": "tsx scripts/reactor-selftest.ts",
+    "selftest:render": "tsx scripts/render-prompt-selftest.ts",
+    "muapi:slugs": "tsx scripts/muapi-slugs.ts",
     "verify": "./scripts/verify-reactor.sh"
   },
   "dependencies": {
