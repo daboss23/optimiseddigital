@@ -74,6 +74,12 @@ const ZONE_ORDER: { zone: LayoutZone; label: string }[] = [
 
 const MAX_IMAGES = 4
 /**
+ * How many already-banked ads stay visible as a session shelf. It is a memory
+ * aid — "these are already in" — not storage: the design itself lives in the
+ * Vault as a retrievable chunk, so the source image has no job left to do.
+ */
+const BANKED_STRIP_MAX = 12
+/**
  * Claude downsamples anything larger than ~1568px on the long edge, so this is
  * the most detail that survives the trip. It matters most for a contact sheet:
  * every pixel spent here is a pixel of headline legibility in a 10-ad grid.
@@ -170,6 +176,10 @@ export function AdIngest({ variant = 'studio' }: AdIngestProps) {
   const [cloning, setCloning] = useState(false)
   const [clone, setClone] = useState<CloneResult | null>(null)
   const [cloneError, setCloneError] = useState<string | null>(null)
+  // Ads whose DNA is already in the Vault this session. They leave the tray the
+  // moment they are banked — the tray is a queue of what is ABOUT to be read, so
+  // anything still sitting in it would be read again on the next ingest.
+  const [banked, setBanked] = useState<Upload[]>([])
   const fileInput = useRef<HTMLInputElement>(null)
 
   const current = ads[active] ?? null
@@ -227,6 +237,7 @@ export function AdIngest({ variant = 'studio' }: AdIngestProps) {
   const analyze = async () => {
     setBusy(true)
     resetResults()
+    const submitted = uploads
     try {
       const res = await fetch('/api/spark/analyze', {
         method: 'POST',
@@ -246,6 +257,17 @@ export function AdIngest({ variant = 'studio' }: AdIngestProps) {
         setStored(Boolean(res.stored))
         setLive(res.live !== false)
         setReason(typeof res.reason === 'string' ? res.reason : null)
+
+        // A real read empties the queue: the DNA is banked, so the source images
+        // have done their job and must not ride along into the next ingest. A
+        // sample read banked nothing — leave those images in place to retry.
+        if (vault && res.live !== false && submitted.length) {
+          const ids = new Set(submitted.map((u) => u.id))
+          setUploads((prev) => prev.filter((u) => !ids.has(u.id)))
+          setBanked((prev) => [...submitted, ...prev].slice(0, BANKED_STRIP_MAX))
+          setUrl('')
+          setText('')
+        }
       } else {
         setError(res.error || 'Analysis failed')
       }
@@ -414,6 +436,12 @@ export function AdIngest({ variant = 'studio' }: AdIngestProps) {
           </div>
 
           {uploads.length > 0 && (
+            <>
+              {vault && (
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">
+                  Queued to ingest · {uploads.length}
+                </p>
+              )}
             <div className="grid grid-cols-4 gap-2">
               {uploads.map((u) => (
                 <div key={u.id} className="group relative overflow-hidden rounded-lg border border-white/10">
@@ -429,6 +457,47 @@ export function AdIngest({ variant = 'studio' }: AdIngestProps) {
                   </button>
                 </div>
               ))}
+            </div>
+            </>
+          )}
+
+          {/* Already in the Vault. Shown so you can see at a glance what has been
+              banked this session and keep dropping the next one — never re-read,
+              because it is no longer in the queue. */}
+          {vault && banked.length > 0 && (
+            <div className="rounded-xl border border-success/20 bg-success/[0.03] p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-success/80">
+                  <Check size={12} /> Banked this session · {banked.length}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setBanked([])}
+                  className="min-h-[32px] text-[11px] font-medium text-white/40 transition-colors hover:text-white/75"
+                >
+                  Clear shelf
+                </button>
+              </div>
+              <div className="grid grid-cols-6 gap-2">
+                {banked.map((u) => (
+                  <div
+                    key={u.id}
+                    className="relative overflow-hidden rounded-lg border border-success/25"
+                    title={`${u.name} — design DNA is in the Vault`}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={u.dataUrl} alt={u.name} className="aspect-square w-full object-cover opacity-45" />
+                    <span className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-success/90 text-black">
+                      <Check size={11} />
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 text-[11px] leading-relaxed text-white/40">
+                The design intelligence — palette, layout, placement, on-ad copy — is stored and
+                retrievable. These thumbnails are a session reminder only; clearing them changes
+                nothing in the Vault.
+              </p>
             </div>
           )}
 
