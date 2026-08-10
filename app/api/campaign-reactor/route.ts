@@ -89,6 +89,13 @@ const NEURO_MODEL = INTELLIGENCE_MODEL
 const MAX_NEURO_REVISIONS = 1
 const MAX_TURNS = 12
 
+/**
+ * How many empty `submit_concepts` calls are handed back before the run stops.
+ * One is a truncated turn worth retrying; two is a model that cannot fit the
+ * submission, and burning the remaining turns on it only delays the report.
+ */
+const MAX_EMPTY_SUBMISSIONS = 1
+
 /* ------------------------------ Run budget -------------------------------- */
 
 /**
@@ -1558,6 +1565,10 @@ export async function POST(request: NextRequest) {
         // reach submit_concepts inside the budget.
         let opusModel: string = FAST_PATH ? OPUS_FALLBACK_MODEL : OPUS_MODEL
         let fallbackAnnounced = false
+        // Submissions that arrived with nothing in them. Bounded so a model
+        // stuck in a truncation loop ends the run with a real error rather than
+        // burning every turn.
+        let emptySubmissions = 0
 
         // The briefing already spent the clock — there is room for exactly one
         // turn, so ask for the submission on it rather than letting OPUS open
@@ -1609,7 +1620,14 @@ export async function POST(request: NextRequest) {
           const betas: string[] = []
           const params: Anthropic.Beta.Messages.MessageCreateParamsNonStreaming = {
             model: opusModel,
-            max_tokens: 4000,
+            // A submit_concepts call carries several full concepts — each with a
+            // production brief, a rubric basis and a complete Meta adPackage.
+            // At 4000 the model ran out of room mid-array, the tool_use block
+            // came back truncated, and its `concepts` parsed as EMPTY: the run
+            // then validated "0 package(s)", pre-tested nothing, and shipped a
+            // successful-looking run with no ads. Room to finish the array is
+            // cheaper than a run that produces nothing.
+            max_tokens: 16_000,
             system: [{ type: 'text', text: systemPrompt, cache_control: EPHEMERAL }],
             tools,
             messages: withConversationCache(messages),
@@ -1691,6 +1709,18 @@ export async function POST(request: NextRequest) {
 
           // Server-side tool loop paused — re-send to let it resume.
           if (response.stop_reason === 'pause_turn') continue
+
+          // The turn hit the token ceiling. Any tool call in it is incomplete,
+          // so this is reported rather than left to look like a normal turn —
+          // a truncated submit_concepts is the failure mode that produced runs
+          // with full intelligence and no ads.
+          const truncated = response.stop_reason === 'max_tokens'
+          if (truncated) {
+            sse(controller, {
+              type: 'step',
+              text: 'OPUS hit the token ceiling mid-write — the turn was cut off before it finished.',
+            })
+          }
 
           const toolUses = response.content.filter(
             (b): b is Anthropic.Beta.Messages.BetaToolUseBlock => b.type === 'tool_use',
@@ -1846,6 +1876,43 @@ export async function POST(request: NextRequest) {
             }
             if (tu.name === 'submit_concepts') {
               const concepts = (tu.input as { concepts?: Concept[] }).concepts ?? []
+
+              // An empty submission is a FAILED submission, never a finished
+              // run. It happens when the turn is cut off mid-array (see the
+              // max_tokens note above) — the tool call arrives with nothing in
+              // it. Shipping that closed the stream on a "complete" run with
+              // zero ads, which is indistinguishable to the operator from the
+              // platform silently not working. Hand it back and ask again.
+              if (concepts.length === 0) {
+                emptySubmissions += 1
+                if (emptySubmissions > MAX_EMPTY_SUBMISSIONS) {
+                  sse(controller, {
+                    type: 'error',
+                    message:
+                      'OPUS submitted an empty set of concepts twice — the run is stopping rather than reporting success with no ads. The intelligence above is real; fire again, and if it repeats, reduce the number of formats or variations so each submission fits in one turn.',
+                  })
+                  sse(controller, { type: 'done' })
+                  controller.close()
+                  return
+                }
+                sse(controller, {
+                  type: 'step',
+                  text: `Submission arrived empty${
+                    truncated ? ' (the turn was cut off mid-write)' : ''
+                  } — asking OPUS to resubmit.`,
+                })
+                results.push({
+                  type: 'tool_result',
+                  tool_use_id: tu.id,
+                  is_error: true,
+                  content: `submit_concepts was called with an EMPTY concepts array, so nothing shipped.${
+                    truncated
+                      ? ' Your previous turn was cut off before the array finished — write FEWER concepts per call and keep each one tighter so the whole call fits in one turn.'
+                      : ''
+                  } Call submit_concepts again with at least one complete concept covering the requested output types.`,
+                })
+                continue
+              }
 
               // Meta ad-unit compliance gate — Meta's placement limits + TPB's
               // hard compliance phrases, enforced in code before anything ships.
