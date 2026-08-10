@@ -1,7 +1,6 @@
 import { Database } from 'lucide-react'
 import { PageHeader, Panel, PanelHeader, Pill } from '@/components/reactor/ui'
 import { vaultStats } from '@/lib/knowledge'
-import { VaultDoor } from '@/components/reactor/VaultDoor'
 import { UploadGrid } from './UploadGrid'
 import { VaultManager } from './VaultManager'
 
@@ -11,7 +10,7 @@ export default async function KnowledgeVaultPage() {
   const stats = await vaultStats()
 
   return (
-    <VaultDoor>
+    <>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <PageHeader
           system="01"
@@ -38,6 +37,6 @@ export default async function KnowledgeVaultPage() {
       <VaultManager
         initialStats={{ live: stats.live, total: stats.total, groups: stats.groups }}
       />
-    </VaultDoor>
+    </>
   )
 }
