@@ -12,8 +12,10 @@ import {
   ImageIcon,
   Loader2,
   MessageCircle,
+  Monitor,
   Rocket,
   Share2,
+  Smartphone,
   Sparkles,
   ThumbsUp,
 } from 'lucide-react'
@@ -43,6 +45,26 @@ import {
 /* -------------------------------------------------------------------------- */
 /*  Helpers                                                                   */
 /* -------------------------------------------------------------------------- */
+
+/**
+ * Which surface the preview is imitating. The same ad is a different ad on the
+ * two: the feed column is narrower on a phone, and the "See more" fold cuts the
+ * body far earlier — the whole reason the hook has to land inside 125 chars.
+ */
+export type Device = 'mobile' | 'desktop'
+
+/**
+ * Where the desktop feed truncates the primary text. Meta shows substantially
+ * more before "See more" on a wide column than on a phone; the mobile figure is
+ * PRIMARY_TEXT_FOLD, which is the one the copy is written against.
+ */
+const DESKTOP_TEXT_FOLD = 500
+
+/** Feed column width per device, matching Meta's real rendering widths. */
+const DEVICE_WIDTH: Record<Device, string> = {
+  mobile: 'max-w-[380px]',
+  desktop: 'max-w-[500px]',
+}
 
 /** Split a Meta primary text into its hook (first line/sentence) + body. */
 function splitPrimary(primary: string): { hook: string; body: string } {
@@ -202,6 +224,7 @@ function FacebookAdPreview({
   imageUrl,
   videoUrl,
   rendering,
+  device,
 }: {
   primaryText: string
   headline: string
@@ -210,9 +233,20 @@ function FacebookAdPreview({
   imageUrl?: string
   videoUrl?: string
   rendering: boolean
+  device: Device
 }) {
-  const above = primaryText.slice(0, PRIMARY_TEXT_FOLD)
-  const below = primaryText.slice(PRIMARY_TEXT_FOLD)
+  // The fold is REAL here, not annotated. Everything past it is hidden until
+  // "See more" is clicked, because that is the decision the scroller actually
+  // makes — showing the rest greyed out let a hook that dies at char 130 still
+  // look fine in the preview. Desktop truncates far later than mobile.
+  const fold = device === 'mobile' ? PRIMARY_TEXT_FOLD : DESKTOP_TEXT_FOLD
+  const [expanded, setExpanded] = useState(false)
+  // Switching device changes where the cut falls — re-collapse so the new
+  // fold is what you see.
+  useEffect(() => setExpanded(false), [device, primaryText])
+
+  const above = primaryText.slice(0, fold)
+  const below = primaryText.slice(fold)
 
   return (
     <div className="overflow-hidden rounded-xl border border-white/10 bg-white shadow-[0_18px_44px_-22px_rgba(0,0,0,0.9)]">
@@ -231,19 +265,18 @@ function FacebookAdPreview({
         </span>
       </div>
 
-      {/* Primary text with the mobile "See more" fold made visible */}
+      {/* Primary text, cut at the fold exactly as Meta cuts it */}
       <p className="whitespace-pre-line px-3.5 pb-2.5 text-[14px] leading-snug text-[#050505]">
-        {above}
-        {below && (
-          <>
-            <span
-              className="mx-1 align-middle text-[13px] font-semibold text-[#65676B]"
-              title={`Meta shows the first ${PRIMARY_TEXT_FOLD} characters before the "See more" fold on mobile`}
-            >
-              …See more
-            </span>
-            <span className="text-[#8A8D91]">{below}</span>
-          </>
+        {expanded ? primaryText : above}
+        {below && !expanded && (
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            title={`Meta shows the first ${fold} characters on ${device} before the "See more" fold`}
+            className="ml-1 align-baseline text-[14px] font-semibold text-[#65676B] hover:underline"
+          >
+            … See more
+          </button>
         )}
       </p>
 
@@ -331,6 +364,9 @@ export function AdStudio({
   // still-rendering creative pops in the moment it finishes.
   const [creativeConcept, setCreativeConcept] = useState<Concept | null>(null)
   const [copied, setCopied] = useState(false)
+  // Which surface the preview imitates. Mobile first: it is where the fold is
+  // tightest and where most of the spend lands.
+  const [device, setDevice] = useState<Device>('mobile')
 
   // Seed the editor from the concept sent via "Configure in Studio" (or the
   // best-scoring packaged concept when arriving without one). Re-seeds only
@@ -353,10 +389,29 @@ export function AdStudio({
       const c = (pkg.cta ?? '').toUpperCase() as MetaCta
       setCta(META_CTA_OPTIONS.includes(c) ? c : 'LEARN_MORE')
     }
-    setCreativeConcept(isVisual(source) ? source : (visualConcepts[0] ?? null))
+    // The creative you arrived from is the creative you edit. When the source
+    // is a visual concept, that render IS the ad — no picking required. Falling
+    // back, prefer a concept whose creative has actually landed over the first
+    // visual one: an unrendered pick shows "Pick a creative from the run below"
+    // on a Studio that had a finished ad available all along.
+    setCreativeConcept(
+      isVisual(source)
+        ? source
+        : (visualConcepts.find((c) => imageFor(c) || videoFor(c)) ?? visualConcepts[0] ?? null),
+    )
     // visualConcepts derives from concepts — concepts is the real dependency.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seed, concepts])
+
+  // The seed arrives before its render finishes on a fresh run, so a Studio
+  // opened early would sit empty even though a sibling concept had a finished
+  // creative. Once any render lands, adopt it — but never overwrite a creative
+  // the user is already looking at or picked by hand.
+  useEffect(() => {
+    if (creativeConcept) return
+    const ready = visualConcepts.find((c) => imageFor(c) || videoFor(c))
+    if (ready) setCreativeConcept(ready)
+  }, [creativeConcept, visualConcepts, imageFor, videoFor])
 
   /* ------------------------- Live creative resolution ---------------------- */
   const video = creativeConcept ? videoFor(creativeConcept) : undefined
@@ -668,11 +723,36 @@ export function AdStudio({
 
         {/* ----------------------------- Preview ------------------------------ */}
         <section className="p-5">
-          <p className="mb-3 flex items-center gap-1.5 text-[12px] text-white/45">
-            <Atom size={13} className="text-glow" />
-            Live preview — exactly how the ad reads in the Meta feed.
-          </p>
-          <div className="mx-auto max-w-[420px] space-y-3">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <p className="flex items-center gap-1.5 text-[12px] text-white/45">
+              <Atom size={13} className="text-glow" />
+              Live preview — exactly how the ad reads in the Meta feed.
+            </p>
+            {/* The fold lands in a different place on each surface, so the
+                device is part of the preview, not a cosmetic choice. */}
+            <div className="flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] p-1">
+              {([
+                { id: 'mobile' as const, label: 'Mobile', icon: Smartphone },
+                { id: 'desktop' as const, label: 'Desktop', icon: Monitor },
+              ]).map(({ id, label, icon: Icon }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setDevice(id)}
+                  aria-pressed={device === id}
+                  className={cn(
+                    'inline-flex min-h-[32px] items-center gap-1.5 rounded-full px-3 text-[11px] font-semibold transition-colors',
+                    device === id
+                      ? 'bg-primary/15 text-glow'
+                      : 'text-white/45 hover:text-white/80',
+                  )}
+                >
+                  <Icon size={12} /> {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className={cn('mx-auto space-y-3 transition-[max-width]', DEVICE_WIDTH[device])}>
             <FacebookAdPreview
               primaryText={primaryText}
               headline={headline.trim()}
@@ -681,6 +761,7 @@ export function AdStudio({
               imageUrl={image}
               videoUrl={videoUrl}
               rendering={Boolean(rendering)}
+              device={device}
             />
 
             {/* Pre-test before spend, then push the finished creative to Meta */}
