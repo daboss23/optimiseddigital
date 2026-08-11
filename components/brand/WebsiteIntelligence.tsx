@@ -710,6 +710,21 @@ export function WebsiteIntelligencePanel({
     ? new Date(website.lastScanned).toLocaleString()
     : 'Not yet recorded'
 
+  // A site whose pages indexed but whose profiles are blank reads as a healthy
+  // connection with nothing to say — the two states are indistinguishable in
+  // the fields themselves, and only one of them is worth re-running. Cover all
+  // three causes, including a scan banked before extraction health was
+  // recorded (no flags, no profiles: still worth a retry).
+  const failed = website.extractionFailed ?? []
+  const nothingDerived = website.metrics.profilesCreated === 0 && website.pages.length > 0
+  const extractionNotice = website.extractionSkipped
+    ? 'Pages were indexed, but no ANTHROPIC_API_KEY was configured for the scan, so no intelligence was derived. Set the key, then retry.'
+    : failed.length >= 5 || (nothingDerived && failed.length === 0)
+      ? 'Pages were indexed, but no intelligence profiles came out of them. The fields below are blank because extraction produced nothing — not because the site says nothing. Retry to rebuild them.'
+      : failed.length > 0
+        ? `${failed.join(' and ')} intelligence could not be derived. Those fields are blank because extraction failed, not because the site says nothing.`
+        : null
+
   return (
     <Panel className="scroll-mt-6" >
       <div id={PANEL_ID} />
@@ -767,13 +782,18 @@ export function WebsiteIntelligencePanel({
         {/* An extraction that failed reads identically to a site that states
             nothing — every field shows "Not confidently identified". Only this
             tells the two apart, and only one of them is worth a re-run. */}
-        {website.extractionFailed && website.extractionFailed.length > 0 && (
+        {extractionNotice && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning/30 bg-warning/[0.06] px-3 py-2">
             <span className="flex items-start gap-2 text-[12px] leading-relaxed text-warning">
               <AlertCircle size={13} className="mt-0.5 shrink-0" />
-              {website.extractionFailed.length >= 5
-                ? 'Pages were indexed, but no intelligence profiles could be derived from them. The fields below are blank because extraction failed — not because the site says nothing.'
-                : `${website.extractionFailed.join(' and ')} intelligence could not be derived. Those fields are blank because extraction failed, not because the site says nothing.`}
+              <span>
+                {extractionNotice}
+                {website.extractionError && (
+                  <span className="mt-1 block text-[11px] text-warning/70">
+                    Reason: {website.extractionError}
+                  </span>
+                )}
+              </span>
             </span>
             <button
               type="button"

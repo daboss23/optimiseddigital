@@ -14,7 +14,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { ingestKnowledge } from '@/lib/knowledge'
 import { getSupabaseAdmin, supabaseUrl } from '@/lib/supabase'
 import { parseModelJson } from '@/lib/parse'
-import { INTELLIGENCE_MODEL } from '@/lib/models'
+import { INTELLIGENCE_MODEL, ORCHESTRATOR_FALLBACK_MODEL } from '@/lib/models'
 
 // ATLAS synthesises profiles with the bulk model (single-shot, cost-aware).
 const MODEL = INTELLIGENCE_MODEL
@@ -180,6 +180,20 @@ export interface WebsiteSummary {
    * distinguishes them, and only one of the two is worth re-running.
    */
   extractionFailed?: string[]
+  /**
+   * True when no ANTHROPIC_API_KEY was configured for the scan, so no profile
+   * was ever attempted. Pages still index; intelligence does not exist.
+   */
+  extractionSkipped?: boolean
+  /**
+   * Profiles that came back empty on this scan and were carried over from the
+   * previous scan of the same domain rather than overwritten with blanks,
+   * e.g. ["Offer", "Proof"]. A failed extraction must never delete
+   * intelligence that was already banked.
+   */
+  preservedProfiles?: string[]
+  /** One-line cause of a failed extraction, e.g. a rejected API key. */
+  extractionError?: string
 }
 
 /** Streamed analysis events surfaced to the Website Intelligence UI. */
@@ -997,6 +1011,23 @@ export interface ProfileExtraction {
   failed: string[]
   /** True when no model key is configured, so nothing was extracted at all. */
   skipped: boolean
+  /**
+   * The first extraction error, condensed for the builder. "Retry" and "your
+   * API key is rejected" are different instructions, and a blank panel gave
+   * no way to tell which one applied.
+   */
+  failureReason?: string
+}
+
+/** Condense a model/API error into one line a builder can act on. */
+function describeError(err: unknown): string {
+  const status = (err as { status?: number })?.status
+  const message = err instanceof Error ? err.message : String(err)
+  if (status === 401 || status === 403) return 'ANTHROPIC_API_KEY was rejected (401/403) — check the key.'
+  if (status === 429) return 'Rate limited by the model API (429) — retry shortly.'
+  if (status === 400) return `Model rejected the request (400): ${message.slice(0, 160)}`
+  if (status && status >= 500) return `Model API unavailable (${status}) — retry shortly.`
+  return message.slice(0, 200)
 }
 
 async function extractProfile(
@@ -1004,10 +1035,11 @@ async function extractProfile(
   spec: (typeof PROFILE_SPECS)[number],
   corpus: string,
   domain: string,
+  model: string = MODEL,
 ): Promise<Record<string, unknown> | null> {
   const response = await withRetry(() =>
     anthropic.messages.create({
-      model: MODEL,
+      model,
       // Generous headroom: one profile is ~10 fields, so this is far above what
       // even a very rich site produces. Truncation was the original failure.
       max_tokens: 4000,
@@ -1058,20 +1090,35 @@ async function deriveProfiles(
       try {
         return { key: spec.key, label: spec.label, raw: await extractProfile(anthropic, spec, corpus, domain) }
       } catch (err) {
-        console.error(`ATLAS ${spec.label} profile extraction failed:`, err)
-        return { key: spec.key, label: spec.label, raw: null }
+        console.error(`ATLAS ${spec.label} profile extraction failed on ${MODEL}:`, err)
+        // One more attempt on a different model before writing the profile off.
+        // A model-specific outage or an unparseable reply from one tier is not
+        // a reason to lose a whole profile — losing all five is how a refresh
+        // turned a fully extracted brand into blanks.
+        try {
+          const raw = await extractProfile(anthropic, spec, corpus, domain, ORCHESTRATOR_FALLBACK_MODEL)
+          console.warn(`ATLAS ${spec.label} profile recovered on ${ORCHESTRATOR_FALLBACK_MODEL}.`)
+          return { key: spec.key, label: spec.label, raw }
+        } catch (fallbackErr) {
+          console.error(`ATLAS ${spec.label} profile extraction failed on fallback:`, fallbackErr)
+          return { key: spec.key, label: spec.label, raw: null, error: describeError(fallbackErr) }
+        }
       }
     }),
   )
 
   const merged: Record<string, unknown> = {}
   const failed: string[] = []
+  let failureReason: string | undefined
   for (const r of results) {
     if (r.raw) merged[r.key] = r.raw
-    else failed.push(r.label)
+    else {
+      failed.push(r.label)
+      failureReason ??= (r as { error?: string }).error
+    }
   }
 
-  return { profiles: mergeProfiles(base, merged, sourceUrls), failed, skipped: false }
+  return { profiles: mergeProfiles(base, merged, sourceUrls), failed, skipped: false, failureReason }
 }
 
 /* ------------------------------- Persistence ------------------------------ */
@@ -1133,6 +1180,18 @@ function emptyMetrics(): WebsiteMetrics {
   }
 }
 
+/**
+ * How many real facts a profile carries. `sourceUrls` is bookkeeping and the
+ * brand profile's `companyName` is derived from the page title before any model
+ * runs — neither is evidence the extraction produced anything, so neither
+ * counts. This is the test for "did this profile actually get extracted".
+ */
+function profileFacts(p: Record<string, unknown>): number {
+  return Object.entries(p)
+    .filter(([k]) => k !== 'sourceUrls' && k !== 'companyName')
+    .reduce((s, [, v]) => s + (Array.isArray(v) ? v.length : v && v !== UNKNOWN ? 1 : 0), 0)
+}
+
 function countSignals(profiles: WebsiteProfiles): WebsiteMetrics {
   const arr = (p: Record<string, unknown>) =>
     Object.entries(p)
@@ -1165,7 +1224,7 @@ function countSignals(profiles: WebsiteProfiles): WebsiteMetrics {
   // flat 5 claimed a full set even when every extraction came back empty.
   const profilesCreated = (
     ['brand', 'audience', 'offer', 'messaging', 'proof'] as (keyof WebsiteProfiles)[]
-  ).filter((k) => arr(profiles[k] as unknown as Record<string, unknown>) > 0).length
+  ).filter((k) => profileFacts(profiles[k] as unknown as Record<string, unknown>) > 0).length
 
   return {
     ...emptyMetrics(),
@@ -1231,9 +1290,42 @@ export async function analyzeWebsite(
   emit({ type: 'progress', message: 'Detecting testimonials and proof…' })
 
   const companyName = extractTitle(home.body) || domain
-  const brandAssets = extractBrandAssets(home.body, new URL(home.finalUrl))
+  let brandAssets = extractBrandAssets(home.body, new URL(home.finalUrl))
   const extraction = await deriveProfiles(scanned, companyName, domain)
   const profiles = extraction.profiles
+
+  // A scan that derives nothing must never erase intelligence that is already
+  // banked. This is exactly how a connected site turned into sixteen indexed
+  // pages and five blank profiles: the refresh cleared the Vault first, then
+  // the extraction came back empty and the blanks were written over the top.
+  // Carry every profile the new scan failed to produce across from the last
+  // good scan of the same domain, per profile, and say which ones were kept.
+  const preservedProfiles: string[] = []
+  const previous = await getConnectedWebsite().catch(() => null)
+  if (previous && previous.domain === domain) {
+    for (const meta of PROFILE_META) {
+      const fresh = profiles[meta.key] as unknown as Record<string, unknown>
+      const prior = previous.profiles[meta.key] as unknown as Record<string, unknown>
+      if (profileFacts(fresh) === 0 && profileFacts(prior) > 0) {
+        ;(profiles as unknown as Record<string, unknown>)[meta.key] = prior
+        preservedProfiles.push(meta.title.replace(/ Profile$/, '').replace(/^Brand Intelligence$/, 'Brand'))
+      }
+    }
+    // Same rule for the visual assets: a markup read that found no logo or no
+    // colours keeps the ones already captured instead of blanking them.
+    if (previous.brandAssets) {
+      brandAssets = {
+        logoUrl: brandAssets.logoUrl ?? previous.brandAssets.logoUrl,
+        colors: brandAssets.colors.length ? brandAssets.colors : previous.brandAssets.colors,
+      }
+    }
+  }
+  if (preservedProfiles.length > 0) {
+    emit({
+      type: 'progress',
+      message: `Kept previously extracted ${preservedProfiles.join(', ')} intelligence — this scan derived none.`,
+    })
+  }
 
   for (const meta of PROFILE_META) {
     emit({ type: 'progress', message: `Building ${meta.title}…` })
@@ -1315,6 +1407,13 @@ export async function analyzeWebsite(
           last_scanned_at: now,
           derived: true,
           profile,
+          // Ride the run's extraction health along with the profile so the
+          // panel can still tell "extraction failed" from "the site says
+          // nothing" after a page refresh, not only live during the scan.
+          extraction_failed: extraction.failed,
+          extraction_skipped: extraction.skipped,
+          extraction_error: extraction.failureReason ?? null,
+          preserved_profiles: preservedProfiles,
           // The brand's visual assets ride on the brand profile chunk, so
           // getConnectedWebsite can read them back without a dedicated row.
           ...(meta.key === 'brand' ? { brand_assets: brandAssets } : {}),
@@ -1341,6 +1440,9 @@ export async function analyzeWebsite(
     brandAssets,
     failedPages,
     extractionFailed: extraction.failed,
+    extractionSkipped: extraction.skipped,
+    extractionError: extraction.failureReason,
+    preservedProfiles,
   }
 
   emit({ type: 'progress', message: 'Website Intelligence ready.' })
@@ -1380,6 +1482,10 @@ export async function getConnectedWebsite(): Promise<WebsiteSummary | null> {
 
   const profiles = emptyProfiles(domain, domain)
   let brandAssets: BrandAssets | undefined
+  let extractionFailed: string[] = []
+  let extractionSkipped = false
+  let extractionError: string | undefined
+  let preservedProfiles: string[] = []
   for (const meta of PROFILE_META) {
     const row = mine.find((r) => r.metadata?.derived === true && r.category === meta.category)
     const stored = row?.metadata?.profile
@@ -1390,6 +1496,15 @@ export async function getConnectedWebsite(): Promise<WebsiteSummary | null> {
     if (meta.key === 'brand' && assets && typeof assets === 'object') {
       brandAssets = assets as BrandAssets
     }
+    // Extraction health was written onto every derived chunk by the scan that
+    // produced it — read it off whichever profile row we have.
+    const failed = row?.metadata?.extraction_failed
+    if (Array.isArray(failed) && failed.length) extractionFailed = failed.map(String)
+    if (row?.metadata?.extraction_skipped === true) extractionSkipped = true
+    const errText = row?.metadata?.extraction_error
+    if (typeof errText === 'string' && errText.trim()) extractionError = errText
+    const preserved = row?.metadata?.preserved_profiles
+    if (Array.isArray(preserved) && preserved.length) preservedProfiles = preserved.map(String)
   }
 
   // One entry per scanned page URL (non-derived chunks may repeat per chunk).
@@ -1431,6 +1546,10 @@ export async function getConnectedWebsite(): Promise<WebsiteSummary | null> {
     pages,
     brandAssets,
     failedPages: [],
+    extractionFailed,
+    extractionSkipped,
+    extractionError,
+    preservedProfiles,
   }
 }
 
