@@ -194,6 +194,13 @@ export interface WebsiteSummary {
   preservedProfiles?: string[]
   /** One-line cause of a failed extraction, e.g. a rejected API key. */
   extractionError?: string
+  /**
+   * True when extraction was blocked by the ACCOUNT rather than the site — an
+   * empty Anthropic credit balance, a rejected key, an exhausted quota. A
+   * retry cannot succeed until that is fixed, so the panel says what to fix
+   * instead of showing a button that fails again.
+   */
+  extractionBlocked?: boolean
 }
 
 /** Streamed analysis events surfaced to the Website Intelligence UI. */
@@ -1017,12 +1024,40 @@ export interface ProfileExtraction {
    * no way to tell which one applied.
    */
   failureReason?: string
+  /**
+   * True when the failure was the ACCOUNT, not the site or the model — an
+   * empty credit balance, a rejected key, an exhausted quota. Retrying changes
+   * nothing until the account is fixed, so the UI says so instead of offering
+   * a button that is guaranteed to fail.
+   */
+  accountBlocked?: boolean
+}
+
+/**
+ * Is this error the account being unable to call the API at all? Credit
+ * balance, key rejection and quota are all in this class: every subsequent
+ * call in the run will fail the same way, so the run stops rather than
+ * burning nine more doomed requests (five profiles × a fallback model each).
+ */
+function isAccountBlocked(err: unknown): boolean {
+  const status = (err as { status?: number })?.status
+  const message = (err instanceof Error ? err.message : String(err)).toLowerCase()
+  if (status === 401 || status === 403) return true
+  return /credit balance|billing|quota|plans & billing|payment/.test(message)
 }
 
 /** Condense a model/API error into one line a builder can act on. */
 function describeError(err: unknown): string {
   const status = (err as { status?: number })?.status
   const message = err instanceof Error ? err.message : String(err)
+  // The single most common real-world cause, and the raw 400 body buried it in
+  // JSON. Name it plainly and say where to fix it.
+  if (/credit balance|plans & billing/i.test(message)) {
+    return 'Your Anthropic API credit balance is too low, so ATLAS could not run. Top up at console.anthropic.com → Plans & Billing, then retry — nothing else is wrong with the scan.'
+  }
+  if (/quota|rate_limit_error.*quota/i.test(message) && status === 400) {
+    return 'The Anthropic account quota is exhausted — raise it (or wait for the reset) at console.anthropic.com, then retry.'
+  }
   if (status === 401 || status === 403) return 'ANTHROPIC_API_KEY was rejected (401/403) — check the key.'
   if (status === 429) return 'Rate limited by the model API (429) — retry shortly.'
   if (status === 400) return `Model rejected the request (400): ${message.slice(0, 160)}`
@@ -1107,10 +1142,23 @@ async function deriveProfiles(
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
+  // Set the moment the account itself is the problem (no credit, rejected key,
+  // exhausted quota). Every remaining profile then short-circuits instead of
+  // firing a request that cannot succeed.
+  let blocked: unknown = null
+
   const runSpec = async (spec: (typeof PROFILE_SPECS)[number]) => {
+    if (blocked) {
+      return { key: spec.key, label: spec.label, raw: null, error: describeError(blocked), blocked: true }
+    }
     try {
       return { key: spec.key, label: spec.label, raw: await extractProfile(anthropic, spec, corpus, domain) }
     } catch (err) {
+      if (isAccountBlocked(err)) {
+        blocked = err
+        console.error(`ATLAS extraction blocked at the account level on ${spec.label}:`, err)
+        return { key: spec.key, label: spec.label, raw: null, error: describeError(err), blocked: true }
+      }
       console.error(`ATLAS ${spec.label} profile extraction failed on ${MODEL}:`, err)
       // One more attempt on a different model before writing the profile off.
       // A model-specific outage or an unparseable reply from one tier is not
@@ -1121,8 +1169,15 @@ async function deriveProfiles(
         console.warn(`ATLAS ${spec.label} profile recovered on ${ORCHESTRATOR_FALLBACK_MODEL}.`)
         return { key: spec.key, label: spec.label, raw }
       } catch (fallbackErr) {
+        if (isAccountBlocked(fallbackErr)) blocked = fallbackErr
         console.error(`ATLAS ${spec.label} profile extraction failed on fallback:`, fallbackErr)
-        return { key: spec.key, label: spec.label, raw: null, error: describeError(fallbackErr) }
+        return {
+          key: spec.key,
+          label: spec.label,
+          raw: null,
+          error: describeError(fallbackErr),
+          blocked: isAccountBlocked(fallbackErr),
+        }
       }
     }
   }
@@ -1143,15 +1198,23 @@ async function deriveProfiles(
   const merged: Record<string, unknown> = {}
   const failed: string[] = []
   let failureReason: string | undefined
+  let accountBlocked = false
   for (const r of results) {
     if (r.raw) merged[r.key] = r.raw
     else {
       failed.push(r.label)
       failureReason ??= (r as { error?: string }).error
+      if ((r as { blocked?: boolean }).blocked) accountBlocked = true
     }
   }
 
-  return { profiles: mergeProfiles(base, merged, sourceUrls), failed, skipped: false, failureReason }
+  return {
+    profiles: mergeProfiles(base, merged, sourceUrls),
+    failed,
+    skipped: false,
+    failureReason,
+    accountBlocked,
+  }
 }
 
 /* ------------------------------- Persistence ------------------------------ */
@@ -1446,6 +1509,7 @@ export async function analyzeWebsite(
           extraction_failed: extraction.failed,
           extraction_skipped: extraction.skipped,
           extraction_error: extraction.failureReason ?? null,
+          extraction_blocked: extraction.accountBlocked === true,
           preserved_profiles: preservedProfiles,
           // The brand's visual assets ride on the brand profile chunk, so
           // getConnectedWebsite can read them back without a dedicated row.
@@ -1475,6 +1539,7 @@ export async function analyzeWebsite(
     extractionFailed: extraction.failed,
     extractionSkipped: extraction.skipped,
     extractionError: extraction.failureReason,
+    extractionBlocked: extraction.accountBlocked === true,
     preservedProfiles,
   }
 
@@ -1518,6 +1583,7 @@ export async function getConnectedWebsite(): Promise<WebsiteSummary | null> {
   let extractionFailed: string[] = []
   let extractionSkipped = false
   let extractionError: string | undefined
+  let extractionBlocked = false
   let preservedProfiles: string[] = []
   for (const meta of PROFILE_META) {
     const row = mine.find((r) => r.metadata?.derived === true && r.category === meta.category)
@@ -1536,6 +1602,7 @@ export async function getConnectedWebsite(): Promise<WebsiteSummary | null> {
     if (row?.metadata?.extraction_skipped === true) extractionSkipped = true
     const errText = row?.metadata?.extraction_error
     if (typeof errText === 'string' && errText.trim()) extractionError = errText
+    if (row?.metadata?.extraction_blocked === true) extractionBlocked = true
     const preserved = row?.metadata?.preserved_profiles
     if (Array.isArray(preserved) && preserved.length) preservedProfiles = preserved.map(String)
   }
@@ -1582,6 +1649,7 @@ export async function getConnectedWebsite(): Promise<WebsiteSummary | null> {
     extractionFailed,
     extractionSkipped,
     extractionError,
+    extractionBlocked,
     preservedProfiles,
   }
 }

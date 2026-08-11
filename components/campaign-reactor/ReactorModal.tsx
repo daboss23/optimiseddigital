@@ -38,7 +38,6 @@ import {
   resolveModelPick,
   type ModelMenu,
 } from '@/lib/model-menu'
-import { IsolationConfigurator } from '@/components/campaign-reactor/IsolationConfigurator'
 import type { IsolateConfig } from '@/lib/taxonomy'
 
 // The launch sequence — six bold steps, each a moment, not a form field. `orb`
@@ -230,7 +229,7 @@ function StrategicSelect({ field }: { field: StrategicField }) {
             {custom.active ? (
               custom.value || 'Custom…'
             ) : noPreference ? (
-              <span className="text-white/50">No Preference</span>
+              <span className="text-white/68">No Preference</span>
             ) : value ? (
               <>
                 {value}
@@ -239,13 +238,13 @@ function StrategicSelect({ field }: { field: StrategicField }) {
                 )}
               </>
             ) : (
-              <span className="text-white/40">Select…</span>
+              <span className="text-white/60">Select…</span>
             )}
           </span>
         </span>
         <ChevronDown
           size={17}
-          className={`shrink-0 text-white/40 transition-transform ${open ? 'rotate-180' : ''}`}
+          className={`shrink-0 text-white/60 transition-transform ${open ? 'rotate-180' : ''}`}
         />
       </button>
 
@@ -262,21 +261,21 @@ function StrategicSelect({ field }: { field: StrategicField }) {
                 className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
                   isRec
                     ? 'bg-[#4D8DFF]/[0.09] text-white hover:bg-[#4D8DFF]/15'
-                    : 'text-white/80 hover:bg-white/[0.06]'
+                    : 'text-white/92 hover:bg-white/[0.06]'
                 }`}
               >
                 <span className="flex min-w-0 flex-1 items-start gap-2">
                   {isRec ? (
                     <Check size={14} className="mt-0.5 shrink-0 text-[#38E8FF]" />
                   ) : isSel ? (
-                    <Check size={14} className="mt-0.5 shrink-0 text-white/60" />
+                    <Check size={14} className="mt-0.5 shrink-0 text-white/75" />
                   ) : (
                     <span className="w-[14px] shrink-0" />
                   )}
                   <span className="min-w-0">
                     <span className={`block truncate ${isRec ? 'font-semibold' : ''}`}>{opt}</span>
                     {field.descriptions?.[opt] && (
-                      <span className="mt-0.5 block text-[11px] leading-snug text-white/40">
+                      <span className="mt-0.5 block text-[11px] leading-snug text-white/60">
                         {field.descriptions[opt]}
                       </span>
                     )}
@@ -298,11 +297,11 @@ function StrategicSelect({ field }: { field: StrategicField }) {
               type="button"
               onClick={() => choose(CUSTOM_SENTINEL)}
               className={`flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
-                custom.active ? 'bg-white/[0.06] text-white' : 'text-white/70 hover:bg-white/[0.06]'
+                custom.active ? 'bg-white/[0.06] text-white' : 'text-white/85 hover:bg-white/[0.06]'
               }`}
             >
               {custom.active ? (
-                <Check size={14} className="shrink-0 text-white/60" />
+                <Check size={14} className="shrink-0 text-white/75" />
               ) : (
                 <span className="w-[14px] shrink-0" />
               )}
@@ -314,11 +313,11 @@ function StrategicSelect({ field }: { field: StrategicField }) {
             type="button"
             onClick={() => choose(NO_PREF_LABEL)}
             className={`flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
-              noPreference ? 'bg-white/[0.06] text-white' : 'text-white/55 hover:bg-white/[0.06]'
+              noPreference ? 'bg-white/[0.06] text-white' : 'text-white/70 hover:bg-white/[0.06]'
             }`}
           >
             {noPreference ? (
-              <Check size={14} className="shrink-0 text-white/60" />
+              <Check size={14} className="shrink-0 text-white/75" />
             ) : (
               <span className="w-[14px] shrink-0" />
             )}
@@ -329,7 +328,7 @@ function StrategicSelect({ field }: { field: StrategicField }) {
 
       {/* The selected stage's meaning, kept visible after the menu closes. */}
       {!open && !custom.active && !noPreference && value && field.descriptions?.[value] && (
-        <p className="mt-2 text-xs leading-relaxed text-white/40">{field.descriptions[value]}</p>
+        <p className="mt-2 text-xs leading-relaxed text-white/60">{field.descriptions[value]}</p>
       )}
 
       {custom.active && (
@@ -342,7 +341,7 @@ function StrategicSelect({ field }: { field: StrategicField }) {
             className="launch-input px-4 py-3 text-[15px]"
           />
           {custom.examples.length > 0 && (
-            <p className="mt-2 text-xs text-white/35">e.g. {custom.examples.join(' · ')}</p>
+            <p className="mt-2 text-xs text-white/55">e.g. {custom.examples.join(' · ')}</p>
           )}
         </div>
       )}
@@ -425,7 +424,7 @@ function ModelSelect({
         </span>
         <ChevronDown
           size={15}
-          className={`shrink-0 text-white/40 transition-transform ${open ? 'rotate-180' : ''}`}
+          className={`shrink-0 text-white/60 transition-transform ${open ? 'rotate-180' : ''}`}
         />
       </button>
 
@@ -445,12 +444,12 @@ function ModelSelect({
                 className={`flex w-full items-start justify-between gap-2 rounded-lg px-3 py-2.5 text-left text-[13px] transition-colors ${
                   isRec
                     ? 'bg-[#4D8DFF]/[0.09] text-white hover:bg-[#4D8DFF]/15'
-                    : 'text-white/80 hover:bg-white/[0.06]'
+                    : 'text-white/92 hover:bg-white/[0.06]'
                 }`}
               >
                 <span className="flex min-w-0 flex-1 items-start gap-2">
                   {isSel ? (
-                    <Check size={13} className={`mt-0.5 shrink-0 ${isRec ? 'text-[#38E8FF]' : 'text-white/60'}`} />
+                    <Check size={13} className={`mt-0.5 shrink-0 ${isRec ? 'text-[#38E8FF]' : 'text-white/75'}`} />
                   ) : (
                     <span className="w-[13px] shrink-0" />
                   )}
@@ -458,12 +457,12 @@ function ModelSelect({
                     <span className={`block truncate ${isRec ? 'font-semibold' : ''}`}>
                       {o.label}
                       {!o.configured && (
-                        <span className="ml-1.5 text-[10px] uppercase tracking-wide text-white/30">
+                        <span className="ml-1.5 text-[10px] uppercase tracking-wide text-white/45">
                           key needed
                         </span>
                       )}
                     </span>
-                    <span className="mt-0.5 block text-[11px] leading-snug text-white/40">{o.note}</span>
+                    <span className="mt-0.5 block text-[11px] leading-snug text-white/60">{o.note}</span>
                   </span>
                 </span>
                 {isRec && (
@@ -478,7 +477,7 @@ function ModelSelect({
       )}
 
       {isRecommendedSelected && (
-        <p className="mt-1.5 flex items-start gap-1.5 text-[11px] leading-snug text-white/35">
+        <p className="mt-1.5 flex items-start gap-1.5 text-[11px] leading-snug text-white/55">
           <Sparkles size={10} className="mt-0.5 shrink-0 text-[#38E8FF]/70" />
           {menu.reason}
         </p>
@@ -690,7 +689,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
               <button
                 type="button"
                 onClick={requestClose}
-                className="tap-target grid h-10 w-10 place-items-center rounded-full text-white/40 transition-colors hover:bg-white/5 hover:text-white sm:h-8 sm:w-8"
+                className="tap-target grid h-10 w-10 place-items-center rounded-full text-white/60 transition-colors hover:bg-white/5 hover:text-white sm:h-8 sm:w-8"
                 aria-label="Close"
               >
                 <X size={18} />
@@ -720,8 +719,8 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                         state === 'active'
                           ? 'text-[#38E8FF]'
                           : state === 'done'
-                            ? 'text-white/55'
-                            : 'text-white/25'
+                            ? 'text-white/70'
+                            : 'text-white/40'
                       }`}
                     >
                       {s.label}
@@ -739,7 +738,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
             <h2 className="font-display text-xl font-bold tracking-tight text-white sm:text-2xl">
               {meta.label}
             </h2>
-            <p className="mt-1 text-[13px] text-white/45 sm:text-sm">{meta.sub}</p>
+            <p className="mt-1 text-[13px] text-white/65 sm:text-sm">{meta.sub}</p>
           </div>
         </div>
 
@@ -782,7 +781,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
 
               <div>
                 <SectionLabel thinking={form.suggesting}>Campaign Brief</SectionLabel>
-                <p className="-mt-1 mb-2.5 text-sm text-white/40">
+                <p className="-mt-1 mb-2.5 text-sm text-white/60">
                   Optional but high-leverage. Direction, tone, proof asset, creative constraints —
                   the agents read this first and infer the angle for you.
                 </p>
@@ -796,7 +795,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
 
               <div>
                 <SectionLabel thinking={form.suggesting}>Creative Deliverables</SectionLabel>
-                <p className="-mt-1 mb-3 text-sm text-white/40">
+                <p className="-mt-1 mb-3 text-sm text-white/60">
                   Pick one or all — you’ll set sizes for each next. Copy is written into every
                   concept.
                 </p>
@@ -821,7 +820,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                           </span>
                         </div>
                         <p className="font-display text-base font-semibold text-white">{o}</p>
-                        <p className="mt-1 text-xs leading-relaxed text-white/45">{blurb}</p>
+                        <p className="mt-1 text-xs leading-relaxed text-white/65">{blurb}</p>
                         {rec && (
                           <span className="mt-2.5 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-[#38E8FF]">
                             <Sparkles size={10} /> Recommended
@@ -832,7 +831,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                   })}
                 </div>
                 {form.deliverablesReason && form.recommendedDeliverables.length > 0 && (
-                  <p className="mt-3 flex items-start gap-1.5 text-xs text-white/45">
+                  <p className="mt-3 flex items-start gap-1.5 text-xs text-white/65">
                     <Sparkles size={12} className="mt-0.5 shrink-0 text-[#38E8FF]" />
                     <span>{form.deliverablesReason}</span>
                   </p>
@@ -845,14 +844,14 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
             <div className="animate-fade-up space-y-4">
               {form.outputs.length === 0 ? (
                 <div className="rounded-2xl border border-white/10 bg-white/[0.02] px-5 py-10 text-center">
-                  <GalleryHorizontalEnd size={30} className="mx-auto mb-3 text-white/20" />
-                  <p className="text-sm text-white/45">
+                  <GalleryHorizontalEnd size={30} className="mx-auto mb-3 text-white/35" />
+                  <p className="text-sm text-white/65">
                     Pick at least one creative on the previous step to choose its sizes.
                   </p>
                 </div>
               ) : (
                 <>
-                  <p className="text-sm text-white/40">
+                  <p className="text-sm text-white/60">
                     Pick the render model for each creative — the system pre-selects the best fit —
                     then choose its sizes. Dimensions adapt to whichever model you choose.
                   </p>
@@ -878,12 +877,12 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                             <Film size={13} className="mt-0.5 shrink-0 text-[#38E8FF]" />
                             <span className="min-w-0">
                               <span className="text-[12px] font-semibold text-white">{OPENMONTAGE_BADGE.label}</span>
-                              <span className="mt-0.5 block text-[11px] leading-snug text-white/45">
+                              <span className="mt-0.5 block text-[11px] leading-snug text-white/65">
                                 {OPENMONTAGE_BADGE.note}
                               </span>
                             </span>
                           </div>
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-white/40">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-white/60">
                             Still Model — renders every scene
                           </p>
                           <ModelSelect
@@ -891,7 +890,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                             pick={form.models[montageStillKey(o)]}
                             onPick={(id) => form.setModel(montageStillKey(o), id)}
                           />
-                          <p className="pt-1 text-[11px] font-semibold uppercase tracking-wide text-white/40">
+                          <p className="pt-1 text-[11px] font-semibold uppercase tracking-wide text-white/60">
                             Motion Model — animates every scene
                           </p>
                           <ModelSelect
@@ -914,7 +913,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                                     <span className="block truncate text-sm font-semibold text-white">
                                       {s.label}
                                     </span>
-                                    <span className="block text-[11px] text-white/45">
+                                    <span className="block text-[11px] text-white/65">
                                       {s.ratio} · {s.use}
                                     </span>
                                   </span>
@@ -939,7 +938,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                         </SectionLabel>
                         {menu === null ? (
                           <div className="rounded-xl border border-[#4D8DFF]/20 bg-[#4D8DFF]/[0.04] px-4 py-3.5">
-                            <p className="flex items-start gap-2 text-sm text-white/60">
+                            <p className="flex items-start gap-2 text-sm text-white/75">
                               <Wand2 size={14} className="mt-0.5 shrink-0 text-[#38E8FF]" />
                               The reactor picks the winning format for this brief — model and sizes
                               are decided by the system, grounded in what has already worked.
@@ -967,7 +966,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                                       <span className="block truncate text-sm font-semibold text-white">
                                         {s.label}
                                       </span>
-                                      <span className="block text-[11px] text-white/45">
+                                      <span className="block text-[11px] text-white/65">
                                         {s.ratio} · {s.use}
                                       </span>
                                     </span>
@@ -984,7 +983,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                   {/* How many distinct versions of every creative the reactor makes */}
                   <div className="border-t border-white/10 pt-4">
                     <SectionLabel>Variations per creative</SectionLabel>
-                    <p className="-mt-1 mb-3 text-sm text-white/40">
+                    <p className="-mt-1 mb-3 text-sm text-white/60">
                       The reactor creates this many distinct versions of every image and video
                       creative — different hook, pattern, and proof on each.
                     </p>
@@ -1000,7 +999,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                             className={`pick-card flex flex-col items-center gap-1 p-3 text-center ${on ? 'is-on' : ''}`}
                           >
                             <span className="font-display text-xl font-bold text-white">×{n}</span>
-                            <span className="text-[11px] text-white/45">
+                            <span className="text-[11px] text-white/65">
                               {n === 1 ? 'Single' : `${n} versions`}
                             </span>
                             {n === 2 && (
@@ -1028,7 +1027,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
             <div className="animate-fade-up space-y-6">
               <div>
                 <SectionLabel thinking={form.suggesting}>Awareness Stage</SectionLabel>
-                <p className="-mt-1 mb-2.5 text-sm text-white/40">
+                <p className="-mt-1 mb-2.5 text-sm text-white/60">
                   How much the prospect already knows — it decides how much the ad has to explain
                   before it can sell. The system reads your brief and picks the stage for you.
                 </p>
@@ -1037,7 +1036,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
 
               <div>
                 <SectionLabel thinking={form.suggesting}>Market Sophistication</SectionLabel>
-                <p className="-mt-1 mb-2.5 text-sm text-white/40">
+                <p className="-mt-1 mb-2.5 text-sm text-white/60">
                   How many times this market has already been pitched — it decides what kind of
                   claim still lands. The system reads your brief and picks the stage for you.
                 </p>
@@ -1054,7 +1053,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
           {step === 4 && (
             <div className="animate-fade-up space-y-3">
               <SectionLabel>Meta Performance Feed</SectionLabel>
-              <p className="-mt-1 text-sm text-white/40">
+              <p className="-mt-1 text-sm text-white/60">
                 Controls whether OPUS reads live Meta ad performance during this run. Unconfigured
                 sources fall back automatically.
               </p>
@@ -1074,11 +1073,11 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                       <span className="min-w-0 flex-1">
                         <span className="flex flex-wrap items-center gap-2">
                           <span className="font-display text-base font-semibold text-white">{title}</span>
-                          <span className="rounded-full border border-white/12 bg-white/[0.04] px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white/50">
+                          <span className="rounded-full border border-white/12 bg-white/[0.04] px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white/68">
                             {tag}
                           </span>
                         </span>
-                        <span className="mt-1 block text-xs leading-relaxed text-white/45">{desc}</span>
+                        <span className="mt-1 block text-xs leading-relaxed text-white/65">{desc}</span>
                       </span>
                       <span className="pick-check shrink-0">
                         <Check size={13} strokeWidth={3} />
@@ -1102,7 +1101,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="font-display text-lg font-semibold text-white">On Brand</p>
-                  <p className="mt-1 text-sm leading-relaxed text-white/45">
+                  <p className="mt-1 text-sm leading-relaxed text-white/65">
                     Pulls your real brand — voice, offer, audience language, proof and colours —
                     from your Brand Intelligence tab and applies it to every concept the reactor
                     writes.
@@ -1120,7 +1119,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                   />
                 </span>
               </button>
-              <p className="px-1 text-sm leading-relaxed text-white/40">
+              <p className="px-1 text-sm leading-relaxed text-white/60">
                 {form.onBrand
                   ? 'The reactor pulls your connected brand profile (voice, offer, audience, proof, colours) into every concept. Connect a site on the Brand Intelligence tab to enrich this; without one it applies your default brand voice.'
                   : 'Concepts will be generated without brand anchoring — the brief and inputs only.'}
@@ -1153,10 +1152,10 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                 <SummaryRow label="On Brand" value={form.onBrand ? 'On' : 'Off'} />
                 {form.brief.trim() && (
                   <div className="flex gap-3 border-t border-white/10 pt-2.5">
-                    <span className="w-24 shrink-0 text-[11px] uppercase tracking-[0.08em] text-white/35">
+                    <span className="w-24 shrink-0 text-[11px] uppercase tracking-[0.08em] text-white/55">
                       Brief
                     </span>
-                    <span className="line-clamp-2 text-white/70">{form.brief.trim()}</span>
+                    <span className="line-clamp-2 text-white/85">{form.brief.trim()}</span>
                   </div>
                 )}
                 {form.cloneLabel && <SummaryRow label="Cloning" value={form.cloneLabel} />}
@@ -1168,17 +1167,15 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                 )}
               </div>
 
-              <IsolationConfigurator value={form.isolate} onChange={form.setIsolate} />
-
               <div>
                 <button
                   type="button"
                   onClick={fire}
                   className="fire-btn fire-btn--lg flex w-full items-center justify-center gap-2 font-display font-bold uppercase tracking-wide text-white"
                 >
-                  <Atom size={18} /> ⚡ Fire Reactor
+                  <Atom size={18} /> Fire Reactor
                 </button>
-                <p className="mt-2.5 text-center text-[11px] uppercase tracking-[0.14em] text-white/35">
+                <p className="mt-2.5 text-center text-[11px] uppercase tracking-[0.14em] text-white/55">
                   OPUS · Strategic synthesis · Self-critique scoring
                 </p>
               </div>
@@ -1201,7 +1198,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
             <span />
           )}
 
-          <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/30 sm:text-[11px]">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/45 sm:text-[11px]">
             Step {step} of {LAST_STEP}
           </span>
 
@@ -1261,7 +1258,7 @@ function QuickLaunch({
         <button
           type="button"
           onClick={onClose}
-          className="tap-target grid h-10 w-10 place-items-center rounded-full text-white/40 transition-colors hover:bg-white/5 hover:text-white sm:h-8 sm:w-8"
+          className="tap-target grid h-10 w-10 place-items-center rounded-full text-white/60 transition-colors hover:bg-white/5 hover:text-white sm:h-8 sm:w-8"
           aria-label="Close"
         >
           <X size={18} />
@@ -1274,7 +1271,7 @@ function QuickLaunch({
             <h2 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
               Fire a campaign in one line.
             </h2>
-            <p className="mt-1.5 text-[13px] text-white/45 sm:text-sm">
+            <p className="mt-1.5 text-[13px] text-white/65 sm:text-sm">
               Describe what you want — the reactor infers the angle, audience, offer, and creative,
               then builds it. Nothing else required.
             </p>
@@ -1293,7 +1290,7 @@ function QuickLaunch({
           {/* Live read of what the reactor inferred from the brief */}
           <div className="rounded-xl border border-[#4D8DFF]/20 bg-[#4D8DFF]/[0.05] px-4 py-3">
             {form.suggesting ? (
-              <p className="flex items-center gap-2 text-xs text-white/55">
+              <p className="flex items-center gap-2 text-xs text-white/70">
                 <Loader2 size={13} className="animate-spin text-[#38E8FF]" /> Reading your brief…
               </p>
             ) : showReads ? (
@@ -1305,9 +1302,9 @@ function QuickLaunch({
                   {reads.map((r) => (
                     <span
                       key={r.label}
-                      className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] text-white/70"
+                      className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] text-white/85"
                     >
-                      <span className="text-white/40">{r.label}</span> {r.value}
+                      <span className="text-white/60">{r.label}</span> {r.value}
                     </span>
                   ))}
                   {form.recommendedDeliverables.map((d) => (
@@ -1321,7 +1318,7 @@ function QuickLaunch({
                 </div>
               </div>
             ) : (
-              <p className="text-xs leading-relaxed text-white/45">
+              <p className="text-xs leading-relaxed text-white/65">
                 Angle, audience, offer, and creative are all decided for you. Add a line above and
                 the reactor’s read appears here.
               </p>
@@ -1334,9 +1331,9 @@ function QuickLaunch({
               onClick={onFire}
               className="fire-btn fire-btn--lg flex w-full items-center justify-center gap-2 font-display font-bold uppercase tracking-wide text-white"
             >
-              <Atom size={18} /> ⚡ Fire Reactor
+              <Atom size={18} /> Fire Reactor
             </button>
-            <p className="mt-2.5 text-center text-[11px] uppercase tracking-[0.14em] text-white/35">
+            <p className="mt-2.5 text-center text-[11px] uppercase tracking-[0.14em] text-white/55">
               OPUS · Strategic synthesis · Self-critique scoring
             </p>
           </div>
@@ -1344,7 +1341,7 @@ function QuickLaunch({
           <button
             type="button"
             onClick={onGuided}
-            className="group flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 text-sm font-medium text-white/60 transition-colors hover:border-white/20 hover:text-white"
+            className="group flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 text-sm font-medium text-white/75 transition-colors hover:border-white/20 hover:text-white"
           >
             <SlidersHorizontal size={15} /> Prefer full control? Set it up step-by-step
             <ArrowRight size={15} className="transition-transform group-hover:translate-x-0.5" />
@@ -1358,10 +1355,10 @@ function QuickLaunch({
 function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex gap-3 text-sm">
-      <span className="w-24 shrink-0 text-[11px] uppercase tracking-[0.08em] text-white/35">
+      <span className="w-24 shrink-0 text-[11px] uppercase tracking-[0.08em] text-white/55">
         {label}
       </span>
-      <span className="text-white/85">{value}</span>
+      <span className="text-white/95">{value}</span>
     </div>
   )
 }

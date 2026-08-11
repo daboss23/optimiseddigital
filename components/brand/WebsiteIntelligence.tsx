@@ -717,7 +717,13 @@ export function WebsiteIntelligencePanel({
   // recorded (no flags, no profiles: still worth a retry).
   const failed = website.extractionFailed ?? []
   const nothingDerived = website.metrics.profilesCreated === 0 && website.pages.length > 0
-  const extractionNotice = website.extractionSkipped
+  // The account itself could not call the model (no credit, rejected key,
+  // exhausted quota). The scan and the site are both fine, and a retry is
+  // guaranteed to fail until the account is fixed — so say that instead.
+  const blocked = website.extractionBlocked === true
+  const extractionNotice = blocked
+    ? 'The website scanned and indexed correctly — the crawl is fine. What failed is the model call ATLAS makes to turn those pages into intelligence, and it failed for an account reason, not a site reason. Fix that below and re-run; nothing about the connection needs rebuilding.'
+    : website.extractionSkipped
     ? 'Pages were indexed, but no ANTHROPIC_API_KEY was configured for the scan, so no intelligence was derived. Set the key, then retry.'
     : failed.length >= 5 || (nothingDerived && failed.length === 0)
       ? 'Pages were indexed, but no intelligence profiles came out of them. The fields below are blank because extraction produced nothing — not because the site says nothing. Retry to rebuild them.'
@@ -801,7 +807,7 @@ export function WebsiteIntelligencePanel({
               disabled={!!refreshing || busy}
               className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-warning/40 bg-warning/10 px-2.5 py-1 text-[11px] font-medium text-warning transition-colors hover:bg-warning/20 disabled:opacity-50"
             >
-              <RotateCw size={12} /> Retry extraction
+              <RotateCw size={12} /> {blocked ? 'Re-run after fixing' : 'Retry extraction'}
             </button>
           </div>
         )}

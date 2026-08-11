@@ -196,7 +196,7 @@ export default async function MetaIntelligencePage() {
                     <th className="pb-2 text-left font-medium">Creative</th>
                     <th className="pb-2 text-right font-medium">Spend</th>
                     <th className="pb-2 text-right font-medium">ROAS</th>
-                    <th className="pb-2 text-right font-medium">Hook Rate</th>
+                    <th className="pb-2 text-center font-medium">Hook Rate</th>
                     <th className="pb-2 text-right font-medium">CTR</th>
                     <th className="pb-2 text-right font-medium">CPA</th>
                     <th className="pb-2 text-right font-medium">Status</th>
@@ -213,7 +213,7 @@ export default async function MetaIntelligencePage() {
                       <td className="py-2.5 text-right font-display font-bold tabular text-glow">
                         {ad.roas}x
                       </td>
-                      <td className="py-2.5 text-right tabular text-cyan">{ad.hookRate}</td>
+                      <td className="py-2.5 text-center tabular text-cyan">{ad.hookRate}</td>
                       <td className="py-2.5 text-right tabular">{ad.ctr}</td>
                       <td className="py-2.5 text-right tabular">{ad.cpa}</td>
                       <td className="py-2.5 text-right">
