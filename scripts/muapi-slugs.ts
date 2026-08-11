@@ -80,14 +80,88 @@ const CANDIDATES: { envVar: string; label: string; slugs: string[] }[] = [
   },
 ]
 
+/**
+ * VIDEO candidates. Same failure mode, worse symptom: `lib/video/registry.ts`
+ * maps our video model ids to Muapi endpoint paths, and when the Veo slug
+ * 404'd the whole clip failed — the Reactor was told video was unavailable and
+ * shipped a STILL for a UGC video ad. The oven now falls across providers, but
+ * that costs you the model you asked for, so resolve the real slugs here.
+ *
+ * The lead slug in each list is CONFIRMED against Muapi's own model index
+ * (muapi.ai/llms.txt, pulled 2026-08-11) and is what `lib/video/registry.ts`
+ * now defaults to — the invented `veo3` / `kling-pro` / `seedance-pro` /
+ * `wan2.2` slugs that shipped a still instead of a UGC video are gone.
+ * Remaining entries are plausible renames kept as a safety net for drift.
+ */
+const VIDEO_CANDIDATES: { envVar: string; label: string; slugs: string[] }[] = [
+  {
+    envVar: 'MUAPI_VIDEO_VEO3_T2V',
+    label: 'Veo 3 · text-to-video',
+    slugs: ['veo3-text-to-video', 'veo3-fast-text-to-video', 'veo3'],
+  },
+  {
+    envVar: 'MUAPI_VIDEO_VEO3_I2V',
+    label: 'Veo 3 · image-to-video',
+    slugs: ['veo3-image-to-video', 'veo3-fast-image-to-video'],
+  },
+  {
+    envVar: 'MUAPI_VIDEO_KLING_T2V',
+    label: 'Kling · text-to-video',
+    slugs: ['kling-v2.5-turbo-pro-t2v', 'kling-v2.6-pro-t2v', 'kling-pro'],
+  },
+  {
+    envVar: 'MUAPI_VIDEO_KLING_I2V',
+    label: 'Kling · image-to-video',
+    slugs: ['kling-v2.5-turbo-pro-i2v', 'kling-v2.6-pro-i2v', 'kling-pro-image-to-video'],
+  },
+  {
+    envVar: 'MUAPI_VIDEO_SEEDANCE_T2V',
+    label: 'Seedance · text-to-video',
+    slugs: ['seedance-pro-t2v', 'seedance-v1.5-pro-t2v', 'seedance-pro'],
+  },
+  {
+    envVar: 'MUAPI_VIDEO_SEEDANCE_I2V',
+    label: 'Seedance · image-to-video',
+    slugs: ['seedance-pro-i2v', 'seedance-v1.5-pro-i2v', 'seedance-pro-image-to-video'],
+  },
+  {
+    envVar: 'MUAPI_VIDEO_WAN_T2V',
+    label: 'Wan · text-to-video',
+    slugs: ['wan2.2-text-to-video', 'wan2.5-text-to-video', 'wan2.2'],
+  },
+  {
+    envVar: 'MUAPI_VIDEO_WAN_I2V',
+    label: 'Wan · image-to-video',
+    slugs: ['wan2.2-image-to-video', 'wan2.5-image-to-video'],
+  },
+]
+
 const PROBE = { prompt: 'a plain grey square', aspect_ratio: '1:1', num_images: 1 }
 
-async function probe(slug: string): Promise<{ ok: boolean; status: number; detail: string }> {
+/**
+ * An image-to-video endpoint rejects a payload with no still, which is a 4xx we
+ * would misread as "slug does not exist". Probing with a public still keeps the
+ * signal clean: 404 means the path is wrong, anything else means it is right.
+ */
+const I2V_PROBE_IMAGE =
+  process.env.MUAPI_PROBE_IMAGE_URL || 'https://picsum.photos/seed/tpbprobe/512/512'
+
+function probeBody(slug: string, kind: 'image' | 'video'): Record<string, unknown> {
+  if (kind === 'image') return PROBE
+  const body: Record<string, unknown> = { prompt: 'a plain grey square', aspect_ratio: '9:16' }
+  if (slug.includes('image-to-video') || slug.includes('i2v')) body.image_url = I2V_PROBE_IMAGE
+  return body
+}
+
+async function probe(
+  slug: string,
+  kind: 'image' | 'video' = 'image',
+): Promise<{ ok: boolean; status: number; detail: string }> {
   try {
     const res = await fetch(`${API_BASE}/${slug}`, {
       method: 'POST',
       headers: { 'x-api-key': KEY!, 'Content-Type': 'application/json' },
-      body: JSON.stringify(PROBE),
+      body: JSON.stringify(probeBody(slug, kind)),
       cache: 'no-store',
     })
     const body = (await res.json().catch(() => null)) as Record<string, unknown> | null
@@ -107,28 +181,37 @@ async function main() {
     process.exit(1)
   }
 
+  const onlyImages = process.argv.includes('--images')
+  const onlyVideo = process.argv.includes('--video')
+  const menu: { kind: 'image' | 'video'; entries: typeof CANDIDATES }[] = []
+  if (!onlyVideo) menu.push({ kind: 'image', entries: CANDIDATES })
+  if (!onlyImages) menu.push({ kind: 'video', entries: VIDEO_CANDIDATES })
+
   console.log(`\nProbing ${API_BASE} …\n`)
   const found: { envVar: string; slug: string }[] = []
   const missing: string[] = []
 
-  for (const model of CANDIDATES) {
-    let hit: string | null = null
-    const tried: string[] = []
-    for (const slug of model.slugs) {
-      const r = await probe(slug)
-      if (r.ok) {
-        hit = slug
-        break
+  for (const { kind, entries } of menu) {
+    console.log(`  ── ${kind === 'image' ? 'IMAGE' : 'VIDEO'} models ──`)
+    for (const model of entries) {
+      let hit: string | null = null
+      const tried: string[] = []
+      for (const slug of model.slugs) {
+        const r = await probe(slug, kind)
+        if (r.ok) {
+          hit = slug
+          break
+        }
+        tried.push(`${slug} → ${r.status || 'network'}${r.detail ? ` ${r.detail}` : ''}`)
       }
-      tried.push(`${slug} → ${r.status || 'network'}${r.detail ? ` ${r.detail}` : ''}`)
-    }
-    if (hit) {
-      console.log(`  ✓ ${model.label}: ${hit}`)
-      found.push({ envVar: model.envVar, slug: hit })
-    } else {
-      console.log(`  ✗ ${model.label}: none of the candidates worked`)
-      tried.forEach((t) => console.log(`      ${t}`))
-      missing.push(model.label)
+      if (hit) {
+        console.log(`  ✓ ${model.label}: ${hit}`)
+        found.push({ envVar: model.envVar, slug: hit })
+      } else {
+        console.log(`  ✗ ${model.label}: none of the candidates worked`)
+        tried.forEach((t) => console.log(`      ${t}`))
+        missing.push(model.label)
+      }
     }
   }
 

@@ -1886,11 +1886,29 @@ export async function POST(request: NextRequest) {
               const videoRatio = aspectRatio === '4:5' ? '9:16' : aspectRatio
               const started = await startVideoJob(model, { mode, prompt, imageUrl, aspectRatio: videoRatio })
               if (!started) {
+                // A video concept whose clip failed must NOT quietly become a
+                // still — that is exactly how a UGC ad ordered on Veo 3 came
+                // back as a GPT Image 2 picture. Say so in the feed and forbid
+                // the substitution in the tool result.
+                sse(controller, {
+                  type: 'step',
+                  text: `Video render unavailable — no configured video provider accepted this ${mode} job. The concept will ship without a clip; it will NOT be replaced by a still.`,
+                })
                 return {
                   type: 'tool_result',
                   tool_use_id: tu.id,
-                  content: JSON.stringify({ requestId: null, note: 'video generation unavailable' }),
+                  content: JSON.stringify({
+                    requestId: null,
+                    note:
+                      'Video generation is unavailable — every configured video provider refused the job. Do NOT substitute a still image for this video concept and do NOT change its conceptType. Submit the concept with its production brief and no media, and state in the concept basis that the clip could not be rendered.',
+                  }),
                 }
+              }
+              if (started.fellBack) {
+                sse(controller, {
+                  type: 'step',
+                  text: `⚠︎ ${started.note ?? `Rendered on ${started.modelId} instead of the requested model.`}`,
+                })
               }
               await logGeneration({
                 builder_id: body.builderId ?? null,
@@ -1911,6 +1929,9 @@ export async function POST(request: NextRequest) {
                 requestId: started.requestId,
                 status: started.status,
                 responseUrl: started.responseUrl,
+                requestedModel: started.requestedModelId,
+                fellBack: started.fellBack ?? false,
+                note: started.note,
               })
               return {
                 type: 'tool_result',
@@ -1918,8 +1939,12 @@ export async function POST(request: NextRequest) {
                 content: JSON.stringify({
                   requestId: started.requestId,
                   model: started.modelId,
+                  requestedModel: started.requestedModelId,
+                  fellBack: started.fellBack ?? false,
                   status: started.status,
-                  note: 'video is rendering; it will appear on the concept card when ready',
+                  note: started.note
+                    ? `${started.note} The clip is rendering and will appear on the concept card when ready.`
+                    : 'video is rendering; it will appear on the concept card when ready',
                 }),
               }
             }

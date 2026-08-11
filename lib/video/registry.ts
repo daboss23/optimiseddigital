@@ -23,7 +23,7 @@ export const VIDEO_MODELS: VideoModel[] = [
     label: 'Veo 3',
     provider: 'muapi',
     endpoints: {
-      'text-to-video': env('MUAPI_VIDEO_VEO3_T2V', 'veo3'),
+      'text-to-video': env('MUAPI_VIDEO_VEO3_T2V', 'veo3-text-to-video'),
       'image-to-video': env('MUAPI_VIDEO_VEO3_I2V', 'veo3-image-to-video'),
     },
     modes: ['text-to-video', 'image-to-video'],
@@ -38,8 +38,8 @@ export const VIDEO_MODELS: VideoModel[] = [
     label: 'Kling Pro',
     provider: 'muapi',
     endpoints: {
-      'text-to-video': env('MUAPI_VIDEO_KLING_T2V', 'kling-pro'),
-      'image-to-video': env('MUAPI_VIDEO_KLING_I2V', 'kling-pro-image-to-video'),
+      'text-to-video': env('MUAPI_VIDEO_KLING_T2V', 'kling-v2.5-turbo-pro-t2v'),
+      'image-to-video': env('MUAPI_VIDEO_KLING_I2V', 'kling-v2.5-turbo-pro-i2v'),
     },
     modes: ['text-to-video', 'image-to-video'],
     maxDurationSec: 10,
@@ -53,8 +53,8 @@ export const VIDEO_MODELS: VideoModel[] = [
     label: 'Seedance Pro',
     provider: 'muapi',
     endpoints: {
-      'text-to-video': env('MUAPI_VIDEO_SEEDANCE_T2V', 'seedance-pro'),
-      'image-to-video': env('MUAPI_VIDEO_SEEDANCE_I2V', 'seedance-pro-image-to-video'),
+      'text-to-video': env('MUAPI_VIDEO_SEEDANCE_T2V', 'seedance-pro-t2v'),
+      'image-to-video': env('MUAPI_VIDEO_SEEDANCE_I2V', 'seedance-pro-i2v'),
     },
     modes: ['text-to-video', 'image-to-video'],
     maxDurationSec: 12,
@@ -68,7 +68,7 @@ export const VIDEO_MODELS: VideoModel[] = [
     label: 'Wan 2.2',
     provider: 'muapi',
     endpoints: {
-      'text-to-video': env('MUAPI_VIDEO_WAN_T2V', 'wan2.2'),
+      'text-to-video': env('MUAPI_VIDEO_WAN_T2V', 'wan2.2-text-to-video'),
       'image-to-video': env('MUAPI_VIDEO_WAN_I2V', 'wan2.2-image-to-video'),
     },
     modes: ['text-to-video', 'image-to-video'],
@@ -226,4 +226,20 @@ export const DEFAULT_VIDEO_MODEL = 'muapi-veo3'
 
 export function getVideoModel(id: string): VideoModel | undefined {
   return VIDEO_MODELS.find((m) => m.id === id)
+}
+
+/**
+ * The model FAMILY behind an id — 'muapi-veo3', 'veo-3.1' and 'veo-3' are all
+ * `veo`. The oven uses this to keep a fallback in the same family: a Veo
+ * request that can't reach one gateway's Veo goes to another gateway's Veo
+ * before it considers a different model entirely.
+ */
+export function modelFamily(id: string): string {
+  const s = id.toLowerCase()
+  if (s.includes('veo')) return 'veo'
+  if (s.includes('kling')) return 'kling'
+  if (s.includes('seedance')) return 'seedance'
+  if (s.includes('wan')) return 'wan'
+  if (s.includes('higgsfield') || s.includes('dop')) return 'dop'
+  return s
 }

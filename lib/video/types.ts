@@ -69,6 +69,14 @@ export interface VideoJob {
    * for providers that don't use it (e.g. Higgsfield). Pass it back when polling
    * so status resolution never relies on guessing the model's base path. */
   responseUrl?: string | null
+  /**
+   * When the requested model could not take the job (missing key, drifted
+   * endpoint slug), the oven renders on the nearest capable model and says so.
+   * A silent downgrade is how a Veo 3 UGC order came back as a still.
+   */
+  requestedModelId?: string
+  fellBack?: boolean
+  note?: string
 }
 
 /** Model entry plus whether its provider keys are present in this environment. */
