@@ -118,16 +118,18 @@ MUAPIAPP_API_KEY             # Muapi unified image + video gateway — CURRENT D
                              #   versioned (midjourney-v8), vendor-prefixed
                              #   (bytedance-seedream-5.0-pro). Never "tidy" one into a pattern —
                              #   guessing is what caused the misspelled-headline bug),
-                             #   MUAPI_VIDEO_VEO3_T2V / _VEO3_I2V / _KLING_T2V / _KLING_I2V /
-                             #   _SEEDANCE_T2V / _SEEDANCE_I2V / _WAN_T2V / _WAN_I2V (video —
-                             #     the SAME verbatim-slug rule as images, and it bit here too:
-                             #     invented `veo3` / `kling-pro` / `seedance-pro` / `wan2.2`
-                             #     404'd, so a UGC ad ordered on Veo 3 came back as a GPT
-                             #     Image 2 STILL. Confirmed paths are veo3-text-to-video /
-                             #     veo3-image-to-video, kling-v2.5-turbo-pro-t2v / -i2v,
-                             #     seedance-pro-t2v / -i2v, wan2.2-text-to-video /
-                             #     wan2.2-image-to-video. `npm run muapi:slugs -- --video`
-                             #     re-probes them when a vendor renames one)
+                             #   MUAPI_VIDEO_VEO31_T2V / _I2V / _R2V, _VEO4_T2V / _I2V,
+                             #   _SEEDANCE2_T2V / _I2V / _R2V, _SEEDANCE2_FAST_T2V / _I2V / _R2V,
+                             #   _KLING3_T2V / _I2V, _WAN27_T2V / _I2V / _R2V (video — the SAME
+                             #     verbatim-slug rule as images, and it bit here too: invented
+                             #     `veo3` / `kling-pro` / `seedance-pro` / `wan2.2` 404'd, so a
+                             #     UGC ad ordered on Veo 3 came back as a GPT Image 2 STILL.
+                             #     Slugs follow no convention — veo3.1-text-to-video and
+                             #     wan2.7-text-to-video spell the mode out, while
+                             #     kling-v3.0-pro-image-to-video, seedance-2-omni-reference and
+                             #     veo-4-text-to-video each do it differently. Take them
+                             #     verbatim; `npm run muapi:slugs -- --video` re-probes when a
+                             #     vendor renames one)
 PIPEBOARD_API_TOKEN          # Meta Ads MCP (live ad performance) — optional
 META_ACCESS_TOKEN            # Meta Marketing API (System User token) — /meta dashboard + performance ingest + creative publish
 META_AD_ACCOUNT_ID           # Ad account for "Push Creative to Meta" (with or without act_ prefix)

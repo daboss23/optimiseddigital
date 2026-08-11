@@ -19,64 +19,98 @@ export const VIDEO_MODELS: VideoModel[] = [
   // / Wan. On trial as the primary video generator, so these lead the menu; the
   // fal and Higgsfield models below stay wired as automatic fallbacks.
   {
-    id: 'muapi-veo3',
-    label: 'Veo 3',
+    id: 'muapi-veo3.1',
+    label: 'Veo 3.1',
     provider: 'muapi',
     endpoints: {
-      'text-to-video': env('MUAPI_VIDEO_VEO3_T2V', 'veo3-text-to-video'),
-      'image-to-video': env('MUAPI_VIDEO_VEO3_I2V', 'veo3-image-to-video'),
+      'text-to-video': env('MUAPI_VIDEO_VEO31_T2V', 'veo3.1-text-to-video'),
+      'image-to-video': env('MUAPI_VIDEO_VEO31_I2V', 'veo3.1-image-to-video'),
+      'reference-to-video': env('MUAPI_VIDEO_VEO31_R2V', 'veo3.1-reference-to-video'),
+    },
+    modes: ['text-to-video', 'image-to-video', 'reference-to-video'],
+    maxDurationSec: 8,
+    aspectRatios: ['9:16', '16:9'],
+    audio: true,
+    tier: 'flagship',
+    notes: 'Google Veo 3.1 — native synchronized audio + dialogue. Best for people speaking / UGC voices. Reference-to-video holds a face across clips from up to three stills.',
+  },
+  {
+    id: 'muapi-veo4',
+    label: 'Veo 4',
+    provider: 'muapi',
+    endpoints: {
+      'text-to-video': env('MUAPI_VIDEO_VEO4_T2V', 'veo-4-text-to-video'),
+      'image-to-video': env('MUAPI_VIDEO_VEO4_I2V', 'veo-4-image-to-video'),
     },
     modes: ['text-to-video', 'image-to-video'],
     maxDurationSec: 8,
     aspectRatios: ['9:16', '16:9'],
     audio: true,
     tier: 'flagship',
-    notes: 'Google Veo 3 — native synchronized audio + dialogue. Best for people speaking / UGC voices.',
+    notes: "Google's fourth-generation Veo — photorealistic 1080p with the strongest prompt adherence in the menu. Newest tier; Veo 3.1 stays the default until it has run against real briefs.",
   },
   {
-    id: 'muapi-kling-pro',
-    label: 'Kling Pro',
+    id: 'muapi-seedance-2.0',
+    label: 'Seedance 2.0',
     provider: 'muapi',
     endpoints: {
-      'text-to-video': env('MUAPI_VIDEO_KLING_T2V', 'kling-v2.5-turbo-pro-t2v'),
-      'image-to-video': env('MUAPI_VIDEO_KLING_I2V', 'kling-v2.5-turbo-pro-i2v'),
+      'text-to-video': env('MUAPI_VIDEO_SEEDANCE2_T2V', 'seedance-2-text-to-video'),
+      'image-to-video': env('MUAPI_VIDEO_SEEDANCE2_I2V', 'seedance-2-image-to-video'),
+      'reference-to-video': env('MUAPI_VIDEO_SEEDANCE2_R2V', 'seedance-2-omni-reference'),
+    },
+    modes: ['text-to-video', 'image-to-video', 'reference-to-video'],
+    maxDurationSec: 15,
+    aspectRatios: ['1:1', '9:16', '16:9'],
+    audio: true,
+    tier: 'flagship',
+    notes: 'ByteDance Seedance 2.0 — native audio-visual sync, real-world physics, up to 2K. Omni-reference takes up to 9 stills to keep one face consistent across clips (the in-house UGC face library).',
+  },
+  {
+    id: 'muapi-seedance-2.0-fast',
+    label: 'Seedance 2.0 Fast',
+    provider: 'muapi',
+    endpoints: {
+      'text-to-video': env('MUAPI_VIDEO_SEEDANCE2_FAST_T2V', 'seedance-2-text-to-video-fast'),
+      'image-to-video': env('MUAPI_VIDEO_SEEDANCE2_FAST_I2V', 'seedance-2-image-to-video-fast'),
+      'reference-to-video': env('MUAPI_VIDEO_SEEDANCE2_FAST_R2V', 'seedance-2-omni-reference-no-video-fast'),
+    },
+    modes: ['text-to-video', 'image-to-video', 'reference-to-video'],
+    maxDurationSec: 15,
+    aspectRatios: ['1:1', '9:16', '16:9'],
+    audio: true,
+    tier: 'fast',
+    notes: 'Same Seedance 2.0 audio + face consistency at lower latency and cost — the volume option for creative variations.',
+  },
+  {
+    id: 'muapi-kling-3.0',
+    label: 'Kling 3.0',
+    provider: 'muapi',
+    endpoints: {
+      'text-to-video': env('MUAPI_VIDEO_KLING3_T2V', 'kling-v3.0-pro-text-to-video'),
+      'image-to-video': env('MUAPI_VIDEO_KLING3_I2V', 'kling-v3.0-pro-image-to-video'),
     },
     modes: ['text-to-video', 'image-to-video'],
     maxDurationSec: 10,
     aspectRatios: ['1:1', '9:16', '16:9'],
     audio: false,
     tier: 'flagship',
-    notes: 'Kling Pro — top-tier motion consistency and prompt adherence for UGC and action.',
+    notes: 'Kling 3.0 Pro — longer, smoother, more realistic motion with strong temporal consistency. Silent: use a Veo or Seedance tier when anyone speaks.',
   },
   {
-    id: 'muapi-seedance-pro',
-    label: 'Seedance Pro',
+    id: 'muapi-wan-2.7',
+    label: 'Wan 2.7',
     provider: 'muapi',
     endpoints: {
-      'text-to-video': env('MUAPI_VIDEO_SEEDANCE_T2V', 'seedance-pro-t2v'),
-      'image-to-video': env('MUAPI_VIDEO_SEEDANCE_I2V', 'seedance-pro-i2v'),
+      'text-to-video': env('MUAPI_VIDEO_WAN27_T2V', 'wan2.7-text-to-video'),
+      'image-to-video': env('MUAPI_VIDEO_WAN27_I2V', 'wan2.7-image-to-video'),
+      'reference-to-video': env('MUAPI_VIDEO_WAN27_R2V', 'wan2.7-reference-to-video'),
     },
-    modes: ['text-to-video', 'image-to-video'],
-    maxDurationSec: 12,
-    aspectRatios: ['1:1', '9:16', '16:9'],
-    audio: true,
-    tier: 'flagship',
-    notes: 'ByteDance Seedance Pro — cinematic realism and real-world physics for on-site builder B-roll.',
-  },
-  {
-    id: 'muapi-wan',
-    label: 'Wan 2.2',
-    provider: 'muapi',
-    endpoints: {
-      'text-to-video': env('MUAPI_VIDEO_WAN_T2V', 'wan2.2-text-to-video'),
-      'image-to-video': env('MUAPI_VIDEO_WAN_I2V', 'wan2.2-image-to-video'),
-    },
-    modes: ['text-to-video', 'image-to-video'],
+    modes: ['text-to-video', 'image-to-video', 'reference-to-video'],
     maxDurationSec: 10,
     aspectRatios: ['1:1', '9:16', '16:9'],
     audio: false,
     tier: 'budget',
-    notes: 'Wan 2.2 — strong quality-to-cost ratio for high-volume variant generation.',
+    notes: 'Alibaba Wan 2.7 — coherent cinematic clips at the best quality-to-cost in the menu, with character/prop references for repeat shots. Replaces Wan 2.2, whose endpoint leans anime/stylized rather than builder-realistic.',
   },
   {
     id: 'seedance-2.0',
@@ -222,14 +256,14 @@ export const VIDEO_MODELS: VideoModel[] = [
  * to the next configured provider (fal → Higgsfield), so this is a preference,
  * never a hard dependency.
  */
-export const DEFAULT_VIDEO_MODEL = 'muapi-veo3'
+export const DEFAULT_VIDEO_MODEL = 'muapi-veo3.1'
 
 export function getVideoModel(id: string): VideoModel | undefined {
   return VIDEO_MODELS.find((m) => m.id === id)
 }
 
 /**
- * The model FAMILY behind an id — 'muapi-veo3', 'veo-3.1' and 'veo-3' are all
+ * The model FAMILY behind an id — 'muapi-veo3.1', 'veo-3.1' and 'veo-3' are all
  * `veo`. The oven uses this to keep a fallback in the same family: a Veo
  * request that can't reach one gateway's Veo goes to another gateway's Veo
  * before it considers a different model entirely.

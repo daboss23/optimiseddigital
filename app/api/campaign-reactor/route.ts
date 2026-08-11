@@ -398,9 +398,16 @@ function buildTools(
   useVideo: boolean,
   useMetaAds: boolean,
 ): Anthropic.Beta.Messages.BetaToolUnion[] {
-  const videoModelIds = listVideoModels()
-    .filter((m) => m.configured)
-    .map((m) => m.id)
+  // Built from the registry, never hand-written: a hardcoded menu goes stale
+  // the moment a model is added or retired, and then the orchestrator is
+  // choosing from a list of ids that no longer exist.
+  const configuredVideoModels = listVideoModels().filter((m) => m.configured)
+  const videoModelIds = configuredVideoModels.map((m) => m.id)
+  const videoModelGuide = configuredVideoModels.length
+    ? configuredVideoModels
+        .map((m) => `${m.id} = ${m.audio ? 'native audio. ' : 'SILENT. '}${m.notes}`)
+        .join(' ')
+    : 'seedance-2.0 = cinematic realism with native audio.'
   const configuredImageModels = listImageModels().filter((m) => m.configured)
   const imageModelIds = configuredImageModels.map((m) => m.id)
   const imageModelGuide = configuredImageModels.length
@@ -477,8 +484,7 @@ function buildTools(
           model: {
             type: 'string',
             enum: videoModelIds.length ? videoModelIds : ['seedance-2.0'],
-            description:
-              'Model to render with. seedance-2.0 = cinematic realism/B-roll with native synchronized audio (up to 15s); seedance-2.0-fast = same with lower latency/cost for volume; kling-2.5 = UGC motion; veo-3 = people speaking with native audio; wan-2.5 = high-volume/budget; higgsfield-dop = animate a still.',
+            description: `Model to render with — pick the best fit for the shot. A concept where anyone SPEAKS must use a native-audio model, never a silent one. Options: ${videoModelGuide}`,
           },
           aspectRatio: { type: 'string', enum: ['1:1', '9:16', '16:9'], description: 'Defaults to 9:16.' },
           conceptType: { type: 'string', description: 'The output type this video is for (must match the concept type you will submit).' },
@@ -627,7 +633,7 @@ function coordinatorPrompt(
       ? ` The user has selected the "${caps.preferredVideoModel}" model — use it for every generate_video call unless a shot clearly needs a different capability.`
       : ''
   const videoLine = caps.video
-    ? `\n- For video output types (Video Concept, Founder Concept, Testimonial Concept): FIRST write a frame-by-frame production brief, THEN build the generate_video prompt FROM that brief, and attach the productionBrief to the submitted concept. Available models: ${caps.videoModels.join(', ')}. Use text-to-video to direct a full scene (e.g. a real builder on-site, a member speaking to camera — use veo-3 when they speak so it has audio; seedance-2.0 or kling-2.5 for cinematic action). Use image-to-video to animate a still from generate_image. Match conceptType to the concept you submit.${preferredLine}`
+    ? `\n- For video output types (Video Concept, Founder Concept, Testimonial Concept): FIRST write a frame-by-frame production brief, THEN build the generate_video prompt FROM that brief, and attach the productionBrief to the submitted concept. Available models: ${caps.videoModels.join(', ')} — the generate_video tool description says what each one is for. Use text-to-video to direct a full scene (e.g. a real builder on-site, a member speaking to camera — whenever someone SPEAKS, pick a model with native audio or the ad ships silent; pick a cinematic-realism model for action and B-roll). Use image-to-video to animate a still from generate_image. Match conceptType to the concept you submit.${preferredLine}`
     : ''
 
   return `You are OPUS — the Master Strategist of The Professional Builder's Creative Intelligence Command Center. You direct an intelligence network and synthesize it into launch-ready creative.

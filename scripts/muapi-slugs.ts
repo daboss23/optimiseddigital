@@ -95,44 +95,84 @@ const CANDIDATES: { envVar: string; label: string; slugs: string[] }[] = [
  */
 const VIDEO_CANDIDATES: { envVar: string; label: string; slugs: string[] }[] = [
   {
-    envVar: 'MUAPI_VIDEO_VEO3_T2V',
-    label: 'Veo 3 · text-to-video',
-    slugs: ['veo3-text-to-video', 'veo3-fast-text-to-video', 'veo3'],
+    envVar: 'MUAPI_VIDEO_VEO31_T2V',
+    label: 'Veo 3.1 · text-to-video',
+    slugs: ['veo3.1-text-to-video', 'veo3.1-fast-text-to-video', 'veo3-text-to-video'],
   },
   {
-    envVar: 'MUAPI_VIDEO_VEO3_I2V',
-    label: 'Veo 3 · image-to-video',
-    slugs: ['veo3-image-to-video', 'veo3-fast-image-to-video'],
+    envVar: 'MUAPI_VIDEO_VEO31_I2V',
+    label: 'Veo 3.1 · image-to-video',
+    slugs: ['veo3.1-image-to-video', 'veo3.1-fast-image-to-video', 'veo3-image-to-video'],
   },
   {
-    envVar: 'MUAPI_VIDEO_KLING_T2V',
-    label: 'Kling · text-to-video',
-    slugs: ['kling-v2.5-turbo-pro-t2v', 'kling-v2.6-pro-t2v', 'kling-pro'],
+    envVar: 'MUAPI_VIDEO_VEO31_R2V',
+    label: 'Veo 3.1 · reference-to-video',
+    slugs: ['veo3.1-reference-to-video'],
   },
   {
-    envVar: 'MUAPI_VIDEO_KLING_I2V',
-    label: 'Kling · image-to-video',
-    slugs: ['kling-v2.5-turbo-pro-i2v', 'kling-v2.6-pro-i2v', 'kling-pro-image-to-video'],
+    envVar: 'MUAPI_VIDEO_VEO4_T2V',
+    label: 'Veo 4 · text-to-video',
+    slugs: ['veo-4-text-to-video', 'veo4-text-to-video'],
   },
   {
-    envVar: 'MUAPI_VIDEO_SEEDANCE_T2V',
-    label: 'Seedance · text-to-video',
-    slugs: ['seedance-pro-t2v', 'seedance-v1.5-pro-t2v', 'seedance-pro'],
+    envVar: 'MUAPI_VIDEO_VEO4_I2V',
+    label: 'Veo 4 · image-to-video',
+    slugs: ['veo-4-image-to-video', 'veo4-image-to-video'],
   },
   {
-    envVar: 'MUAPI_VIDEO_SEEDANCE_I2V',
-    label: 'Seedance · image-to-video',
-    slugs: ['seedance-pro-i2v', 'seedance-v1.5-pro-i2v', 'seedance-pro-image-to-video'],
+    envVar: 'MUAPI_VIDEO_SEEDANCE2_T2V',
+    label: 'Seedance 2.0 · text-to-video',
+    slugs: ['seedance-2-text-to-video', 'seedance-2-t2v', 'seedance-2.1-text-to-video'],
   },
   {
-    envVar: 'MUAPI_VIDEO_WAN_T2V',
-    label: 'Wan · text-to-video',
-    slugs: ['wan2.2-text-to-video', 'wan2.5-text-to-video', 'wan2.2'],
+    envVar: 'MUAPI_VIDEO_SEEDANCE2_I2V',
+    label: 'Seedance 2.0 · image-to-video',
+    slugs: ['seedance-2-image-to-video', 'seedance-2-i2v', 'seedance-2.1-image-to-video'],
   },
   {
-    envVar: 'MUAPI_VIDEO_WAN_I2V',
-    label: 'Wan · image-to-video',
-    slugs: ['wan2.2-image-to-video', 'wan2.5-image-to-video'],
+    envVar: 'MUAPI_VIDEO_SEEDANCE2_R2V',
+    label: 'Seedance 2.0 · omni-reference (face library)',
+    slugs: ['seedance-2-omni-reference', 'seedance-2-omni-reference-no-video'],
+  },
+  {
+    envVar: 'MUAPI_VIDEO_SEEDANCE2_FAST_T2V',
+    label: 'Seedance 2.0 Fast · text-to-video',
+    slugs: ['seedance-2-text-to-video-fast', 'seedance-2-mini-text-to-video'],
+  },
+  {
+    envVar: 'MUAPI_VIDEO_SEEDANCE2_FAST_I2V',
+    label: 'Seedance 2.0 Fast · image-to-video',
+    slugs: ['seedance-2-image-to-video-fast', 'seedance-2-mini-image-to-video'],
+  },
+  {
+    envVar: 'MUAPI_VIDEO_SEEDANCE2_FAST_R2V',
+    label: 'Seedance 2.0 Fast · omni-reference',
+    slugs: ['seedance-2-omni-reference-no-video-fast', 'seedance-2-mini-omni-reference'],
+  },
+  {
+    envVar: 'MUAPI_VIDEO_KLING3_T2V',
+    label: 'Kling 3.0 · text-to-video',
+    slugs: ['kling-v3.0-pro-text-to-video', 'kling-v3-turbo-pro-text-to-video', 'kling-v2.5-turbo-pro-t2v'],
+  },
+  {
+    envVar: 'MUAPI_VIDEO_KLING3_I2V',
+    label: 'Kling 3.0 · image-to-video',
+    slugs: ['kling-v3.0-pro-image-to-video', 'kling-v3-turbo-pro-image-to-video', 'kling-v2.5-turbo-pro-i2v'],
+  },
+  {
+    envVar: 'MUAPI_VIDEO_WAN27_T2V',
+    label: 'Wan 2.7 · text-to-video',
+    slugs: ['wan2.7-text-to-video', 'wan2.6-text-to-video', 'wan2.5-text-to-video'],
+  },
+  {
+    envVar: 'MUAPI_VIDEO_WAN27_I2V',
+    label: 'Wan 2.7 · image-to-video',
+    slugs: ['wan2.7-image-to-video', 'wan2.6-image-to-video', 'wan2.5-image-to-video'],
+  },
+  {
+    envVar: 'MUAPI_VIDEO_WAN27_R2V',
+    label: 'Wan 2.7 · reference-to-video',
+    slugs: ['wan2.7-reference-to-video', 'wan2.1-reference-video'],
   },
 ]
 
@@ -150,6 +190,9 @@ function probeBody(slug: string, kind: 'image' | 'video'): Record<string, unknow
   if (kind === 'image') return PROBE
   const body: Record<string, unknown> = { prompt: 'a plain grey square', aspect_ratio: '9:16' }
   if (slug.includes('image-to-video') || slug.includes('i2v')) body.image_url = I2V_PROBE_IMAGE
+  // Reference / omni-reference endpoints want a LIST of stills, and reject a
+  // payload without one — a 4xx we would otherwise read as "no such slug".
+  if (slug.includes('reference')) body.image_urls = [I2V_PROBE_IMAGE]
   return body
 }
 
