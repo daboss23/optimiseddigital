@@ -115,6 +115,37 @@ function videoOption(m: (typeof VIDEO_MODELS)[number], configured: boolean): Mod
  * `/api/image/models` and `/api/video/models`; when they are still loading the
  * registries stand in with `configured: false` so the menu is never empty.
  */
+/**
+ * Collapse the same model appearing twice.
+ *
+ * A model can be reachable through more than one route, and the picker used to
+ * tell them apart by naming the route — "Nano Banana Pro (Muapi)" next to
+ * "Nano Banana Pro (Kie)". That is our plumbing on display, and it asks the
+ * builder to choose between two things that are the same model. The menu now
+ * shows the MODEL once; the oven keeps every route behind it and falls through
+ * them on its own.
+ *
+ * The survivor is the configured one where there is a choice, otherwise the
+ * first in registry order — which is the platform's own preference ranking.
+ */
+function dedupeModels<T extends { label: string; configured: boolean }>(options: T[]): T[] {
+  // Match on the model's own name, ignoring any parenthetical qualifier, so
+  // "Veo 3" and "Veo 3 (Google)" are recognised as one model.
+  const key = (label: string) => label.replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase()
+  const out: T[] = []
+  for (const opt of options) {
+    const k = key(opt.label)
+    const seen = out.findIndex((o) => key(o.label) === k)
+    if (seen === -1) {
+      out.push(opt)
+      continue
+    }
+    // A configured route beats an unconfigured one that happened to rank first.
+    if (opt.configured && !out[seen].configured) out[seen] = opt
+  }
+  return out
+}
+
 export function modelMenuFor(
   deliverable: string,
   imageAvail: ImageModelAvailability[],
@@ -130,8 +161,8 @@ export function modelMenuFor(
   const imgConfigured = (id: string) => imageAvail.find((m) => m.id === id)?.configured ?? false
   const vidConfigured = (id: string) => videoAvail.find((m) => m.id === id)?.configured ?? false
 
-  const imageOptions = IMAGE_MODELS.map((m) => imageOption(m, imgConfigured(m.id)))
-  const videoOptions = VIDEO_MODELS.map((m) => videoOption(m, vidConfigured(m.id)))
+  const imageOptions = dedupeModels(IMAGE_MODELS.map((m) => imageOption(m, imgConfigured(m.id))))
+  const videoOptions = dedupeModels(VIDEO_MODELS.map((m) => videoOption(m, vidConfigured(m.id))))
 
   if (isVideoDeliverable(deliverable)) {
     const rec = recommendVideoModel(
@@ -172,8 +203,8 @@ export function montageMenus(
 ): { still: ModelMenu; motion: ModelMenu } {
   const imgConfigured = (id: string) => imageAvail.find((m) => m.id === id)?.configured ?? false
   const vidConfigured = (id: string) => videoAvail.find((m) => m.id === id)?.configured ?? false
-  const imageOptions = IMAGE_MODELS.map((m) => imageOption(m, imgConfigured(m.id)))
-  const videoOptions = VIDEO_MODELS.map((m) => videoOption(m, vidConfigured(m.id)))
+  const imageOptions = dedupeModels(IMAGE_MODELS.map((m) => imageOption(m, imgConfigured(m.id))))
+  const videoOptions = dedupeModels(VIDEO_MODELS.map((m) => videoOption(m, vidConfigured(m.id))))
 
   const stillRec = recommendImageModel(
     ['Static Creative'],
@@ -222,4 +253,23 @@ export function resolveModelPick(menu: ModelMenu | null, pick: string | undefine
   if (!menu) return null
   if (pick && pick !== 'auto' && menu.options.some((o) => o.id === pick)) return pick
   return menu.recommendedId
+}
+
+/**
+ * The builder-facing name for a model id.
+ *
+ * Ids carry our routing ("muapi-nano-banana-pro"), and the gateway is not
+ * something a user should ever read. Anywhere a render reports which model
+ * produced it, this turns the id into the model's own name — and returns
+ * nothing at all rather than leaking a raw id we don't recognise.
+ */
+export function modelDisplayName(id?: string): string | undefined {
+  if (!id) return undefined
+  const known =
+    IMAGE_MODELS.find((m) => m.id === id) ?? VIDEO_MODELS.find((m) => m.id === id)
+  if (known) return known.label
+  // An id from a route we no longer list: strip the gateway prefix and tidy it
+  // rather than showing "muapi-flux-3" to a user.
+  const bare = id.replace(/^(muapi|kie|fal|hf|higgsfield)[-_]/i, '').replace(/[-_]/g, ' ').trim()
+  return bare ? bare.replace(/\b\w/g, (c) => c.toUpperCase()) : undefined
 }

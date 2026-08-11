@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { Pill } from '@/components/reactor/ui'
 import { validateAdPackage, type AdComplianceIssue } from '@/lib/meta-ads'
+import { modelDisplayName } from '@/lib/model-menu'
 import { NEURO_AXES, NEURO_PASS_MARK, type NeuroScore } from '@/lib/reactor-inputs'
 import type {
   Concept,
@@ -29,18 +30,15 @@ import type {
 
 // Non-destructive provider/model chip overlaid on a generated still or clip.
 // The asset pixels are never touched, so the downloadable creative stays clean.
-function ProviderChip({ model, provider }: { model?: string; provider?: string }) {
-  if (!model && !provider) return null
+function ProviderChip({ model }: { model?: string; provider?: string }) {
+  // The gateway a render was routed through is plumbing — the builder sees the
+  // MODEL that made the image, and nothing else.
+  const name = modelDisplayName(model)
+  if (!name) return null
   return (
     <span className="absolute right-2 top-2 z-10 inline-flex items-center gap-1 rounded-full border border-white/15 bg-black/60 px-2 py-0.5 text-[10px] font-medium text-white/85 backdrop-blur-sm">
       <Hexagon size={9} className="text-glow" />
-      {provider && <span className="uppercase tracking-wide text-white/60">{provider}</span>}
-      {model && (
-        <>
-          {provider && <span className="text-white/25">·</span>}
-          <span>{model}</span>
-        </>
-      )}
+      <span>{name}</span>
     </span>
   )
 }
@@ -267,10 +265,22 @@ export function ConceptResultCard({
       {/* The ad creative is the hero — the system renders it automatically once
           the run lands, so the finished ad is the first thing on the card. */}
       {image && (
-        <div className="relative mt-2">
+        <div className="group/creative relative mt-2">
           <ProviderChip model={imageMeta?.model} provider={imageMeta?.provider} />
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={image} alt={c.type} className="w-full rounded-lg border border-border" />
+          {/* The ad itself is the shortcut: clicking the creative opens it in
+              the Studio with this exact render already loaded as the ad image. */}
+          <button
+            type="button"
+            onClick={onConfigureInStudio}
+            title="Open this creative in the Studio"
+            className="block w-full overflow-hidden rounded-lg border border-border transition-colors hover:border-glow/50 focus:outline-none focus-visible:border-glow"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={image} alt={c.type} className="w-full" />
+            <span className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-center gap-1.5 bg-gradient-to-t from-black/85 to-transparent px-3 pb-3 pt-8 text-[12px] font-semibold text-white opacity-0 transition-opacity group-hover/creative:opacity-100">
+              <Wand2 size={12} /> Open in Studio
+            </span>
+          </button>
         </div>
       )}
       {/* A render that did not run on the model it was meant to — or ran on one

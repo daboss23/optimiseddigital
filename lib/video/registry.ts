@@ -20,7 +20,7 @@ export const VIDEO_MODELS: VideoModel[] = [
   // fal and Higgsfield models below stay wired as automatic fallbacks.
   {
     id: 'muapi-veo3',
-    label: 'Veo 3 (Muapi)',
+    label: 'Veo 3',
     provider: 'muapi',
     endpoints: {
       'text-to-video': env('MUAPI_VIDEO_VEO3_T2V', 'veo3'),
@@ -31,11 +31,11 @@ export const VIDEO_MODELS: VideoModel[] = [
     aspectRatios: ['9:16', '16:9'],
     audio: true,
     tier: 'flagship',
-    notes: 'Google Veo 3 via Muapi — native synchronized audio + dialogue. Best for people speaking / UGC voices.',
+    notes: 'Google Veo 3 — native synchronized audio + dialogue. Best for people speaking / UGC voices.',
   },
   {
     id: 'muapi-kling-pro',
-    label: 'Kling Pro (Muapi)',
+    label: 'Kling Pro',
     provider: 'muapi',
     endpoints: {
       'text-to-video': env('MUAPI_VIDEO_KLING_T2V', 'kling-pro'),
@@ -46,11 +46,11 @@ export const VIDEO_MODELS: VideoModel[] = [
     aspectRatios: ['1:1', '9:16', '16:9'],
     audio: false,
     tier: 'flagship',
-    notes: 'Kling Pro via Muapi — top-tier motion consistency and prompt adherence for UGC and action.',
+    notes: 'Kling Pro — top-tier motion consistency and prompt adherence for UGC and action.',
   },
   {
     id: 'muapi-seedance-pro',
-    label: 'Seedance Pro (Muapi)',
+    label: 'Seedance Pro',
     provider: 'muapi',
     endpoints: {
       'text-to-video': env('MUAPI_VIDEO_SEEDANCE_T2V', 'seedance-pro'),
@@ -61,11 +61,11 @@ export const VIDEO_MODELS: VideoModel[] = [
     aspectRatios: ['1:1', '9:16', '16:9'],
     audio: true,
     tier: 'flagship',
-    notes: 'ByteDance Seedance Pro via Muapi — cinematic realism and real-world physics for on-site builder B-roll.',
+    notes: 'ByteDance Seedance Pro — cinematic realism and real-world physics for on-site builder B-roll.',
   },
   {
     id: 'muapi-wan',
-    label: 'Wan 2.2 (Muapi)',
+    label: 'Wan 2.2',
     provider: 'muapi',
     endpoints: {
       'text-to-video': env('MUAPI_VIDEO_WAN_T2V', 'wan2.2'),
@@ -76,7 +76,7 @@ export const VIDEO_MODELS: VideoModel[] = [
     aspectRatios: ['1:1', '9:16', '16:9'],
     audio: false,
     tier: 'budget',
-    notes: 'Wan 2.2 via Muapi — strong quality-to-cost ratio for high-volume variant generation.',
+    notes: 'Wan 2.2 — strong quality-to-cost ratio for high-volume variant generation.',
   },
   {
     id: 'seedance-2.0',

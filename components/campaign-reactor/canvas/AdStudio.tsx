@@ -77,8 +77,18 @@ function splitPrimary(primary: string): { hook: string; body: string } {
   return { hook: t, body: '' }
 }
 
-/** Concepts that can supply the ad's creative (a still or a clip). */
-const isVisual = (c: Concept) => c.type.includes('Concept')
+/**
+ * Concepts that can supply the ad's creative (a still or a clip).
+ *
+ * Type is only the first test. A concept that is CARRYING a render — because it
+ * was reopened from the ledger, or because the run already rendered it — is a
+ * creative source whatever it happens to be called. Judging on the type string
+ * alone is how a creative the user just clicked ends up not being the one the
+ * Studio opens with.
+ */
+const isVisualType = (c: Concept) => c.type.includes('Concept')
+const carriesMedia = (c: Concept) => Boolean(c.imageUrl || c.videoUrl)
+const isVisual = (c: Concept) => isVisualType(c) || carriesMedia(c)
 
 /** The best-scoring concept carrying a complete ad package — the auto seed. */
 function bestPackaged(concepts: Concept[]): Concept | undefined {
@@ -351,8 +361,18 @@ export function AdStudio({
 }) {
   const { concepts, generateCreative, imageFor, videoFor, creativeStateFor } = useReactorRun()
 
-  const blocks = useMemo(() => buildBlocks(concepts, offerName), [concepts, offerName])
-  const visualConcepts = useMemo(() => concepts.filter(isVisual), [concepts])
+  // The creative the user arrived from belongs to the Studio even when the run
+  // that made it is gone (reopened from the ledger after a refresh, where
+  // `concepts` is empty). Seed first, then the run — deduped by text, so the
+  // clicked ad is always the first tile on the rail and never a duplicate.
+  const sourceConcepts = useMemo(() => {
+    const all = seed ? [seed, ...concepts] : concepts
+    const seen = new Set<string>()
+    return all.filter((c) => (seen.has(c.text) ? false : (seen.add(c.text), true)))
+  }, [seed, concepts])
+
+  const blocks = useMemo(() => buildBlocks(sourceConcepts, offerName), [sourceConcepts, offerName])
+  const visualConcepts = useMemo(() => sourceConcepts.filter(isVisual), [sourceConcepts])
 
   /* ------------------------------ Ad fields -------------------------------- */
   const [hook, setHook] = useState('')
@@ -373,7 +393,7 @@ export function AdStudio({
   // when the source changes so in-progress edits are never clobbered.
   const seedKeyRef = useRef<string | null>(null)
   useEffect(() => {
-    const source = seed ?? bestPackaged(concepts)
+    const source = seed ?? bestPackaged(sourceConcepts)
     if (!source) return
     const key = `${seed ? 'seed' : 'auto'}:${source.text}`
     if (seedKeyRef.current === key) return
@@ -394,12 +414,16 @@ export function AdStudio({
     // back, prefer a concept whose creative has actually landed over the first
     // visual one: an unrendered pick shows "Pick a creative from the run below"
     // on a Studio that had a finished ad available all along.
+    // The creative you clicked is the creative you edit. A source that is
+    // visual — by type OR because it is carrying a render — is selected
+    // directly, so the still on the card you opened is the still in the ad.
+    // Only a copy-only source (a bare Hook) falls back to a sibling render.
     setCreativeConcept(
       isVisual(source)
         ? source
         : (visualConcepts.find((c) => imageFor(c) || videoFor(c)) ?? visualConcepts[0] ?? null),
     )
-    // visualConcepts derives from concepts — concepts is the real dependency.
+    // visualConcepts derives from sourceConcepts — the inputs below cover it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seed, concepts])
 
@@ -511,7 +535,10 @@ export function AdStudio({
   }, [creativeConcept, hook, body, headline, description, cta])
 
   /* --------------------------------- Empty --------------------------------- */
-  if (concepts.length === 0) {
+  // Empty means nothing to edit — not merely "this session has no run". A
+  // creative reopened from the ledger arrives with no run behind it and must
+  // still open.
+  if (sourceConcepts.length === 0) {
     return (
       <div className="reactor-panel glass grid min-h-[460px] place-items-center p-8 text-center">
         <div className="max-w-sm">

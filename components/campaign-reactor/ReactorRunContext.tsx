@@ -41,6 +41,13 @@ export interface Concept {
   learningCheck?: string
   score?: number
   imageUrl?: string
+  /**
+   * A finished clip that travels WITH the concept — set when a creative is
+   * reopened from the ledger, where the run state that produced it is long
+   * gone. `videoFor` falls back to it, so a reopened video behaves exactly
+   * like one rendered in the current run.
+   */
+  videoUrl?: string
   productionBrief?: ProductionBrief
   neuro?: NeuroScore
   /** The complete, launch-ready Meta ad unit for this concept. */
@@ -515,7 +522,7 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
             [c.text]: {
               status: 'error',
               message:
-                'Render is taking unusually long. The credit was charged at Kie, so the image likely finished — check your Kie dashboard.',
+                'Render is taking unusually long. The job was accepted by the render provider, so the image most likely finished — try generating again or check back shortly.',
             },
           }))
           return
@@ -689,7 +696,12 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
     [agentMedia, creatives],
   )
   const videoFor = useCallback(
-    (c: Concept): VideoUiState | undefined => manualVideos[c.text] || agentMedia[normType(c.type)]?.video,
+    (c: Concept): VideoUiState | undefined =>
+      manualVideos[c.text] ||
+      agentMedia[normType(c.type)]?.video ||
+      // A concept carrying its own clip (reopened from the ledger) resolves
+      // even when this session never rendered it.
+      (c.videoUrl ? { status: 'done' as const, url: c.videoUrl } : undefined),
     [manualVideos, agentMedia],
   )
   const creativeStateFor = useCallback((c: Concept) => creatives[c.text], [creatives])

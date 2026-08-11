@@ -605,10 +605,25 @@ export function Workbench() {
 
   // "Configure in Studio" — carry the concept (copy + creative) into the Studio
   // editor so the user refines a real ad instead of starting from parts.
-  const configureInStudio = useCallback((c: Concept) => {
-    setStudioSeed(c)
-    setView('studio')
-  }, [])
+  //
+  // The render is STAMPED ONTO the seed on the way through. Live media is keyed
+  // by concept text, and callers legitimately rewrite that text (the Canvas
+  // sends a lane whose primary text it just rebuilt) — so a concept handed over
+  // bare can arrive in the Studio having lost the very image the user clicked.
+  // Resolving it here means every entry point — concept card, Canvas lane,
+  // ledger tile — lands with its own creative already in the ad.
+  const configureInStudio = useCallback(
+    (c: Concept) => {
+      const video = videoFor(c)
+      setStudioSeed({
+        ...c,
+        imageUrl: c.imageUrl ?? imageFor(c),
+        videoUrl: c.videoUrl ?? (video?.status === 'done' ? video.url : undefined),
+      })
+      setView('studio')
+    },
+    [imageFor, videoFor],
+  )
 
   // "Creative Canvas" — take the run into the structured direction layer to
   // shape, branch, and reassign the concept's parts before finishing.
