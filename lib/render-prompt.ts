@@ -212,6 +212,18 @@ const NO_TEXT_AT_ALL_RULE =
   'Render NO text, lettering, numerals, logos, wordmarks, signage or watermarks anywhere in the image — the copy is overlaid afterwards. Leave clean, uncluttered negative space in the areas reserved for it.'
 
 /**
+ * The rule that stops a still being rendered as a storyboard.
+ *
+ * A production brief is written frame by frame because that is how a VIDEO is
+ * directed. Handing that list to a still model reads as a shot list, and the
+ * model obliges: five stacked letterbox panels, one per beat, which is not an
+ * ad. The still gets ONE beat — the hero frame — and an explicit instruction
+ * that the output is a single photograph.
+ */
+const SINGLE_FRAME_RULE =
+  'Render ONE single photographic frame — a single unified composition that fills the entire canvas edge to edge. This is NOT a storyboard, filmstrip, contact sheet, collage, grid, split-screen, before/after pair, or multi-panel layout. No panels, no strips, no borders, no dividing lines, no letterboxing, no stacked scenes.'
+
+/**
  * Compile a production brief into a render prompt.
  *
  * @param brief    the concept's frame-by-frame plan
@@ -220,10 +232,14 @@ const NO_TEXT_AT_ALL_RULE =
 export function compileRenderPrompt(
   brief: ProductionBrief | undefined,
   fallback: string,
+  opts: { motion?: boolean } = {},
 ): CompiledRenderPrompt {
+  const motion = opts.motion === true
   if (!brief?.frames?.length) {
     return {
-      prompt: `${fallback}\n\n${NO_TEXT_AT_ALL_RULE}`,
+      prompt: [fallback, motion ? '' : SINGLE_FRAME_RULE, NO_TEXT_AT_ALL_RULE]
+        .filter(Boolean)
+        .join('\n\n'),
       rendered: [],
       omitted: [],
     }
@@ -235,16 +251,26 @@ export function compileRenderPrompt(
      `placement` on the text block below. Describing the headline slot twice —
      once as a scene beat and once as literal copy — is itself a cause of
      duplicated and doubled-up lettering in the render. */
-  const sceneFrames = (brief.frames ?? [])
+  const allScenes = (brief.frames ?? [])
     .map((f) => ({ role: classifyFrame(f.label ?? '', f.description ?? ''), frame: f }))
     .filter(({ role }) => role === 'scene')
     .map(({ frame }, i) => {
       const scene = sceneOnly(frame.description ?? '')
       if (!scene) return null
       const label = frame.label?.trim() || `Frame ${i + 1}`
-      return `${label}: ${scene}`
+      return { label, scene }
     })
-    .filter(Boolean) as string[]
+    .filter(Boolean) as { label: string; scene: string }[]
+
+  /* A still gets ONE beat. Handing a still model five numbered frames reads as
+     a shot list and renders as five stacked panels — an ad that is a filmstrip
+     is not an ad. The hero frame is the first scene beat: the brief opens on
+     the image the ad is built around. The remaining beats belong to the video
+     cut of the same concept. Frame labels are dropped too — "Frame 1:" is
+     itself an instruction to number the output. */
+  const sceneFrames = motion
+    ? allScenes.map(({ label, scene }) => `${label}: ${scene}`)
+    : allScenes.slice(0, 1).map(({ scene }) => `SCENE: ${scene}`)
 
   /* -- 2. Copy: prioritised, budgeted, and everything else set aside. ------- */
   const collected = collectText(brief)
@@ -301,7 +327,7 @@ export function compileRenderPrompt(
     ? 'Premium, photographic, on-site builder context, high contrast behind every piece of type so it stays readable.'
     : 'Premium, photographic, on-site builder context, high contrast, clean space reserved for the text overlay.'
 
-  const prompt = [header, sceneFrames.join('\n'), textBlock, look]
+  const prompt = [header, sceneFrames.join('\n'), motion ? '' : SINGLE_FRAME_RULE, textBlock, look]
     .filter(Boolean)
     .join('\n\n')
 
@@ -319,4 +345,14 @@ function rank(role: TextRole): number {
  */
 export function briefToPrompt(brief: ProductionBrief | undefined, fallback: string): string {
   return compileRenderPrompt(brief, fallback).prompt
+}
+
+/**
+ * The motion variant — the same compiler with the full frame sequence intact.
+ *
+ * A video model is being directed through beats over time, so the shot list is
+ * exactly right there; it is only a STILL that has to collapse to one frame.
+ */
+export function briefToVideoPrompt(brief: ProductionBrief | undefined, fallback: string): string {
+  return compileRenderPrompt(brief, fallback, { motion: true }).prompt
 }

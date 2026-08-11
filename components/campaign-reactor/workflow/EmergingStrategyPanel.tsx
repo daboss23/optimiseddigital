@@ -11,6 +11,7 @@ import {
   reportedAgents,
   type WorkflowState,
 } from '@/lib/campaign-reactor/workflow'
+import { useReactorRun } from '@/components/campaign-reactor/ReactorRunContext'
 import { AGENT_VISUAL } from './visuals'
 import { accentClass } from '@/components/reactor/ui'
 
@@ -34,6 +35,32 @@ function ConfigRow({ icon, label, value }: { icon: ReactNode; label: string; val
         {text}
       </span>
     </div>
+  )
+}
+
+/**
+ * What is still happening after the run "finishes".
+ *
+ * The stream ends when OPUS submits; every still then renders client-side, 20-60s
+ * apiece. Without this the panel announced a completed run next to empty concept
+ * cards and the wait looked like a hang.
+ */
+function RenderProgress() {
+  const { concepts, imageFor, videoFor, creativeStateFor } = useReactorRun()
+  const visual = concepts.filter((c) => creativeStateFor(c) || imageFor(c) || videoFor(c) || c.productionBrief)
+  if (!visual.length) return null
+
+  const done = visual.filter((c) => {
+    const v = videoFor(c)
+    return Boolean(imageFor(c)) || v?.status === 'done'
+  }).length
+  if (done >= visual.length) return null
+
+  return (
+    <p className="col-span-3 border-t border-white/10 pt-2 text-[10px] leading-relaxed text-white/45">
+      Rendering creatives · {done} of {visual.length} — stills render after the strategy run, 20-60s
+      each. The ads land on the cards as they finish.
+    </p>
   )
 }
 
@@ -164,8 +191,12 @@ export function EmergingStrategyPanel({
               <Clock size={12} className="text-white/40" />
               {elapsedLabel(workflow) ?? '—'}
             </p>
-            <p className="text-[9px] uppercase tracking-wider text-white/40">Elapsed</p>
+            {/* "Elapsed" read as "time until the ads exist", which it never
+                was: stills render in the browser AFTER the stream closes, so a
+                21s run could still be 3 minutes from a finished creative. */}
+            <p className="text-[9px] uppercase tracking-wider text-white/40">Strategy run</p>
           </div>
+          <RenderProgress />
         </motion.div>
       )}
     </div>

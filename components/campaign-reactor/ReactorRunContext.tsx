@@ -19,7 +19,7 @@ import {
   removeFromLedger,
   type LedgerEntry,
 } from '@/lib/creative-ledger'
-import { briefToPrompt, compileRenderPrompt } from '@/lib/render-prompt'
+import { briefToVideoPrompt, compileRenderPrompt } from '@/lib/render-prompt'
 import type { MetaAdPackage } from '@/lib/meta-ads'
 import type { Verdict, OutcomeAttributes } from '@/lib/outcomes'
 import {
@@ -382,7 +382,7 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            prompt: c.productionBrief ? briefToPrompt(c.productionBrief, c.text) : c.text,
+            prompt: c.productionBrief ? briefToVideoPrompt(c.productionBrief, c.text) : c.text,
             mode: 'text-to-video',
             model: videoModel,
             aspectRatio: aspectRatio ?? '9:16',

@@ -112,5 +112,37 @@ const clean = compileRenderPrompt(
 check('asks for no lettering at all', /Render NO text, lettering/.test(clean.prompt))
 check('is not routed as a text render', !promptCarriesCopy(clean.prompt))
 
+/* -------------------------------------------------------------------------- */
+/*  A still is ONE frame — the filmstrip regression                            */
+/*                                                                            */
+/*  The exact brief that shipped as five stacked letterbox panels: a narrative */
+/*  sequence handed to a still model, which rendered it as a shot list.        */
+/* -------------------------------------------------------------------------- */
+
+console.log('\nRender prompt — a still is one frame, not a storyboard')
+const sequence = {
+  creativeType: 'Static Concept',
+  pattern: 'The Builder-Not-a-CEO Identity Trap',
+  audience: 'Builders',
+  awareness: 'Problem-Aware',
+  frames: [
+    { label: 'Frame 1', description: 'Builder overwhelmed on a chaotic job site.' },
+    { label: 'Frame 2', description: 'The hidden identity trap exposed with one stark figure.' },
+    { label: 'Frame 3', description: 'The system / turning point introduced.' },
+    { label: 'Frame 4', description: 'The after — margin, time, and control restored.' },
+    { label: 'Frame 5', description: 'Soft, qualifying call to action to the next step.' },
+  ],
+}
+
+const still = compileRenderPrompt(sequence, 'fallback')
+check('only the hero beat reaches a still', !/turning point|The after/.test(still.prompt))
+check('frames are not numbered at the model', !/Frame \d/.test(still.prompt))
+check('a single unified composition is demanded', /ONE single photographic frame/.test(still.prompt))
+check('panels and strips are ruled out by name', /storyboard|filmstrip|multi-panel/.test(still.prompt))
+
+const motion = compileRenderPrompt(sequence, 'fallback', { motion: true })
+check('video keeps the full sequence', /turning point/.test(motion.prompt) && /The after/.test(motion.prompt))
+check('video is not told to render a single frame', !/ONE single photographic frame/.test(motion.prompt))
+
 console.log(failures === 0 ? '\nAll render-prompt checks passed.\n' : `\n${failures} check(s) FAILED.\n`)
 process.exit(failures === 0 ? 0 : 1)

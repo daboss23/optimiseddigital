@@ -580,6 +580,16 @@ function buildTools(
  * still ships in the concept's adPackage (caption, headline, description) and is
  * overlaid in the Studio; only the headline and the button belong in the pixels.
  */
+/**
+ * A STILL IS ONE FRAME. The brief format is frame-by-frame because that is how
+ * video is directed; a still model handed five numbered beats renders five
+ * stacked panels — a filmstrip, not an ad. This says so explicitly, and the
+ * render compiler enforces it again on the way out (lib/render-prompt.ts).
+ */
+const SINGLE_FRAME_RULE = `
+- A STILL IS ONE FRAME, NOT A SEQUENCE. For every image deliverable the frames describe ONE photograph: frame 1 is the whole composition (subject, setting, light, framing), and any further frames describe LAYERS of that same single image (where the headline sits, where the CTA sits) — never a second scene, never a before/after, never a story beat. Do not write "Frame 2: the turning point" or "Frame 3: the after" on a still: that renders as a multi-panel collage and the ad is unusable. Save narrative beats for video deliverables.
+- EVERY STILL CARRIES ITS HEADLINE. A photograph with no words is a stock image, not an ad — declare the headline in onImageText on every image concept.`
+
 const ON_IMAGE_TEXT_RULE = `
 - ON-IMAGE COPY — the words burned into the creative: declare them in productionBrief.onImageText, never only inside the frame prose. AT MOST TWO entries: the headline and the CTA button label, roughly 95 characters across both. Image models mangle every letter once you ask for more, so a third line costs you the first two. NEVER ask the image for fine print, compliance lines, disclaimers, sub-paragraphs, logos or wordmarks — those are overlaid after the render and the platform strips them from the prompt. Write the frames as pure art direction (subject, setting, light, framing, where the type sits) and let onImageText carry the words.`
 
@@ -605,9 +615,9 @@ function coordinatorPrompt(
       ? ` The user has selected the "${caps.preferredImageModel}" image model — use it unless a concept clearly needs a different one.`
       : ''
   const imageLine = caps.image
-    ? `\n- For visual output types (Static Concept, Founder Concept, Campaign Concept): FIRST write a frame-by-frame production brief for the concept, THEN build the generate_image prompt FROM that brief. Available models: ${caps.imageModels.join(', ')}. Pass the concept type as conceptType, include the returned imageUrl, and attach the productionBrief to the submitted concept.${preferredImageLine}${ON_IMAGE_TEXT_RULE}`
+    ? `\n- For visual output types (Static Concept, Founder Concept, Campaign Concept): FIRST write a frame-by-frame production brief for the concept, THEN build the generate_image prompt FROM that brief. Available models: ${caps.imageModels.join(', ')}. Pass the concept type as conceptType, include the returned imageUrl, and attach the productionBrief to the submitted concept.${preferredImageLine}${SINGLE_FRAME_RULE}${ON_IMAGE_TEXT_RULE}`
     : caps.imageRendersFromBrief
-      ? `\n- For visual output types (Static Concept, Founder Concept, Campaign Concept): the platform renders the still FROM the production brief the moment you submit, so the brief IS the creative — you have no image tool and do not need one. Write it as if directing a photographer: name the subject, the setting, the light, the framing, and what occupies the space reserved for text. A vague brief renders a vague ad. Attach it as productionBrief on every visual concept.${ON_IMAGE_TEXT_RULE}`
+      ? `\n- For visual output types (Static Concept, Founder Concept, Campaign Concept): the platform renders the still FROM the production brief the moment you submit, so the brief IS the creative — you have no image tool and do not need one. Write it as if directing a photographer: name the subject, the setting, the light, the framing, and what occupies the space reserved for text. A vague brief renders a vague ad. Attach it as productionBrief on every visual concept.${SINGLE_FRAME_RULE}${ON_IMAGE_TEXT_RULE}`
       : ''
   const preferredLine =
     caps.preferredVideoModel && caps.videoModels.includes(caps.preferredVideoModel)
