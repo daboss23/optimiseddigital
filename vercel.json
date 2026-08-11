@@ -1,10 +1,4 @@
 {
   "framework": "nextjs",
-  "regions": ["iad1"],
-  "crons": [
-    {
-      "path": "/api/nova/sweep",
-      "schedule": "0 9 * * 1"
-    }
-  ]
+  "regions": ["iad1"]
 }

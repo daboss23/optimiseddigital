@@ -5,10 +5,14 @@ export const runtime = 'nodejs'
 export const maxDuration = 300
 export const dynamic = 'force-dynamic'
 
-// NOVA's always-on memory. Vercel Cron hits this weekly (GET) to sweep her core
-// subreddits for the past week's signal and embed anything new — deduped — so
-// every campaign fire retrieves fresh intelligence with zero added latency.
-// Also callable via POST for a manual full sweep.
+// NOVA's memory refresh. Sweeps her core subreddits for the window's signal and
+// embeds anything new — deduped — so campaign fires retrieve fresh intelligence
+// with zero added latency. Callable by GET or POST.
+//
+// Deliberately NOT on a schedule. A weekly Vercel Cron used to fire this every
+// Monday, spending model tokens on a sweep nobody asked for — including in weeks
+// the platform was never opened. Sweep on demand instead; re-add a `crons` entry
+// to vercel.json when the spend is worth the freshness.
 //
 // Auth: when CRON_SECRET is configured, Vercel attaches it as a Bearer token and
 // we require a match. With no secret set, the endpoint is open (local/manual).

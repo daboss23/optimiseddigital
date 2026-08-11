@@ -1,11 +1,65 @@
-import { Radar, Building2, Globe, Sparkles, MessageSquare, Clock } from 'lucide-react'
+import { Radar, Building2, Globe, Sparkles, MessageSquare, Clock, Inbox } from 'lucide-react'
 import { PageHeader, Panel, PanelHeader, ProgressBar, Pill } from '@/components/reactor/ui'
 import { internalSources, externalSources, researchOutputs } from '@/lib/reactor-data'
-import { vaultStats } from '@/lib/knowledge'
 import { NOVA_SUBREDDITS, NOVA_FORUMS } from '@/lib/market-intelligence'
+import { liveNovaIntel, type LiveNovaSource } from '@/lib/nova-intel'
 import { NovaResearch } from './NovaResearch'
 
 export const dynamic = 'force-dynamic'
+
+/** Relative age of an ingest, for the live source rows. */
+function ago(iso: string | null): string {
+  if (!iso) return 'unknown'
+  const ms = Date.now() - new Date(iso).getTime()
+  if (!Number.isFinite(ms) || ms < 0) return 'just now'
+  const mins = Math.floor(ms / 60_000)
+  if (mins < 60) return `${Math.max(mins, 1)}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  return `${Math.floor(hours / 24)}d ago`
+}
+
+/**
+ * Sources NOVA has actually mined. Deliberately shows counted facts only —
+ * chunks stored, conversations analysed, when it last ran. The curated rows this
+ * replaced carried a "signal score" that nothing in the pipeline measures.
+ */
+function LiveSourceList({ sources }: { sources: LiveNovaSource[] }) {
+  return (
+    <div className="space-y-3 p-5">
+      {sources.map((s) => (
+        <div key={s.name} className="flex items-center gap-4">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-white">{s.name}</p>
+            <p className="text-[11px] text-white/35">
+              {s.itemsAnalyzed > 0
+                ? `${s.itemsAnalyzed.toLocaleString()} conversations · `
+                : ''}
+              {s.chunks} chunk{s.chunks === 1 ? '' : 's'} · {ago(s.lastIngested)}
+            </p>
+          </div>
+          <span className="shrink-0 rounded-md border border-border bg-surface/50 px-2 py-0.5 text-[10px] uppercase tracking-wider text-white/45">
+            {s.type}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** Shown when NOVA holds nothing — never curated copy dressed up as findings. */
+function NovaEmptyState({ what }: { what: string }) {
+  return (
+    <div className="flex flex-col items-center gap-2 px-5 py-10 text-center">
+      <Inbox size={20} className="text-white/25" />
+      <p className="text-sm text-white/55">NOVA hasn’t stored any {what} yet.</p>
+      <p className="max-w-md text-[12px] leading-relaxed text-white/35">
+        Deploy her above — pick a subreddit, forum, YouTube video or paste a conversation. Everything
+        she reads is embedded into the Vault and pulled into every campaign fire automatically.
+      </p>
+    </div>
+  )
+}
 
 function SourceList({ data }: { data: { name: string; count: number; signal: number }[] }) {
   return (
@@ -30,15 +84,11 @@ function SourceList({ data }: { data: { name: string; count: number; signal: num
 }
 
 export default async function ResearchPage() {
-  // Live count of what NOVA actually holds — her systems are research +
-  // transformation. Degrades to the curated demo total when the store is empty.
-  const stats = await vaultStats().catch(() => null)
-  const novaIndexed =
-    stats?.live && stats.groups.length
-      ? stats.groups
-          .filter((g) => g.system === 'research' || g.system === 'transformation')
-          .reduce((s, g) => s + g.count, 0)
-      : 0
+  // What NOVA actually holds. Never throws — an unconfigured or empty store
+  // comes back `live: false`, and the panels below render an empty state rather
+  // than curated copy that would read as findings.
+  const intel = await liveNovaIntel().catch(() => null)
+  const novaIndexed = intel?.totalChunks ?? 0
 
   return (
     <>
@@ -60,10 +110,10 @@ export default async function ResearchPage() {
           icon={<MessageSquare size={16} />}
           accent="violet"
           title="Where NOVA mines — recommended sources"
-          subtitle="The highest-signal places a trades & construction audience talks. NOVA auto-sweeps these weekly; deploy her manually any time for a targeted dig."
+          subtitle="The highest-signal places a trades & construction audience talks. Deploy NOVA at any of them for a targeted dig."
           accessory={
-            <Pill tone="primary">
-              <Clock size={12} /> Auto-sweeps weekly
+            <Pill tone="default">
+              <Clock size={12} /> Sweeps on demand
             </Pill>
           }
         />
@@ -116,7 +166,8 @@ export default async function ResearchPage() {
             icon={<Building2 size={16} />}
             accent="emerald"
             title="Internal Sources"
-            subtitle="First-party signal from inside TPB"
+            subtitle="First-party signal from inside TPB — illustrative targets, not yet wired to live data"
+            accessory={<Pill tone="warning">Sample</Pill>}
           />
           <SourceList data={internalSources} />
         </Panel>
@@ -125,9 +176,22 @@ export default async function ResearchPage() {
             icon={<Globe size={16} />}
             accent="cyan"
             title="External Sources"
-            subtitle="Market signal from the wider builder world"
+            subtitle="What NOVA has actually mined from the wider builder world"
+            accessory={
+              intel?.live && intel.sources.length > 0 ? (
+                <Pill tone="success">
+                  <Radar size={12} /> {intel.sourceCount} live
+                </Pill>
+              ) : (
+                <Pill tone="default">No sources yet</Pill>
+              )
+            }
           />
-          <SourceList data={externalSources} />
+          {intel?.live && intel.sources.length > 0 ? (
+            <LiveSourceList sources={intel.sources} />
+          ) : (
+            <NovaEmptyState what="external sources" />
+          )}
         </Panel>
       </div>
 
@@ -136,8 +200,56 @@ export default async function ResearchPage() {
           icon={<Sparkles size={16} />}
           accent="violet"
           title="Extracted Outputs"
-          subtitle="What the reactor learned from the research layer"
-          accessory={<Pill tone="primary"><Radar size={12} /> Continuously mined</Pill>}
+          subtitle="What NOVA actually pulled out of the conversations she read"
+          accessory={
+            intel?.live && intel.outputs.length > 0 ? (
+              <Pill tone="success">
+                <Radar size={12} /> Live from {intel.sourceCount} source
+                {intel.sourceCount === 1 ? '' : 's'}
+              </Pill>
+            ) : (
+              <Pill tone="default">Nothing extracted yet</Pill>
+            )
+          }
+        />
+        {intel?.live && intel.outputs.length > 0 ? (
+          <>
+            <div className="grid grid-cols-1 gap-4 p-5 md:grid-cols-2 xl:grid-cols-3">
+              {intel.outputs.map((o) => (
+                <div key={o.type} className="rounded-xl border border-border bg-surface/40 p-4">
+                  <h3 className="mb-3 font-display text-sm font-semibold text-white">{o.type}</h3>
+                  <ul className="space-y-2">
+                    {o.items.map((item) => (
+                      <li key={item} className="flex gap-2 text-sm text-white/60">
+                        <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-glow" />
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+            {intel.chunksWithoutProfile > 0 && (
+              <p className="px-5 pb-5 text-[11px] leading-relaxed text-white/35">
+                {intel.chunksWithoutProfile} stored chunk
+                {intel.chunksWithoutProfile === 1 ? '' : 's'} predate structured extraction and
+                aren’t shown in these cards. They are still embedded and still retrieved on every
+                campaign fire — re-run those sources to surface them here.
+              </p>
+            )}
+          </>
+        ) : (
+          <NovaEmptyState what="market signal" />
+        )}
+      </Panel>
+
+      <Panel>
+        <PanelHeader
+          icon={<Sparkles size={16} />}
+          accent="violet"
+          title="Sample output — what a full read looks like"
+          subtitle="Illustrative only. Not your data, and never used in a campaign."
+          accessory={<Pill tone="warning">Sample</Pill>}
         />
         <div className="grid grid-cols-1 gap-4 p-5 md:grid-cols-2 xl:grid-cols-3">
           {researchOutputs.map((o) => (

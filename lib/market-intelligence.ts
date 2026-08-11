@@ -517,6 +517,10 @@ export async function storeMarketIntel(
     items_analyzed: meta.itemsAnalyzed,
     content_hash: opts.contentHash ?? null,
     ingested_at: new Date().toISOString(),
+    // The structured read rides alongside the prose so the Research dashboard can
+    // show what NOVA actually found without re-parsing the embedded document.
+    // Retrieval still uses the prose; this is purely the readback surface.
+    profile,
   }
 
   let stored = false

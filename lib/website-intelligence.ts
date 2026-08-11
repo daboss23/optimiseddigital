@@ -1030,6 +1030,13 @@ function describeError(err: unknown): string {
   return message.slice(0, 200)
 }
 
+/**
+ * The extraction rules every profile shares. Kept byte-identical across all five
+ * calls so it sits inside the cached prefix — any per-profile wording in here
+ * would break the prefix match and cost five full-price reads of the corpus.
+ */
+const ATLAS_EXTRACTION_RULES = `You are ATLAS, the Website Intelligence layer for The Professional Builder. You analyse a company's OWN public website and build structured intelligence profiles from it. CRITICAL: do not invent details — only include what the website actually states. Use [] for any list with no evidence and "Not confidently identified" for any unknown scalar. Treat audiences as company-stated (not verified research) and proof as company-provided claims. Be thorough: extract every distinct item the site supports, as short strings. Reply with ONLY a JSON object, no prose, no markdown fences.`
+
 async function extractProfile(
   anthropic: Anthropic,
   spec: (typeof PROFILE_SPECS)[number],
@@ -1043,11 +1050,25 @@ async function extractProfile(
       // Generous headroom: one profile is ~10 fields, so this is far above what
       // even a very rich site produces. Truncation was the original failure.
       max_tokens: 4000,
-      system: `You are ATLAS, the Website Intelligence layer for The Professional Builder. You analyse a company's OWN public website and build its ${spec.label} profile. CRITICAL: do not invent details — only include what the website actually states. Use [] for any list with no evidence and "Not confidently identified" for any unknown scalar. Treat audiences as company-stated (not verified research) and proof as company-provided claims. Be thorough: extract every distinct item the site supports, as short strings. Reply with ONLY a JSON object, no prose, no markdown fences.`,
+      // Prompt-cache layout. All five profiles read the SAME scanned corpus —
+      // the only thing that differs is which profile to build. So the shared
+      // part (rules + domain + corpus) goes FIRST with a cache breakpoint, and
+      // the per-profile ask goes after it. Caching is a prefix match, so the
+      // per-spec text must never appear before the breakpoint or nothing hits.
+      // Previously each call carried the corpus in its user turn behind a
+      // spec-specific system prompt: five cold reads of the same ~6k tokens.
+      system: [
+        {
+          type: 'text' as const,
+          text: `${ATLAS_EXTRACTION_RULES}\n\nCompany domain: ${domain}\n\nWebsite content:\n"""${corpus}"""`,
+          cache_control: { type: 'ephemeral' as const },
+        },
+        { type: 'text' as const, text: `Build the ${spec.label} profile: ${spec.focus}.` },
+      ],
       messages: [
         {
           role: 'user',
-          content: `Company domain: ${domain}\n\nBuild the ${spec.label} profile: ${spec.focus}.\n\nWebsite content:\n"""${corpus}"""\n\nReturn JSON with exactly this shape:\n${spec.shape}`,
+          content: `Build the ${spec.label} profile from the website content above.\n\nReturn JSON with exactly this shape:\n${spec.shape}`,
         },
       ],
     }),
@@ -1085,27 +1106,39 @@ async function deriveProfiles(
     .slice(0, PROFILE_INPUT_CHARS)
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-  const results = await Promise.all(
-    PROFILE_SPECS.map(async (spec) => {
+
+  const runSpec = async (spec: (typeof PROFILE_SPECS)[number]) => {
+    try {
+      return { key: spec.key, label: spec.label, raw: await extractProfile(anthropic, spec, corpus, domain) }
+    } catch (err) {
+      console.error(`ATLAS ${spec.label} profile extraction failed on ${MODEL}:`, err)
+      // One more attempt on a different model before writing the profile off.
+      // A model-specific outage or an unparseable reply from one tier is not
+      // a reason to lose a whole profile — losing all five is how a refresh
+      // turned a fully extracted brand into blanks.
       try {
-        return { key: spec.key, label: spec.label, raw: await extractProfile(anthropic, spec, corpus, domain) }
-      } catch (err) {
-        console.error(`ATLAS ${spec.label} profile extraction failed on ${MODEL}:`, err)
-        // One more attempt on a different model before writing the profile off.
-        // A model-specific outage or an unparseable reply from one tier is not
-        // a reason to lose a whole profile — losing all five is how a refresh
-        // turned a fully extracted brand into blanks.
-        try {
-          const raw = await extractProfile(anthropic, spec, corpus, domain, ORCHESTRATOR_FALLBACK_MODEL)
-          console.warn(`ATLAS ${spec.label} profile recovered on ${ORCHESTRATOR_FALLBACK_MODEL}.`)
-          return { key: spec.key, label: spec.label, raw }
-        } catch (fallbackErr) {
-          console.error(`ATLAS ${spec.label} profile extraction failed on fallback:`, fallbackErr)
-          return { key: spec.key, label: spec.label, raw: null, error: describeError(fallbackErr) }
-        }
+        const raw = await extractProfile(anthropic, spec, corpus, domain, ORCHESTRATOR_FALLBACK_MODEL)
+        console.warn(`ATLAS ${spec.label} profile recovered on ${ORCHESTRATOR_FALLBACK_MODEL}.`)
+        return { key: spec.key, label: spec.label, raw }
+      } catch (fallbackErr) {
+        console.error(`ATLAS ${spec.label} profile extraction failed on fallback:`, fallbackErr)
+        return { key: spec.key, label: spec.label, raw: null, error: describeError(fallbackErr) }
       }
-    }),
-  )
+    }
+  }
+
+  // The five profiles share one cached corpus prefix, and a cache entry only
+  // becomes readable once the request that writes it has started responding.
+  // Firing all five at once means five simultaneous cache MISSES — each pays
+  // full price for the same ~6k tokens. So land the first one, then fan the
+  // remaining four out in parallel against the warm entry. Costs one call's
+  // latency; saves four cold reads of the corpus on every scan.
+  //
+  // A fallback-model retry inside runSpec writes its own separate cache entry
+  // (caches are model-scoped). That is the correct trade: the retry only runs
+  // when a profile would otherwise be lost.
+  const [first, ...rest] = PROFILE_SPECS
+  const results = [await runSpec(first), ...(await Promise.all(rest.map(runSpec)))]
 
   const merged: Record<string, unknown> = {}
   const failed: string[] = []
