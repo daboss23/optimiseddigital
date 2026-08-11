@@ -73,8 +73,8 @@ export function PanelHeader({
           </span>
         )}
         <div>
-          <h2 className="font-display text-sm font-semibold tracking-tight text-white">{title}</h2>
-          {subtitle && <p className="text-xs text-white/40">{subtitle}</p>}
+          <h2 className="font-display text-[15px] font-semibold tracking-tight text-white">{title}</h2>
+          {subtitle && <p className="mt-0.5 text-[12.5px] leading-snug text-white/55">{subtitle}</p>}
         </div>
       </div>
       {accessory}
@@ -114,7 +114,7 @@ export function PageHeader({
       <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-white md:text-3xl">
         {title}
       </h1>
-      <p className="mt-1 max-w-2xl text-sm text-white/50">{subtitle}</p>
+      <p className="mt-2 max-w-2xl text-[14px] leading-relaxed text-white/65">{subtitle}</p>
       {tagline && (
         <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.28em] text-white/30">
           {tagline}
@@ -142,7 +142,7 @@ export function TrendBadge({
   return (
     <span
       className={cn(
-        'trend-badge inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium tabular',
+        'trend-badge inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[12px] font-medium tabular',
         cls,
       )}
     >
@@ -255,7 +255,7 @@ export function KpiCard({
           {delta.replace('+', '')}
         </span>
       </div>
-      <p className="relative mt-3 truncate text-[10px] font-semibold uppercase tracking-[0.2em] text-white/75">
+      <p className="relative mt-3 truncate text-[11.5px] font-semibold uppercase tracking-[0.1em] text-white/85">
         {label}
       </p>
       <CountUp
@@ -326,7 +326,7 @@ export function RadialGauge({
           strokeDashoffset={offset}
         />
       </svg>
-      <span className="gauge-value font-display text-[13px] font-bold">{value}%</span>
+      <span className="gauge-value font-display text-[14px] font-bold">{value}%</span>
     </span>
   )
 }
@@ -350,7 +350,7 @@ export function Pill({
   return (
     <span
       className={cn(
-        'reactor-pill inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium',
+        'reactor-pill inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-medium',
         tones[tone],
       )}
     >
