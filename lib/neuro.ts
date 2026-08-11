@@ -204,6 +204,32 @@ export function weakConceptIndices(scores: NeuroScore[]): number[] {
 }
 
 /**
+ * The score below which a concept is worth spending a whole orchestrator turn
+ * to rewrite.
+ *
+ * A revision costs a full round trip — 30-60s of a run that has to finish
+ * inside the host's function ceiling. Paying that for a concept sitting at 5
+ * against a pass mark of 6 buys a marginal rewrite and risks the run being cut
+ * off before anything ships. A concept scoring 3 is genuinely broken and worth
+ * the turn.
+ *
+ * Concepts between this floor and the pass mark are NOT revised — they still
+ * ship flagged, carrying their real scores on the card, so nothing is hidden.
+ */
+export const NEURO_REVISION_FLOOR = 4
+
+/**
+ * Indices weak enough to justify the cost of a revision turn. A subset of
+ * `weakConceptIndices` — everything here is flagged, not everything flagged is
+ * here.
+ */
+export function revisionWorthyIndices(scores: NeuroScore[]): number[] {
+  return scores
+    .map((s, i) => (Math.min(s.attention, s.hook) < NEURO_REVISION_FLOOR ? i : -1))
+    .filter((i) => i >= 0)
+}
+
+/**
  * Build the critique handed back to OPUS as the submit_concepts tool result when
  * concepts fail the pre-test, so it revises with specific neuro guidance.
  */

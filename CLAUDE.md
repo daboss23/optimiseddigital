@@ -128,6 +128,15 @@ META_LINK_URL                # Optional — destination link on pushed creatives
 META_APP_SECRET              # Optional — adds appsecret_proof request signing
 META_INGEST_MIN_SPEND        # Optional — spend floor to grade an ad (default 50)
 META_INGEST_DATE_PRESET      # Optional — Graph date_preset for the sync (default last_30d)
+REACTOR_ORCHESTRATOR         # Optional — which tier drives the Reactor's tool-use loop.
+                             #   Default Opus 4.8: it keeps the FULL arc (consult → refine →
+                             #   submit, revision pass included) but turns over 2-3x faster than
+                             #   Fable 5, whose always-on thinking pushed a full run to ~4m09s
+                             #   against a 300s host kill. Set to `fable` for the deeper
+                             #   reasoning tier and compare the ads — the run names its
+                             #   orchestrator in the telemetry so an A/B is judged on output.
+                             #   Note this is the ORCHESTRATOR only; Fable 5 stays the
+                             #   ORCHESTRATOR_MODEL in lib/models.ts.
 REACTOR_BUDGET_MS            # Optional — wall-clock budget for one Reactor run (default 280000)
                              #   MUST sit under the host's function ceiling. With Fluid compute
                              #   (on by default) Vercel serves 300s on EVERY plan, Hobby included,

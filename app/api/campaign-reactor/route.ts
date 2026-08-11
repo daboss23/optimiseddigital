@@ -23,6 +23,7 @@ import {
   retrieveNeuroPrinciples,
   scoreConceptsNeuro,
   weakConceptIndices,
+  revisionWorthyIndices,
   neuroFeedback,
   demoNeuroScore,
 } from '@/lib/neuro'
@@ -78,8 +79,25 @@ export const maxDuration = 300
 // at two levels: the server-side `fallbacks` param re-serves safety-classifier
 // declines inside the same call, and a client-side switch keeps the run alive
 // when the org can't use Fable 5 at all (e.g. data-retention requirement).
-const OPUS_MODEL = ORCHESTRATOR_MODEL
 const OPUS_FALLBACK_MODEL = ORCHESTRATOR_FALLBACK_MODEL
+/**
+ * Which tier drives the orchestrator loop.
+ *
+ * Fable 5 reasons further, but its thinking is always on and costs 30-60s per
+ * turn — three turns of that plus the briefing lands a full run around four
+ * minutes, uncomfortably close to the host's 300s kill. Opus 4.8 turns over
+ * 2-3x faster and keeps the whole arc (consult → refine → submit, revision
+ * pass included) rather than trading it away like the fast path does.
+ *
+ * Opus 4.8 is the default because margin against the ceiling is worth more
+ * than the last increment of reasoning depth on a run that otherwise gets cut
+ * off. Set REACTOR_ORCHESTRATOR=fable to run the deeper tier and compare the
+ * ads it produces — this is meant to be A/B'd on output, not guessed at.
+ */
+const OPUS_MODEL =
+  process.env.REACTOR_ORCHESTRATOR?.toLowerCase() === 'fable'
+    ? ORCHESTRATOR_MODEL
+    : ORCHESTRATOR_FALLBACK_MODEL
 const INTELLIGENCE_MODEL = TIER_INTELLIGENCE_MODEL
 // NEURO (Predicted Response pre-test) runs on the cheap intelligence model — it
 // is a structured grading pass, not strategy, so it never touches OPUS's budget.
@@ -1396,6 +1414,18 @@ export async function POST(request: NextRequest) {
         // The run is live from the first byte — these announce the configured
         // engines and must not sit behind a retrieval round trip.
         sse(controller, { type: 'step', text: 'OPUS online. Directing the intelligence network…' })
+        if (!FAST_PATH) {
+          // Named in the feed so a run can be judged against the tier that
+          // produced it — the point of making the orchestrator switchable.
+          sse(controller, {
+            type: 'step',
+            text: `Orchestrating on ${OPUS_MODEL} · full arc (consult → refine → submit)${
+              OPUS_MODEL === ORCHESTRATOR_FALLBACK_MODEL
+                ? ' · set REACTOR_ORCHESTRATOR=fable for the deeper reasoning tier'
+                : ''
+            }.`,
+          })
+        }
         if (FAST_PATH) {
           sse(controller, {
             type: 'step',
@@ -1936,6 +1966,10 @@ export async function POST(request: NextRequest) {
               const neuroPrinciples = await neuroPrinciplesPromise
               const scores = await scoreConceptsNeuro(anthropic, NEURO_MODEL, concepts, neuroPrinciples)
               const weak = weakConceptIndices(scores)
+              // Flagged and worth-rewriting are different bars. Everything
+              // under the pass mark is flagged on the card; only the genuinely
+              // broken earn a whole revision turn.
+              const broken = revisionWorthyIndices(scores)
               const avg = (k: 'attention' | 'hook') =>
                 scores.length
                   ? Math.round((scores.reduce((s, x) => s + x[k], 0) / scores.length) * 10) / 10
@@ -1944,6 +1978,10 @@ export async function POST(request: NextRequest) {
                 type: 'step',
                 text: `NEURO pre-test complete · avg attention ${avg('attention')}/10 · avg hook ${avg('hook')}/10${
                   weak.length ? ` · ${weak.length} below bar` : ' · all passed'
+                }${
+                  weak.length > broken.length
+                    ? ` · ${weak.length - broken.length} flagged but shipping (above the revision floor)`
+                    : ''
                 }`,
               })
 
@@ -1951,7 +1989,10 @@ export async function POST(request: NextRequest) {
               // run does not have — ship the first submission with its scores
               // attached and let the flagged numbers speak for themselves.
               const revisionBudget = FAST_PATH ? 0 : MAX_NEURO_REVISIONS
-              const needsRevision = weak.length > 0 || compliance.failingIndices.length > 0
+              // Compliance is a hard gate — a non-compliant ad unit cannot
+              // ship at any score, so it always earns the turn. NEURO only
+              // does when a concept is below the revision floor.
+              const needsRevision = broken.length > 0 || compliance.failingIndices.length > 0
               if (needsRevision && neuroRevisions < revisionBudget) {
                 // Step 5 — hand the weak scores / compliance failures back to
                 // OPUS so it revises (or drops), same as the rubric self-critique.
@@ -1968,17 +2009,17 @@ export async function POST(request: NextRequest) {
                 sse(controller, {
                   type: 'step',
                   text: `${
-                    weak.length
-                      ? `NEURO flagged ${weak.length} concept(s) for weak scroll-stop / hook`
+                    broken.length
+                      ? `NEURO flagged ${broken.length} concept(s) for weak scroll-stop / hook`
                       : ''
-                  }${weak.length && compliance.failingIndices.length ? ' · ' : ''}${
+                  }${broken.length && compliance.failingIndices.length ? ' · ' : ''}${
                     compliance.failingIndices.length
                       ? `${compliance.failingIndices.length} ad unit(s) non-compliant`
                       : ''
                   } — OPUS revising…`,
                 })
                 const feedbackParts: string[] = []
-                if (weak.length > 0) feedbackParts.push(neuroFeedback(concepts, scores, weak))
+                if (broken.length > 0) feedbackParts.push(neuroFeedback(concepts, scores, broken))
                 if (compliance.failingIndices.length > 0) feedbackParts.push(compliance.feedback)
                 results.push({
                   type: 'tool_result',
