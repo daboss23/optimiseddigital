@@ -124,6 +124,23 @@ export interface WebsiteProfiles {
   proof: ProofProfile
 }
 
+/** A single brand colour lifted from the site's markup. */
+export interface BrandColor {
+  hex: string
+  /** How often it appeared — a rough proxy for prominence. */
+  weight: number
+}
+
+/**
+ * Visual brand assets read straight from the homepage markup — the logo and
+ * the colours the site actually paints with. Nothing is invented: colours are
+ * hex values found in the page, the logo is the site's declared icon/og:image.
+ */
+export interface BrandAssets {
+  logoUrl: string | null
+  colors: BrandColor[]
+}
+
 export interface WebsiteMetrics {
   pagesScanned: number
   pagesIndexed: number
@@ -153,6 +170,8 @@ export interface WebsiteSummary {
   overview: WebsiteOverview
   profiles: WebsiteProfiles
   pages: WebsitePageInfo[]
+  /** Logo + colours read from the homepage. Absent on sites scanned before this existed. */
+  brandAssets?: BrandAssets
   failedPages: { url: string; reason: string }[]
   /**
    * Profiles whose extraction failed outright, e.g. ["Offer", "Proof"]. Empty
@@ -297,6 +316,71 @@ function extractTitle(html: string): string {
   if (fromTitle) return fromTitle.slice(0, 160)
   const h1 = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1]
   return h1 ? stripTags(h1).slice(0, 160) : ''
+}
+
+/**
+ * Read the site's visual brand — logo + colours — from the homepage markup.
+ *
+ * The logo is the site's own declared icon, preferred most-specific first:
+ * og:image → apple-touch-icon → <link rel="icon"> → /favicon.ico. Colours are
+ * the hex values the page actually uses (theme-color first, then every #rrggbb
+ * in the markup), tallied by frequency and de-duplicated, with pure black and
+ * white dropped so the palette reads as brand colour rather than text/paper.
+ * Nothing is invented — an absent asset stays null/empty.
+ */
+function extractBrandAssets(html: string, base: URL): BrandAssets {
+  const abs = (href: string): string | null => {
+    try {
+      return new URL(href.trim().replace(/&amp;/g, '&'), base).toString()
+    } catch {
+      return null
+    }
+  }
+  const attr = (tag: string, name: string): string | null => {
+    const re = new RegExp(`${name}\\s*=\\s*["']([^"']+)["']`, 'i')
+    return tag.match(re)?.[1] ?? null
+  }
+
+  // ---- Logo ----
+  let logoUrl: string | null = null
+  const metaOg = html.match(/<meta[^>]+(?:property|name)\s*=\s*["']og:image["'][^>]*>/i)?.[0]
+  const ogContent = metaOg ? attr(metaOg, 'content') : null
+  const iconTags = html.match(/<link[^>]+rel\s*=\s*["'][^"']*icon[^"']*["'][^>]*>/gi) ?? []
+  const apple = iconTags.find((t) => /apple-touch-icon/i.test(t))
+  const anyIcon = iconTags[0]
+  const pick = ogContent || (apple && attr(apple, 'href')) || (anyIcon && attr(anyIcon, 'href')) || null
+  logoUrl = pick ? abs(pick) : `${base.origin}/favicon.ico`
+
+  // ---- Colours ----
+  const counts = new Map<string, number>()
+  const bump = (raw: string) => {
+    let hex = raw.toLowerCase()
+    if (hex.length === 4) hex = '#' + hex[1] + hex[1] + hex[2] + hex[2] + hex[3] + hex[3]
+    if (!/^#[0-9a-f]{6}$/.test(hex)) return
+    // Drop near-black and near-white — those are ink and paper, not brand.
+    const r = parseInt(hex.slice(1, 3), 16)
+    const g = parseInt(hex.slice(3, 5), 16)
+    const b = parseInt(hex.slice(5, 7), 16)
+    if (r > 244 && g > 244 && b > 244) return
+    if (r < 12 && g < 12 && b < 12) return
+    counts.set(hex, (counts.get(hex) ?? 0) + 1)
+  }
+  const theme = html.match(/<meta[^>]+name\s*=\s*["']theme-color["'][^>]*>/i)?.[0]
+  const themeHex = theme ? attr(theme, 'content') : null
+  if (themeHex) {
+    bump(themeHex)
+    bump(themeHex) // weight the declared brand colour above incidental hexes
+  }
+  let m: RegExpExecArray | null
+  const hexRe = /#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?\b/g
+  while ((m = hexRe.exec(html)) !== null) bump(m[0])
+
+  const colors: BrandColor[] = Array.from(counts.entries())
+    .map(([hex, weight]) => ({ hex, weight }))
+    .sort((a, b) => b.weight - a.weight)
+    .slice(0, 8)
+
+  return { logoUrl, colors }
 }
 
 function extractHeadings(html: string): string[] {
@@ -1147,6 +1231,7 @@ export async function analyzeWebsite(
   emit({ type: 'progress', message: 'Detecting testimonials and proof…' })
 
   const companyName = extractTitle(home.body) || domain
+  const brandAssets = extractBrandAssets(home.body, new URL(home.finalUrl))
   const extraction = await deriveProfiles(scanned, companyName, domain)
   const profiles = extraction.profiles
 
@@ -1230,6 +1315,9 @@ export async function analyzeWebsite(
           last_scanned_at: now,
           derived: true,
           profile,
+          // The brand's visual assets ride on the brand profile chunk, so
+          // getConnectedWebsite can read them back without a dedicated row.
+          ...(meta.key === 'brand' ? { brand_assets: brandAssets } : {}),
         },
       })
       if (result.stored) stored = true
@@ -1250,6 +1338,7 @@ export async function analyzeWebsite(
     overview: overviewFrom(profiles),
     profiles,
     pages: scanned.map((p) => ({ url: p.url, title: p.title, pageType: p.pageType })),
+    brandAssets,
     failedPages,
     extractionFailed: extraction.failed,
   }
@@ -1290,11 +1379,16 @@ export async function getConnectedWebsite(): Promise<WebsiteSummary | null> {
   const mine = rows.filter((r) => String(r.metadata?.domain ?? '') === domain)
 
   const profiles = emptyProfiles(domain, domain)
+  let brandAssets: BrandAssets | undefined
   for (const meta of PROFILE_META) {
     const row = mine.find((r) => r.metadata?.derived === true && r.category === meta.category)
     const stored = row?.metadata?.profile
     if (stored && typeof stored === 'object') {
       ;(profiles as unknown as Record<string, unknown>)[meta.key] = stored
+    }
+    const assets = row?.metadata?.brand_assets
+    if (meta.key === 'brand' && assets && typeof assets === 'object') {
+      brandAssets = assets as BrandAssets
     }
   }
 
@@ -1335,6 +1429,7 @@ export async function getConnectedWebsite(): Promise<WebsiteSummary | null> {
     overview: overviewFrom(profiles),
     profiles,
     pages,
+    brandAssets,
     failedPages: [],
   }
 }

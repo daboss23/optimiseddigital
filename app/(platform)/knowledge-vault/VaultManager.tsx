@@ -19,7 +19,6 @@ import {
   FolderOpen,
   Sparkles,
   Type,
-  Link2,
   Clapperboard,
   UploadCloud,
   Download,
@@ -34,7 +33,6 @@ import {
 import { Panel, PanelHeader, Pill } from '@/components/reactor/ui'
 import { vaultCategories } from '@/lib/reactor-data'
 import type { KnowledgeSystem, VaultStatGroup } from '@/lib/knowledge'
-import { WebsiteLinkInput, WebsiteIntelligencePanel } from './WebsiteIntelligence'
 
 interface VaultItem {
   id: string | null
@@ -411,7 +409,6 @@ const SYSTEMS: { value: KnowledgeSystem; label: string }[] = [
   { value: 'research', label: 'Research' },
   { value: 'pattern', label: 'Pattern' },
   { value: 'learning', label: 'Learning' },
-  { value: 'website', label: 'Website Intelligence' },
 ]
 
 const inputCls =
@@ -423,12 +420,12 @@ type IngestStatus =
   | { kind: 'done'; chunks: number; stored: boolean }
   | { kind: 'error'; message: string }
 
-// Which input mode the "Add Knowledge" panel is in.
-type SourceMode = 'text' | 'website' | 'document' | 'youtube'
+// Which input mode the "Add Knowledge" panel is in. Website Intelligence lives
+// on its own Brand Intelligence tab now, not in the Vault.
+type SourceMode = 'text' | 'document' | 'youtube'
 
 const SOURCES: { value: SourceMode; label: string; icon: typeof Type }[] = [
   { value: 'text', label: 'Paste Text', icon: Type },
-  { value: 'website', label: 'Website Link', icon: Link2 },
   { value: 'document', label: 'Doc / PDF', icon: UploadCloud },
   { value: 'youtube', label: 'YouTube', icon: Clapperboard },
 ]
@@ -464,9 +461,6 @@ export function VaultManager({ initialStats }: { initialStats: Stats }) {
   const [dragActive, setDragActive] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Website Intelligence: bump to re-fetch the panel + library after a scan.
-  const [websiteKey, setWebsiteKey] = useState(0)
-
   const debounce = useRef<ReturnType<typeof setTimeout>>()
 
   const load = useCallback(async (q: string, sys: '' | KnowledgeSystem) => {
@@ -480,7 +474,9 @@ export function VaultManager({ initialStats }: { initialStats: Stats }) {
         fetch('/api/vault/stats', { cache: 'no-store' }).then((r) => r.json()),
       ])
       if (listRes.success) {
-        setItems(listRes.items)
+        // Website Intelligence has moved to the Brand Intelligence tab, so its
+        // chunks no longer surface in the Vault library.
+        setItems((listRes.items as VaultItem[]).filter((it) => it.system !== 'website'))
         setLive(listRes.live)
       }
       if (statsRes.success) {
@@ -603,13 +599,6 @@ export function VaultManager({ initialStats }: { initialStats: Stats }) {
     }
   }
 
-  // After a website scan / refresh / disconnect: re-pull the panel and the
-  // library + categories so website intelligence shows up immediately.
-  const onWebsiteChanged = useCallback(() => {
-    setWebsiteKey((k) => k + 1)
-    load(query, systemFilter)
-  }, [load, query, systemFilter])
-
   // Group chunks into document artifacts, then page them so the vault never
   // becomes an endless wall regardless of how much knowledge is stored.
   const artifacts = useMemo(() => groupArtifacts(items), [items])
@@ -668,8 +657,6 @@ export function VaultManager({ initialStats }: { initialStats: Stats }) {
           </div>
 
           {/* Source-specific input */}
-          {sourceMode === 'website' && <WebsiteLinkInput onChanged={onWebsiteChanged} />}
-
           {sourceMode === 'youtube' && (
             <div>
               <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-white/40">
@@ -760,7 +747,7 @@ export function VaultManager({ initialStats }: { initialStats: Stats }) {
           )}
 
           {/* Source fetch status */}
-          {sourceMode !== 'text' && sourceMode !== 'website' && fetchStatus.kind !== 'idle' && (
+          {sourceMode !== 'text' && fetchStatus.kind !== 'idle' && (
             <div className="text-[11px]">
               {fetchStatus.kind === 'fetched' && (
                 <span className="flex items-center gap-1.5 text-success">
@@ -776,8 +763,6 @@ export function VaultManager({ initialStats }: { initialStats: Stats }) {
             </div>
           )}
 
-          {sourceMode !== 'website' && (
-          <>
           {/* Title / system / category */}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <div className="md:col-span-1">
@@ -869,13 +854,8 @@ export function VaultManager({ initialStats }: { initialStats: Stats }) {
               )}
             </button>
           </div>
-          </>
-          )}
         </form>
       </Panel>
-
-      {/* ---------------------- Website Intelligence panel --------------------- */}
-      <WebsiteIntelligencePanel reloadKey={websiteKey} onChanged={onWebsiteChanged} />
 
       {/* ----------------------------- Library view ---------------------------- */}
       <Panel>

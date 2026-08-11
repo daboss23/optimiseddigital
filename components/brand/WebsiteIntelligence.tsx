@@ -14,6 +14,7 @@ import {
   ArrowRight,
   RotateCw,
   FileText,
+  Palette,
   type LucideIcon,
 } from 'lucide-react'
 import { Panel, PanelHeader, Pill } from '@/components/reactor/ui'
@@ -21,6 +22,7 @@ import type {
   AnalyzeEvent,
   WebsiteSummary,
   WebsiteProfiles,
+  BrandAssets,
 } from '@/lib/website-intelligence'
 
 const inputCls =
@@ -347,11 +349,22 @@ function EmptyHint({ shown }: { shown: boolean }) {
   return <p className="text-[12px] italic text-white/30">Not confidently identified from this website.</p>
 }
 
-type TabId = 'overview' | 'brand' | 'audience' | 'offers' | 'messaging' | 'proof' | 'pages'
+type TabId =
+  | 'overview'
+  | 'brand'
+  | 'colours'
+  | 'logo'
+  | 'audience'
+  | 'offers'
+  | 'messaging'
+  | 'proof'
+  | 'pages'
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'brand', label: 'Brand' },
+  { id: 'colours', label: 'Colours' },
+  { id: 'logo', label: 'Logo' },
   { id: 'audience', label: 'Audience' },
   { id: 'offers', label: 'Offers' },
   { id: 'messaging', label: 'Messaging' },
@@ -359,7 +372,134 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'pages', label: 'Pages' },
 ]
 
-function ProfileBody({ tab, p, pages }: { tab: TabId; p: WebsiteProfiles; pages: WebsiteSummary['pages'] }) {
+/* ----------------------------- Colours + Logo ---------------------------- */
+
+/** Readable text colour for a swatch label — dark ink on light fills. */
+function readableInk(hex: string): string {
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  // Perceived luminance (Rec. 601).
+  return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? '#0a0a0a' : '#ffffff'
+}
+
+function ColoursTab({ assets }: { assets?: BrandAssets }) {
+  const colors = assets?.colors ?? []
+  if (!colors.length) {
+    return (
+      <EmptyBrandAsset
+        title="No brand colours captured yet"
+        body="Colours are read from your site's markup on analysis. Hit Refresh above to capture the palette your website actually paints with."
+      />
+    )
+  }
+  return (
+    <div className="space-y-4">
+      <p className="text-[11px] text-white/40">
+        The colours your site actually uses, ranked by how often they appear in the markup.
+      </p>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        {colors.map((c) => (
+          <div key={c.hex} className="overflow-hidden rounded-xl border border-border bg-surface/40">
+            <div
+              className="flex h-24 items-end justify-end p-2"
+              style={{ backgroundColor: c.hex }}
+            >
+              <span
+                className="rounded-md px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider"
+                style={{ backgroundColor: 'rgba(0,0,0,0.18)', color: readableInk(c.hex) }}
+              >
+                {c.hex}
+              </span>
+            </div>
+            <div className="flex items-center justify-between px-3 py-2">
+              <span className="font-mono text-[12px] text-white/75">{c.hex}</span>
+              <span className="text-[10px] text-white/35">×{c.weight}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function LogoTab({ assets, domain }: { assets?: BrandAssets; domain: string }) {
+  // The captured logo, with the site's favicon as an always-available fallback
+  // so a connected site is never a blank square.
+  const captured = assets?.logoUrl ?? null
+  const fallback = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=128`
+
+  return (
+    <div className="space-y-4">
+      <p className="text-[11px] text-white/40">
+        The logo declared by your site (og:image or icon). Composited onto creatives, never
+        regenerated.
+      </p>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-border bg-white/[0.03] p-6">
+          <span className="text-[10px] uppercase tracking-wider text-white/40">On dark</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={captured ?? fallback}
+            alt={`${domain} logo`}
+            className="max-h-24 max-w-full object-contain"
+            onError={(e) => {
+              if (e.currentTarget.src !== fallback) e.currentTarget.src = fallback
+            }}
+          />
+        </div>
+        <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-border bg-white p-6">
+          <span className="text-[10px] uppercase tracking-wider text-black/40">On light</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={captured ?? fallback}
+            alt={`${domain} logo`}
+            className="max-h-24 max-w-full object-contain"
+            onError={(e) => {
+              if (e.currentTarget.src !== fallback) e.currentTarget.src = fallback
+            }}
+          />
+        </div>
+      </div>
+      {captured && (
+        <a
+          href={captured}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block truncate text-[11px] text-white/35 hover:text-glow"
+        >
+          {captured}
+        </a>
+      )}
+    </div>
+  )
+}
+
+function EmptyBrandAsset({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="grid place-items-center rounded-xl border border-dashed border-border bg-surface/20 px-6 py-12 text-center">
+      <Palette size={30} className="mb-3 text-white/15" />
+      <p className="font-display text-sm font-semibold text-white/70">{title}</p>
+      <p className="mt-1 max-w-sm text-[12px] leading-relaxed text-white/40">{body}</p>
+    </div>
+  )
+}
+
+function ProfileBody({
+  tab,
+  p,
+  pages,
+  assets,
+  domain,
+}: {
+  tab: TabId
+  p: WebsiteProfiles
+  pages: WebsiteSummary['pages']
+  assets?: BrandAssets
+  domain: string
+}) {
+  if (tab === 'colours') return <ColoursTab assets={assets} />
+  if (tab === 'logo') return <LogoTab assets={assets} domain={domain} />
   if (tab === 'overview') {
     return (
       <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
@@ -670,7 +810,13 @@ export function WebsiteIntelligencePanel({
           })}
         </div>
 
-        <ProfileBody tab={tab} p={website.profiles} pages={website.pages} />
+        <ProfileBody
+          tab={tab}
+          p={website.profiles}
+          pages={website.pages}
+          assets={website.brandAssets}
+          domain={website.domain}
+        />
       </div>
     </Panel>
   )

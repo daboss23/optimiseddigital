@@ -1,14 +1,12 @@
 import {
   Activity,
-  Brain,
   DollarSign,
   Layers,
   MousePointerClick,
-  Sparkles,
+  Minus,
   Target,
   TrendingDown,
   TrendingUp,
-  Minus,
   Trophy,
   Users,
   type LucideIcon,
@@ -20,17 +18,11 @@ import {
   Pill,
   ProgressBar,
   RadialGauge,
-  TrendBadge,
   accentClass,
-  type Accent,
 } from '@/components/reactor/ui'
-import {
-  type MetaAd,
-  type BreakdownRow,
-} from '@/lib/meta-data'
+import { type MetaAd, type BreakdownRow } from '@/lib/meta-data'
 import { resolveMetaDashboard } from '@/lib/meta-graph'
 import { cn } from '@/lib/utils'
-import { MetaSyncButton } from './MetaSyncButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -79,8 +71,6 @@ export default async function MetaIntelligencePage() {
     spendTrend: metaSpendTrend,
     audienceBreakdown: metaAudienceBreakdown,
     placementBreakdown: metaPlacementBreakdown,
-    agentInsights: metaAgentInsights,
-    learningStats: metaLearningStats,
   } = await resolveMetaDashboard()
   const live = source === 'live'
   const maxSpend = Math.max(...metaSpendTrend.map((w) => w.spend), 1)
@@ -89,17 +79,14 @@ export default async function MetaIntelligencePage() {
     <>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <PageHeader
-          system="09"
+          system="06"
           title="Meta Intelligence"
-          subtitle="Live ad performance feeding the reactor. The agent reads what is actually converting — CTR, ROAS, CPA, creative quality — and turns it into sharper briefs for the next campaign."
+          subtitle="Live ad performance feeding the reactor. What is actually converting — spend, ROAS, CTR, CPA, creative quality — read straight from the Meta Marketing API. The learning loop these numbers drive lives on the Reactor Dashboard."
           tagline="Engineered For Performance."
         />
         <Pill tone={live ? 'success' : 'warning'}>
           <span
-            className={cn(
-              'h-1.5 w-1.5 rounded-full',
-              live ? 'dot-live animate-pulse-glow' : 'bg-warning',
-            )}
+            className={cn('h-1.5 w-1.5 rounded-full', live ? 'dot-live animate-pulse-glow' : 'bg-warning')}
           />
           <span className="font-semibold uppercase tracking-[0.16em]">
             {live ? 'Live · Meta API' : 'Demo data'}
@@ -184,9 +171,7 @@ export default async function MetaIntelligencePage() {
                       className="w-full rounded-t-md bg-gradient-to-t from-primary/30 via-primary to-cyan shadow-[0_0_16px_-4px_rgba(45,190,255,0.7)]"
                       style={{ height: `${Math.round((w.spend / maxSpend) * 100)}%` }}
                     />
-                    <span className="text-[10px] uppercase tracking-wider text-white/35">
-                      {w.week}
-                    </span>
+                    <span className="text-[10px] uppercase tracking-wider text-white/35">{w.week}</span>
                   </div>
                 ))}
               </div>
@@ -211,6 +196,7 @@ export default async function MetaIntelligencePage() {
                     <th className="pb-2 text-left font-medium">Creative</th>
                     <th className="pb-2 text-right font-medium">Spend</th>
                     <th className="pb-2 text-right font-medium">ROAS</th>
+                    <th className="pb-2 text-right font-medium">Hook Rate</th>
                     <th className="pb-2 text-right font-medium">CTR</th>
                     <th className="pb-2 text-right font-medium">CPA</th>
                     <th className="pb-2 text-right font-medium">Status</th>
@@ -227,6 +213,7 @@ export default async function MetaIntelligencePage() {
                       <td className="py-2.5 text-right font-display font-bold tabular text-glow">
                         {ad.roas}x
                       </td>
+                      <td className="py-2.5 text-right tabular text-cyan">{ad.hookRate}</td>
                       <td className="py-2.5 text-right tabular">{ad.ctr}</td>
                       <td className="py-2.5 text-right tabular">{ad.cpa}</td>
                       <td className="py-2.5 text-right">
@@ -261,72 +248,7 @@ export default async function MetaIntelligencePage() {
             <BreakdownPanel rows={metaPlacementBreakdown} />
           </Panel>
         </div>
-
-        {/* Agent learning loop */}
-        <Panel>
-          <PanelHeader
-            icon={<Brain size={16} />}
-            accent="amber"
-            title="Reactor Learning Loop"
-            subtitle="Live ad grades flow into ORACLE memory — winners re-ingest into the Vault"
-            accessory={
-              <div className="hidden items-center gap-2 sm:flex">
-                <MetaSyncButton />
-              </div>
-            }
-          />
-
-          <div className="grid grid-cols-2 gap-3 px-5 pt-5 sm:grid-cols-4">
-            <LearningStat label="Signals ingested" value={metaLearningStats.signalsIngested.toLocaleString()} accent="blue" />
-            <LearningStat label="Winners logged" value={String(metaLearningStats.winnersLogged)} accent="emerald" />
-            <LearningStat label="Patterns updated" value={String(metaLearningStats.patternsUpdated)} accent="violet" />
-            <LearningStat label="Last sync" value={metaLearningStats.lastSync} accent="cyan" />
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 p-5 lg:grid-cols-2">
-            {metaAgentInsights.map((ins) => (
-              <div
-                key={ins.insight}
-                className="recommendation-card glass-hover rounded-xl border border-border bg-surface/40 p-4"
-              >
-                <div className="mb-2 flex items-start justify-between gap-3">
-                  <p className="text-sm font-medium text-white">{ins.insight}</p>
-                  <Pill tone="success">{ins.lift}</Pill>
-                </div>
-                <div className="mt-2 flex items-start gap-2 rounded-lg border border-border bg-background/40 p-3">
-                  <Sparkles size={13} className="mt-0.5 shrink-0 text-glow" />
-                  <p className="text-xs leading-relaxed text-white/65">
-                    <span className="text-glow/80">Agent action:</span> {ins.action}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="border-t border-border px-5 py-4 text-[11px] leading-relaxed text-white/40">
-            Winning ads and their performance are re-ingested into the knowledge layer as new
-            patterns — every campaign the reactor fires gets sharper as Meta results compound.
-            {!live && ' Connect the Meta Marketing API (META_ACCESS_TOKEN) to stream live performance into this view once real spend builds up.'}
-          </div>
-        </Panel>
       </div>
     </>
-  )
-}
-
-function LearningStat({
-  label,
-  value,
-  accent,
-}: {
-  label: string
-  value: string
-  accent: Accent
-}) {
-  return (
-    <div className={cn('rounded-xl border border-border bg-surface/40 p-3.5', accentClass[accent])}>
-      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/45">{label}</p>
-      <p className="mt-1.5 font-display text-xl font-bold tabular text-white">{value}</p>
-    </div>
   )
 }

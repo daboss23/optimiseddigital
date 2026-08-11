@@ -211,6 +211,10 @@ const NO_OTHER_TEXT_RULE =
 const NO_TEXT_AT_ALL_RULE =
   'Render NO text, lettering, numerals, logos, wordmarks, signage or watermarks anywhere in the image — the copy is overlaid afterwards. Leave clean, uncluttered negative space in the areas reserved for it.'
 
+/** Applied to prompts the compiler did not write, where the copy is unknown. */
+const NO_GARBLED_TEXT_RULE =
+  'Any lettering in the image must be real, correctly-spelled words set in clean sharp type — no invented, misspelled, duplicated or garbled text, and no fine print, disclaimers or watermarks.'
+
 /**
  * The rule that stops a still being rendered as a storyboard.
  *
@@ -224,23 +228,77 @@ const SINGLE_FRAME_RULE =
   'Render ONE single photographic frame — a single unified composition that fills the entire canvas edge to edge. This is NOT a storyboard, filmstrip, contact sheet, collage, grid, split-screen, before/after pair, or multi-panel layout. No panels, no strips, no borders, no dividing lines, no letterboxing, no stacked scenes.'
 
 /**
+ * A headline good enough to burn into a still.
+ *
+ * Rejects anything past the character budget (long copy renders as mush) and
+ * anything that is obviously not ad copy — a placeholder or a sentence of
+ * direction that leaked into the headline field.
+ */
+function usableHeadline(headline: string | undefined): string | undefined {
+  const t = headline?.trim()
+  if (!t) return undefined
+  if (t.length > MAX_RENDERED_TEXT_CHARS) return undefined
+  if (/^(tbd|n\/?a|headline|untitled)$/i.test(t)) return undefined
+  return t
+}
+
+/** The ON-IMAGE TEXT section for a set of blocks the model must set exactly. */
+function textBlockFor(rendered: OnImageText[]): string {
+  return [
+    `${ON_IMAGE_TEXT_MARKER} — reproduce these strings EXACTLY as written, character for character, with no additions, no rewording and no spelling changes:`,
+    ...rendered.map(
+      (t, i) => `${i + 1}. ${t.role} — "${t.text}"${t.placement ? ` (${t.placement})` : ''}`,
+    ),
+    TYPOGRAPHY_RULE,
+    NO_OTHER_TEXT_RULE,
+  ].join('\n')
+}
+
+/**
+ * Enforce the single-frame discipline on a prompt the compiler did not write.
+ *
+ * The orchestrator's `generate_image` tool takes a prompt OPUS composed itself,
+ * so it never passes through `compileRenderPrompt` and inherits none of its
+ * rules — the same brief that renders as one photograph through the compiler
+ * can come back as a five-panel filmstrip through the tool. Appending the rule
+ * costs nothing and closes that path; it is idempotent, so a prompt that
+ * already carries it is returned untouched.
+ */
+export function enforceSingleFrame(prompt: string): string {
+  const p = prompt?.trim() ?? ''
+  if (!p) return p
+  if (p.includes('NOT a storyboard')) return p
+  return `${p}\n\n${SINGLE_FRAME_RULE}\n${NO_GARBLED_TEXT_RULE}`
+}
+
+/**
  * Compile a production brief into a render prompt.
  *
  * @param brief    the concept's frame-by-frame plan
  * @param fallback prompt to use when there is no brief (raw concept text)
+ * @param opts     `motion` keeps the full frame sequence (video); `headline` is
+ *                 the concept's Meta headline, burned into a still when the
+ *                 brief forgot to declare any on-image copy
  */
 export function compileRenderPrompt(
   brief: ProductionBrief | undefined,
   fallback: string,
-  opts: { motion?: boolean } = {},
+  opts: { motion?: boolean; headline?: string } = {},
 ): CompiledRenderPrompt {
   const motion = opts.motion === true
+  const headlineFallback = motion ? undefined : usableHeadline(opts.headline)
+
   if (!brief?.frames?.length) {
+    // Even with no brief a still is an AD: if the concept shipped a Meta
+    // headline, burn it in rather than returning a wordless stock photo.
+    const rescued = headlineFallback
+      ? [{ role: 'Headline', text: headlineFallback, placement: 'upper third, over high-contrast negative space' }]
+      : []
     return {
-      prompt: [fallback, motion ? '' : SINGLE_FRAME_RULE, NO_TEXT_AT_ALL_RULE]
+      prompt: [fallback, motion ? '' : SINGLE_FRAME_RULE, rescued.length ? textBlockFor(rescued) : NO_TEXT_AT_ALL_RULE]
         .filter(Boolean)
         .join('\n\n'),
-      rendered: [],
+      rendered: rescued,
       omitted: [],
     }
   }
@@ -308,20 +366,23 @@ export function compileRenderPrompt(
     rendered.push(item)
   }
 
+  /* A still that ends up with no copy at all is a stock photograph, not an ad —
+     the second half of the filmstrip failure: five wordless panels. The
+     orchestrator is told to declare a headline on every image concept, but a
+     prompt rule is not a guarantee, so the concept's Meta headline is burned in
+     as the floor. Video is exempt: motion carries its message over time. */
+  if (!motion && !rendered.length && headlineFallback) {
+    rendered.push({
+      role: 'Headline',
+      text: headlineFallback,
+      placement: 'upper third, over high-contrast negative space',
+    })
+  }
+
   /* -- 3. Assemble. -------------------------------------------------------- */
   const header = `${brief.creativeType} ad creative for The Professional Builder. Pattern: ${brief.pattern}. Audience: ${brief.audience}. Awareness: ${brief.awareness}.`
 
-  const textBlock = rendered.length
-    ? [
-        `${ON_IMAGE_TEXT_MARKER} — reproduce these strings EXACTLY as written, character for character, with no additions, no rewording and no spelling changes:`,
-        ...rendered.map(
-          (t, i) =>
-            `${i + 1}. ${t.role} — "${t.text}"${t.placement ? ` (${t.placement})` : ''}`,
-        ),
-        TYPOGRAPHY_RULE,
-        NO_OTHER_TEXT_RULE,
-      ].join('\n')
-    : NO_TEXT_AT_ALL_RULE
+  const textBlock = rendered.length ? textBlockFor(rendered) : NO_TEXT_AT_ALL_RULE
 
   const look = rendered.length
     ? 'Premium, photographic, on-site builder context, high contrast behind every piece of type so it stays readable.'

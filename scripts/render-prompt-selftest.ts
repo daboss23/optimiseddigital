@@ -13,6 +13,7 @@
 
 import {
   compileRenderPrompt,
+  enforceSingleFrame,
   MAX_RENDERED_TEXT_BLOCKS,
   MAX_RENDERED_TEXT_CHARS,
   ON_IMAGE_TEXT_MARKER,
@@ -143,6 +144,46 @@ check('panels and strips are ruled out by name', /storyboard|filmstrip|multi-pan
 const motion = compileRenderPrompt(sequence, 'fallback', { motion: true })
 check('video keeps the full sequence', /turning point/.test(motion.prompt) && /The after/.test(motion.prompt))
 check('video is not told to render a single frame', !/ONE single photographic frame/.test(motion.prompt))
+
+/* -------------------------------------------------------------------------- */
+/*  A still always carries words — the other half of the filmstrip failure     */
+/* -------------------------------------------------------------------------- */
+
+console.log('\nA still is an ad, not a stock photo')
+
+// `sequence` has no quoted copy anywhere: exactly the brief that rendered five
+// wordless panels. Without the headline floor it renders a caption-less photo.
+const wordless = compileRenderPrompt(sequence, 'fallback')
+check('a brief with no copy renders no invented lettering', wordless.rendered.length === 0)
+
+const floored = compileRenderPrompt(sequence, 'fallback', { headline: 'You built a job, not a business.' })
+check('the concept headline is burned in when the brief forgot one', floored.rendered.length === 1)
+check('and it is listed as literal copy', floored.prompt.includes('You built a job, not a business.'))
+check(
+  'the headline floor never overrides copy the brief did declare',
+  compileRenderPrompt(brief, 'fallback', { headline: 'Ignore me' }).rendered.every(
+    (t) => t.text !== 'Ignore me',
+  ),
+)
+check(
+  'video is exempt — motion carries its message over time',
+  compileRenderPrompt(sequence, 'fallback', { motion: true, headline: 'You built a job, not a business.' })
+    .rendered.length === 0,
+)
+check(
+  'a briefless still still gets its headline',
+  compileRenderPrompt(undefined, 'raw concept', { headline: 'You built a job, not a business.' }).rendered
+    .length === 1,
+)
+check(
+  'a junk headline is not burned in',
+  compileRenderPrompt(sequence, 'fallback', { headline: 'TBD' }).rendered.length === 0,
+)
+
+console.log('\nThe agent-authored prompt path')
+const raw = enforceSingleFrame('Builder on site at golden hour, headline top third.')
+check('the single-frame rule reaches prompts the compiler did not write', /NOT a storyboard/.test(raw))
+check('enforcement is idempotent', enforceSingleFrame(raw) === raw)
 
 console.log(failures === 0 ? '\nAll render-prompt checks passed.\n' : `\n${failures} check(s) FAILED.\n`)
 process.exit(failures === 0 ? 0 : 1)

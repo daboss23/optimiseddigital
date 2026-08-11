@@ -80,15 +80,6 @@ export function Sidebar() {
             <ChevronRight size={14} className="shrink-0 text-glow/50 transition-transform group-hover:translate-x-0.5" />
           </Link>
         )}
-
-        <div className="sysstatus-module flex items-center gap-2.5 px-3 py-2.5">
-          <span className="dot-live h-2 w-2 shrink-0 rounded-full animate-pulse-glow" />
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-semibold text-white/85">System Status</p>
-            <p className="truncate text-[10px] text-emerald/80">All Systems Operational</p>
-          </div>
-          <ChevronRight size={14} className="shrink-0 text-emerald/60" />
-        </div>
       </div>
     </aside>
   )

@@ -14,7 +14,6 @@ import {
   Clapperboard,
   Film,
   GalleryHorizontalEnd,
-  Globe,
   ImageIcon,
   Layers,
   Loader2,
@@ -1104,8 +1103,9 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                 <div className="min-w-0 flex-1">
                   <p className="font-display text-lg font-semibold text-white">On Brand</p>
                   <p className="mt-1 text-sm leading-relaxed text-white/45">
-                    Brand voice, tone, and compliance are pulled from Settings and applied across
-                    every concept the reactor writes.
+                    Pulls your real brand — voice, offer, audience language, proof and colours —
+                    from your Brand Intelligence tab and applies it to every concept the reactor
+                    writes.
                   </p>
                 </div>
                 <span
@@ -1122,7 +1122,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
               </button>
               <p className="px-1 text-sm leading-relaxed text-white/40">
                 {form.onBrand
-                  ? 'The agent applies your brand voice, tone, and compliance rules throughout every concept.'
+                  ? 'The reactor pulls your connected brand profile (voice, offer, audience, proof, colours) into every concept. Connect a site on the Brand Intelligence tab to enrich this; without one it applies your default brand voice.'
                   : 'Concepts will be generated without brand anchoring — the brief and inputs only.'}
               </p>
             </div>
@@ -1239,24 +1239,6 @@ function QuickLaunch({
   onGuided: () => void
   onClose: () => void
 }) {
-  const [url, setUrl] = useState('')
-  const [extracting, setExtracting] = useState(false)
-  const [extractMsg, setExtractMsg] = useState<{ ok: boolean; text: string } | null>(null)
-
-  const handleExtract = async () => {
-    if (!url.trim() || extracting) return
-    setExtracting(true)
-    setExtractMsg(null)
-    const res = await form.extractSite(url.trim())
-    setExtracting(false)
-    if (res.ok) {
-      setExtractMsg({ ok: true, text: `Pulled intel from ${res.domain} into your brief.` })
-      setUrl('')
-    } else {
-      setExtractMsg({ ok: false, text: res.error ?? 'Could not read that site.' })
-    }
-  }
-
   const reads: { label: string; value: string }[] = [
     { label: 'Angle', value: form.angleField.recommended ?? '' },
     { label: 'Audience', value: form.audienceField.recommended ?? '' },
@@ -1306,53 +1288,6 @@ function QuickLaunch({
               placeholder={`e.g. "A founder video for builders doing $2M–$3M who are still on the tools. Lead with a member who got off the tools in 14 months. Drive strategy-call applications."`}
               className="launch-input h-32 resize-none px-4 py-3.5 text-[15px] leading-relaxed"
             />
-          </div>
-
-          <div>
-            <SectionLabel>
-              <span className="inline-flex items-center gap-1.5">
-                <Globe size={12} /> Add your website
-              </span>
-            </SectionLabel>
-            <p className="-mt-1 mb-2.5 text-sm text-white/40">
-              Optional. ATLAS reads your site and folds your offer, audience, and positioning into
-              the brief.
-            </p>
-            <div className="flex gap-2">
-              <input
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleExtract()}
-                placeholder="https://yourbusiness.com"
-                className="launch-input flex-1 px-4 py-3 text-[15px]"
-              />
-              <button
-                type="button"
-                onClick={handleExtract}
-                disabled={extracting || !url.trim()}
-                className="launch-nav launch-nav--primary shrink-0 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {extracting ? (
-                  <>
-                    <Loader2 size={15} className="animate-spin" /> Reading…
-                  </>
-                ) : (
-                  <>
-                    <Globe size={15} /> Extract
-                  </>
-                )}
-              </button>
-            </div>
-            {extractMsg && (
-              <p
-                className={`mt-2 flex items-center gap-1.5 text-xs ${
-                  extractMsg.ok ? 'text-success' : 'text-danger'
-                }`}
-              >
-                {extractMsg.ok ? <Check size={13} /> : null}
-                {extractMsg.text}
-              </p>
-            )}
           </div>
 
           {/* Live read of what the reactor inferred from the brief */}

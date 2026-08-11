@@ -50,18 +50,20 @@ export interface MetaAd {
   format: string
   spend: string
   roas: number
+  /** Thumb-stop / hook rate — 3-sec views over impressions, e.g. "34%". */
+  hookRate: string
   ctr: string
   cpa: string
   status: 'Scaling' | 'Winner' | 'Stable' | 'Testing' | 'Fatiguing'
 }
 
 export const metaTopAds: MetaAd[] = [
-  { name: 'The Profit Leak — Founder Cut', format: 'Founder Video', spend: '$24,100', roas: 6.2, ctr: '3.1%', cpa: '$28', status: 'Scaling' },
-  { name: '45-Hour Owner — UGC', format: 'UGC Video', spend: '$18,640', roas: 5.4, ctr: '2.8%', cpa: '$33', status: 'Winner' },
-  { name: 'Member Win — Jason', format: 'Testimonial', spend: '$8,210', roas: 4.8, ctr: '2.6%', cpa: '$37', status: 'Winner' },
-  { name: 'Margin Math', format: 'Static', spend: '$12,300', roas: 4.1, ctr: '2.2%', cpa: '$46', status: 'Stable' },
-  { name: 'Stop Scaling — VSL Opener', format: 'VSL', spend: '$9,820', roas: 3.6, ctr: '1.9%', cpa: '$58', status: 'Testing' },
-  { name: 'Systems Before Scale', format: 'Carousel', spend: '$6,450', roas: 2.9, ctr: '1.6%', cpa: '$71', status: 'Fatiguing' },
+  { name: 'The Profit Leak — Founder Cut', format: 'Founder Video', spend: '$24,100', roas: 6.2, hookRate: '38%', ctr: '3.1%', cpa: '$28', status: 'Scaling' },
+  { name: '45-Hour Owner — UGC', format: 'UGC Video', spend: '$18,640', roas: 5.4, hookRate: '35%', ctr: '2.8%', cpa: '$33', status: 'Winner' },
+  { name: 'Member Win — Jason', format: 'Testimonial', spend: '$8,210', roas: 4.8, hookRate: '33%', ctr: '2.6%', cpa: '$37', status: 'Winner' },
+  { name: 'Margin Math', format: 'Static', spend: '$12,300', roas: 4.1, hookRate: '29%', ctr: '2.2%', cpa: '$46', status: 'Stable' },
+  { name: 'Stop Scaling — VSL Opener', format: 'VSL', spend: '$9,820', roas: 3.6, hookRate: '26%', ctr: '1.9%', cpa: '$58', status: 'Testing' },
+  { name: 'Systems Before Scale', format: 'Carousel', spend: '$6,450', roas: 2.9, hookRate: '24%', ctr: '1.6%', cpa: '$71', status: 'Fatiguing' },
 ]
 
 export interface SpendWeek {

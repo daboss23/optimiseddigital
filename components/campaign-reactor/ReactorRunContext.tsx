@@ -437,6 +437,9 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
             prompt: compileRenderPrompt(
               c.productionBrief,
               `${c.text}\n\nRender as a premium Meta ad creative for The Professional Builder — photographic, on-site builder context, high contrast, leave room for a text overlay.`,
+              // Floor, not an override: used only when the brief declared no
+              // on-image copy. A wordless still is a stock photo, not an ad.
+              { headline: c.adPackage?.headline },
             ).prompt,
             aspectRatio: opts.aspectRatio ?? '1:1',
             model: opts.imageModel,
