@@ -1,7 +1,24 @@
 'use client'
 
-import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import type { ProductionBrief, ReactorInputs, NeuroScore } from '@/lib/reactor-inputs'
+import {
+  clearLedger,
+  ledgerId,
+  loadLedger,
+  recordToLedger,
+  removeFromLedger,
+  type LedgerEntry,
+} from '@/lib/creative-ledger'
 import { briefToPrompt, compileRenderPrompt } from '@/lib/render-prompt'
 import type { MetaAdPackage } from '@/lib/meta-ads'
 import type { Verdict, OutcomeAttributes } from '@/lib/outcomes'
@@ -110,6 +127,10 @@ interface ReactorRunValue {
   imageMetaFor: (c: Concept) => MediaMeta | undefined
   videoFor: (c: Concept) => VideoUiState | undefined
   creativeStateFor: (c: Concept) => CreativeState | undefined
+  /** Every finished creative, newest first — survives refresh. */
+  ledger: LedgerEntry[]
+  removeLedgerEntry: (id: string) => void
+  clearLedgerEntries: () => void
 }
 
 const ReactorRunContext = createContext<ReactorRunValue | null>(null)
@@ -134,6 +155,11 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
   >({})
   // Manually triggered renders, keyed by concept text.
   const [manualVideos, setManualVideos] = useState<Record<string, VideoUiState>>({})
+  // The Creative Ledger — finished work, kept across refreshes. Starts empty so
+  // the server and the first client render agree, then hydrates from storage.
+  const [ledger, setLedger] = useState<LedgerEntry[]>([])
+  // The brief the current run came from, stamped onto everything it produces.
+  const runMetaRef = useRef<{ campaign?: string; angle?: string }>({})
 
   // A single SSE chunk routinely carries several events (a delegate plus its
   // retrievals, a burst of concepts). Appending one line at a time meant one
@@ -199,6 +225,10 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
       // audience, awareness, offer, and requested deliverables the strategist
       // locked in. These are real run inputs, not fabricated findings.
       const ri = payload.reactorInputs as ReactorInputs | undefined
+      runMetaRef.current = {
+        campaign: ri?.campaignName,
+        angle: typeof payload.angle === 'string' ? payload.angle : ri?.angle,
+      }
       const seed: WorkflowSeed = {
         angle: typeof payload.angle === 'string' ? payload.angle : undefined,
         audience: ri?.audienceType,
@@ -661,6 +691,53 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
   )
   const creativeStateFor = useCallback((c: Concept) => creatives[c.text], [creatives])
 
+  /* ------------------------------- The ledger ------------------------------ */
+
+  // Hydrate after mount, never during render: localStorage does not exist on
+  // the server, and reading it in the initial state would make the first client
+  // render disagree with the server's HTML.
+  useEffect(() => setLedger(loadLedger()), [])
+
+  // File every creative that has actually landed. Runs whenever media resolves,
+  // so a still that arrives 40s after the copy is written down the moment it
+  // exists rather than at some "run finished" checkpoint the user might never
+  // reach — closing the tab mid-render used to lose exactly that work.
+  useEffect(() => {
+    if (!concepts.length) return
+    let next: LedgerEntry[] | null = null
+
+    for (const c of concepts) {
+      const video = videoFor(c)
+      const videoUrl = video?.status === 'done' ? video.url : undefined
+      const url = videoUrl ?? imageFor(c)
+      if (!url) continue
+
+      const id = ledgerId(c.text, url)
+      if ((next ?? ledger).some((e) => e.id === id)) continue
+
+      const meta = videoUrl ? { model: video?.model, provider: video?.provider } : imageMetaFor(c)
+      next = recordToLedger(
+        {
+          id,
+          createdAt: Date.now(),
+          campaign: runMetaRef.current.campaign,
+          angle: runMetaRef.current.angle,
+          imageUrl: videoUrl ? undefined : url,
+          videoUrl,
+          model: meta?.model,
+          provider: meta?.provider,
+          concept: c,
+        },
+        next ?? ledger,
+      )
+    }
+
+    if (next) setLedger(next)
+  }, [concepts, creatives, agentMedia, manualVideos, ledger, imageFor, imageMetaFor, videoFor])
+
+  const removeLedgerEntry = useCallback((id: string) => setLedger(removeFromLedger(id)), [])
+  const clearLedgerEntries = useCallback(() => setLedger(clearLedger()), [])
+
   // Rebuilt only when something a consumer reads actually changed. As a fresh
   // object literal it was a new context value on every provider render, so each
   // telemetry line re-rendered every subscriber in the tree — including the
@@ -682,6 +759,9 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
       imageMetaFor,
       videoFor,
       creativeStateFor,
+      ledger,
+      removeLedgerEntry,
+      clearLedgerEntries,
     }),
     [
       phase,
@@ -699,6 +779,9 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
       imageMetaFor,
       videoFor,
       creativeStateFor,
+      ledger,
+      removeLedgerEntry,
+      clearLedgerEntries,
     ],
   )
 

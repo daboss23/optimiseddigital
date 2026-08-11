@@ -45,6 +45,7 @@ import type { ModelAvailability } from '@/lib/video/types'
 import { recommendImageModel } from '@/lib/image/recommend'
 import type { ImageModelAvailability } from '@/lib/image/types'
 import { useReactorRun, type Concept } from '@/components/campaign-reactor/ReactorRunContext'
+import { CreativeLedger } from '@/components/campaign-reactor/CreativeLedger'
 import { CLONE_STORAGE_KEY, type CloneReference, type IsolateConfig } from '@/lib/taxonomy'
 import type { CanvasMode } from '@/lib/creative-canvas/graph'
 
@@ -959,6 +960,11 @@ export function Workbench() {
       ) : (
         <LiveAgentWorkflow {...workflowControls} />
       )}
+
+      {/* The shelf under the workbench — finished creatives, kept across
+          refreshes. Hidden while the immersive Canvas/Studio views are up so it
+          never sits under a full-screen surface. */}
+      {view === 'reactor' && <CreativeLedger onOpen={configureInStudio} />}
 
       <ReactorModal open={modalOpen} onClose={() => setModalOpen(false)} onFire={fire} form={form} />
     </div>
