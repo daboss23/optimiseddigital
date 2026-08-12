@@ -14,6 +14,7 @@ import { IMAGE_MODELS } from '@/lib/image/registry'
 import { VIDEO_MODELS } from '@/lib/video/registry'
 import { recommendImageModel } from '@/lib/image/recommend'
 import { recommendVideoModel } from '@/lib/video/recommend'
+import type { VideoRecommendationContext } from '@/lib/video/recommend'
 import type { ImageModelAvailability } from '@/lib/image/types'
 import type { ModelAvailability } from '@/lib/video/types'
 import type { CreativeSize } from '@/lib/reactor-inputs'
@@ -150,6 +151,7 @@ export function modelMenuFor(
   deliverable: string,
   imageAvail: ImageModelAvailability[],
   videoAvail: ModelAvailability[],
+  ctx: VideoRecommendationContext = {},
 ): ModelMenu | null {
   // "Recommend Format" carries no model choice — the reactor decides the
   // format, the model, and the sizes downstream.
@@ -168,6 +170,7 @@ export function modelMenuFor(
     const rec = recommendVideoModel(
       [deliverable],
       videoAvail.length ? videoAvail : VIDEO_MODELS.map((m) => ({ ...m, configured: false })),
+      ctx,
     )
     return {
       deliverable,
@@ -200,6 +203,7 @@ export function montageMenus(
   deliverable: string,
   imageAvail: ImageModelAvailability[],
   videoAvail: ModelAvailability[],
+  ctx: VideoRecommendationContext = {},
 ): { still: ModelMenu; motion: ModelMenu } {
   const imgConfigured = (id: string) => imageAvail.find((m) => m.id === id)?.configured ?? false
   const vidConfigured = (id: string) => videoAvail.find((m) => m.id === id)?.configured ?? false
@@ -213,6 +217,7 @@ export function montageMenus(
   const motionRec = recommendVideoModel(
     ['Video Creative'],
     videoAvail.length ? videoAvail : VIDEO_MODELS.map((m) => ({ ...m, configured: false })),
+    ctx,
   )
 
   return {

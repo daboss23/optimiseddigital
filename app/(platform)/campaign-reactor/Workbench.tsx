@@ -240,8 +240,8 @@ export function Workbench() {
 
   // System recommendation based on the selected deliverables, recomputed live.
   const recommendation = useMemo(
-    () => (videoModels.length ? recommendVideoModel(outputs, videoModels) : null),
-    [outputs, videoModels],
+    () => (videoModels.length ? recommendVideoModel(outputs, videoModels, { hasReferences: hasRefs }) : null),
+    [outputs, videoModels, hasRefs],
   )
   // Image model: same pattern.
   const imageRecommendation = useMemo(
@@ -255,17 +255,21 @@ export function Workbench() {
   // own two-picker menu below.
   const modelMenus = useMemo(() => {
     const menus: Record<string, ModelMenu | null> = {}
-    for (const o of outputs) menus[o] = modelMenuFor(o, imageModels, videoModels)
+    for (const o of outputs)
+      menus[o] = modelMenuFor(o, imageModels, videoModels, { hasReferences: hasRefs })
     return menus
-  }, [outputs, imageModels, videoModels])
+  }, [outputs, imageModels, videoModels, hasRefs])
 
   const montageDeliverable = outputs.find(isMontageDeliverable)
   // The montage deliverable's two REAL model menus (still + motion) — what
   // actually answers "what model does montage use." OpenMontage sequences
   // them; it is never itself selectable.
   const montageModelMenus = useMemo(
-    () => (montageDeliverable ? montageMenus(montageDeliverable, imageModels, videoModels) : null),
-    [montageDeliverable, imageModels, videoModels],
+    () =>
+      montageDeliverable
+        ? montageMenus(montageDeliverable, imageModels, videoModels, { hasReferences: hasRefs })
+        : null,
+    [montageDeliverable, imageModels, videoModels, hasRefs],
   )
 
   const setDeliverableModel = useCallback((deliverable: string, modelId: string) => {

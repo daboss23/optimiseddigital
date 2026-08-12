@@ -20,12 +20,25 @@ export interface VideoRecommendation {
   configured: boolean
 }
 
+export interface VideoRecommendationContext {
+  /**
+   * The brief carries reference stills / clips of a real person (the in-house
+   * face library). That is a different job from "generate a talking head": the
+   * model has to hold ONE face across every clip, which only the
+   * reference-to-video tiers do — and Seedance 2.0's omni-reference takes up to
+   * nine stills where Veo takes three. When refs are attached, that capability
+   * outranks Veo's dialogue edge.
+   */
+  hasReferences?: boolean
+}
+
 const SPEAKING = ['testimonial', 'ugc', 'talking', 'spokesperson', 'interview']
 const CINEMATIC = ['video', 'founder', 'event', 'campaign']
 
 export function recommendVideoModel(
   outputs: string[],
   models: ModelAvailability[],
+  ctx: VideoRecommendationContext = {},
 ): VideoRecommendation | null {
   if (models.length === 0) return null
 
@@ -68,14 +81,40 @@ export function recommendVideoModel(
           { id: 'seedance-2.0', reason: 'flagship realism' },
         ]
 
+  // A face library in the brief re-orders the list: the reference-to-video
+  // tiers move to the front, Seedance first (nine reference stills against
+  // Veo's three, plus native audio and 15s clips). Nothing is dropped — a
+  // model that cannot hold a face simply stops being the recommendation.
+  const ordered = ctx.hasReferences
+    ? [
+        {
+          id: 'muapi-seedance-2.0',
+          reason: 'holds one face across every clip (omni-reference, up to 9 stills) with native audio',
+        },
+        {
+          id: 'seedance-2.0',
+          reason: 'holds one face across every clip (omni-reference, up to 9 stills) with native audio',
+        },
+        {
+          id: 'muapi-seedance-2.0-fast',
+          reason: 'same face consistency and native audio at volume speed and cost',
+        },
+        {
+          id: 'seedance-2.0-fast',
+          reason: 'same face consistency and native audio at volume speed and cost',
+        },
+        ...preference,
+      ]
+    : preference
+
   // First configured model in the preference order wins.
-  for (const p of preference) {
+  for (const p of ordered) {
     const m = models.find((mm) => mm.id === p.id)
     if (m?.configured) return { modelId: m.id, reason: p.reason, configured: true }
   }
 
   // None of the preferred models are configured — recommend the ideal anyway
   // (so the UI can prompt for the key), but flag it as not yet usable.
-  const ideal = models.find((mm) => mm.id === preference[0].id) ?? models[0]
-  return { modelId: ideal.id, reason: preference[0].reason, configured: ideal.configured }
+  const ideal = models.find((mm) => mm.id === ordered[0].id) ?? models[0]
+  return { modelId: ideal.id, reason: ordered[0].reason, configured: ideal.configured }
 }
