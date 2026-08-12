@@ -341,6 +341,34 @@ To run the *real* agent end to end: set `ANTHROPIC_API_KEY` (agent),
 
 ---
 
+## TESTING MIKE DELIGHT
+
+The operator on the dashboard is a pure pipeline, so it is tested in-process
+rather than against a running server:
+
+```bash
+npm run selftest:operator
+```
+
+43 assertions against the seeded account with the evaluation date **pinned** to
+`2026-08-12`. The pin is load-bearing: without it "the last 3 complete days"
+moves with the calendar and the suite passes on Monday and fails on Thursday.
+
+**In the UI:** open `/`. The status line in the hero reads
+`MIKE DELIGHT · ACTIVE · N APPROVALS` and scrolls to the queue. Without
+`ANTHROPIC_API_KEY` the board renders the computed template cards with real
+numbers on them and the Operator Trace says so — the dashboard never depends on
+a model call to display. With the key set, Mike narrates all three cards in one
+call, picks which one leads, and may or may not leave an opening remark.
+
+**The honest test:** delete every hardcoded recommendation string from the
+codebase and reload. Three sensible cards still appear, because there are none —
+`lib/creative-ops.ts` no longer composes "Your Next Moves" at all.
+
+Full architecture: `docs/MIKE_DELIGHT.md`.
+
+---
+
 ## CURRENT BUILD STATUS
 
 **Core platform**
@@ -373,6 +401,49 @@ To run the *real* agent end to end: set `ANTHROPIC_API_KEY` (agent),
 - [x] Creative Canvas view (`components/creative-canvas/`, `lib/creative-canvas/graph.ts`): **full-screen immersive mode** (portaled to `document.body`, sidebar/topbar fully hidden, layered Escape), pre-structured node lanes (hook → message → proof → scenes/visual → CTA → output) seeded live with the Reactor's already-generated media, branch/approve/lock, precise per-node regeneration (`/api/canvas/regenerate`, strategy-coherent, demo fallback), **universal drag-to-reassign** (every content card — hook/message/proof/visual/scene/CTA — can take any content role; only Output is fixed) with a confirmation modal (Reassign & regenerate / Reassign, keep words / Visual move only / Cancel), right-click context menu, ⌘/Ctrl+D duplicate + Delete shortcuts, scene render + animate, Send-to-Studio composition; "Launch in Creative Canvas" CTA on montage runs; full spec in `docs/CREATIVE_CANVAS.md`
 - [x] **Multi-format campaigns**: selecting several formats in the brief yields ONE campaign → ONE shared strategy layer (campaign bar + chips shown once) → one Creative Canvas tab per format family (Image / Video / Montage / Variations / Recommended, `canvasTracks()` + `conceptsForTrack()`); tabs are lazy-mounted and kept alive so switching never loses edits; formats are never mixed into one graph
 - [x] Reactor view toggle is Reactor · Canvas · Studio (`components/campaign-reactor/canvas/AdStudio.tsx` is the renamed Studio; the old free-node Flow view is retired from the toggle)
+
+**Mike Delight — the performance operator on the dashboard**
+- [x] `lib/operator/` — three separately replaceable layers behind the existing
+      "Your Next Moves" section: pure maths (signals · baselines · strength ·
+      rules · evidence), narration (one call per session, all cards together, so
+      he can vary himself and CHOOSE THE LEAD), and a human who approves. Full
+      architecture in `docs/MIKE_DELIGHT.md`; character in
+      `operator/mike-delight-constitution.md`; spec in
+      `docs/mike-delight-build-spec-v2.md`
+- [x] Data disciplines enforced by the TYPES, not by convention: no generic
+      `conversions` field (every result carries its `PrimaryResultType` and they
+      are never blended); frequency exists only on `RangeDeliveryMetric`, so a
+      range frequency can never be summed out of daily reach; the current
+      incomplete day is excluded and results inside the attribution delay are
+      provisional and cannot support a definitive REPLACE or ITERATE
+- [x] Equal, complete trend windows (3v3 rapid, 7v7 confirmation) cut by
+      calendar date. An unresolvable window returns `null`, never an invented
+      trend. Every time-dependent calculation takes an injected `evaluationDate`
+      — `todayIn()` in `lib/operator/dates.ts` is the ONE deliberate clock read
+- [x] Contextual baselines with progressive fallback (`exact_cohort` →
+      `result_and_offer` → `result_type` → `account`), never across result types
+      and never cold-vs-retargeting. How far it walked rides into the evidence
+      and reduces the strength tier
+- [x] Evidence strength replaces "confidence" internally (UI labels unchanged)
+      and is NEVER derived from win rate — no more "1/1 wins · 100% confidence".
+      Four floors enforced in code: single test, thin EXPLORE, account-wide
+      fallback, null confirmation window
+- [x] Fatigue is three states: **CONFIRMED** (both windows + a delivery signal →
+      REPLACE), **WATCH** (rapid movement unconfirmed → its own card, primary
+      action *Keep watching*, creates nothing, scored below any CONFIRMED), and
+      **RECOVERING** (no card; suppresses that creative AND that signal for 3
+      days, keyed `hash(creativeId + fatigueSignal)`)
+- [x] Approve / Edit / Dismiss (reason code required) / Snooze, with cooldowns,
+      ranking weights (ranking ONLY — they never touch evidence strength or
+      whether a rule fires) and learned param defaults after 3 consistent edits
+- [x] `validate.ts` — facts only, never voice. Every numeral resolves to an
+      authorised structured field and the resolver returns WHICH one, so a
+      rejected card is traceable. One regeneration, then computed template
+      cards: **the dashboard never depends on a model call to display**
+- [x] Capability allowlist enforced by a throwing assertion — Approve stages a
+      brief into the Campaign Reactor and nothing else is reachable
+- [x] `npm run selftest:operator` — 43 in-process checks against a pinned
+      evaluation date, covering all 41 from the spec
 
 **Meta-native output + closed loop**
 - [x] Launch-ready Meta ad units on every concept (`lib/meta-ads.ts`): primary text with 125-char fold discipline, headline/description limits, CTA button types, compliance validator wired into the submit gate + concept cards ("Copy for Ads Manager")
@@ -408,5 +479,12 @@ To run the *real* agent end to end: set `ANTHROPIC_API_KEY` (agent),
 - [ ] SPARK URL-only ingestion for JS-rendered sources (Meta Ad Library / TikTok / shared boards via oEmbed/transcript APIs or a headless render). Uploads, pasted screenshots, direct image links and YouTube transcripts all work today; a client-rendered page has no images in its served HTML, so `lib/ad-image.ts` scrapes og:image/`<img>`/inlined-JSON URLs and otherwise returns a note telling the user to screenshot it
 - [ ] Scheduled auto-sync for the Meta performance ingest (manual one-click sync done; cron/Vercel scheduled function pending)
 - [ ] More dashboards reading live `knowledge_chunks` counts (Agent Network does; Research/Copy/Pattern still curated)
+- [ ] Mike Delight's live Meta adapter — `lib/operator/adapters/meta.ts` is a
+      documented stub that throws. It needs ad-level insights at
+      `time_increment=1` for the daily rows PLUS a separate range-level call per
+      evaluation window for deduplicated reach and frequency (the existing
+      `lib/meta-graph.ts` returns range-aggregated ads with no daily rows, and
+      frequency cannot be reconstructed from daily reach). Finishing it is the
+      three methods plus the one line in `lib/operator/adapters/index.ts`
 - [ ] Deployed + tested end to end with real keys
 

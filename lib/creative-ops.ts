@@ -41,24 +41,19 @@ export interface PulseCard {
   href: string
 }
 
-/* ------------------------------- next moves -------------------------------- */
+/* ----------------------------------------------------------------------------
+   NOTE — "Your Next Moves" no longer lives here.
 
-export type MoveType = 'Scale' | 'Iterate' | 'Replace' | 'Explore'
+   It used to be four hand-written recommendations composed in this file, and
+   they were the same four every morning regardless of what the account did.
+   The section is now driven by the operator pipeline in `lib/operator/`, where
+   a recommendation only exists because a rule cleared against a complete
+   delivery window, carries the structured evidence that produced it, and can be
+   approved, edited, dismissed or snoozed with the decision recorded.
 
-export interface NextMove {
-  type: MoveType
-  /** The direct recommendation, written as an instruction. */
-  title: string
-  /** Why — one plain sentence. */
-  rationale: string
-  /** Comparison + sample size + window. Never a bare claim. */
-  evidence: string[]
-  confidence: Confidence
-  primaryCta: { label: string; href: string }
-  /** Deep link into Meta Intelligence with the creative filter preserved. */
-  evidenceHref: string
-  accent: Accent
-}
+   Deliberately nothing here replaces it. A hardcoded fallback sitting beside a
+   computed board is how the computed one quietly stops being trusted.
+---------------------------------------------------------------------------- */
 
 /* ---------------------------- winning intelligence -------------------------- */
 
@@ -120,7 +115,6 @@ export interface IntelligenceBase {
 
 export interface CreativeOps {
   pulse: PulseCard[]
-  nextMoves: NextMove[]
   leaderboard: MetaAd[]
   winning: WinningIntelligence
   lifecycle: LifecycleStage[]
@@ -151,12 +145,6 @@ function countBy(ads: MetaAd[], statuses: CreativeStatus[]): number {
   return ads.filter((a) => statuses.includes(a.status)).length
 }
 
-function confidenceFrom(tests: number, spend: number): Confidence {
-  if (tests >= 8 && spend >= 20000) return 'High'
-  if (tests >= 4 && spend >= 5000) return 'Medium'
-  return 'Low'
-}
-
 function resultWord(type: PrimaryResultType): string {
   return RESULT_LABELS[type].cost
 }
@@ -167,13 +155,11 @@ export function buildCreativeOps(input: {
   meta: MetaDashboard
   /** Concepts approved and waiting to be produced. */
   conceptsReady: number
-  /** Undismissed recommendations. */
-  actionsRequired: number
   /** Assets currently rendering / in production. */
   inProduction: number
   vault: { assets: number; frameworks: number; sops: number; updatedLabel: string }
 }): CreativeOps {
-  const { meta, conceptsReady, actionsRequired, inProduction, vault } = input
+  const { meta, conceptsReady, inProduction, vault } = input
   const range = meta.range
   const window = rangeLabel(range).toLowerCase()
   const ads = meta.topAds
@@ -241,105 +227,7 @@ export function buildCreativeOps(input: {
       accent: 'blue',
       href: reactorLink('produce'),
     },
-    {
-      key: 'actions',
-      label: 'Actions required',
-      count: actionsRequired,
-      delta: '0',
-      trend: 'flat',
-      state: actionsRequired > 0 ? 'Awaiting your call' : 'All clear',
-      definition: 'Recommendations that have not been approved or dismissed.',
-      accent: 'violet',
-      href: '/recommendations',
-    },
   ]
-
-  /* ------------------------------ next moves ------------------------------ */
-
-  const best = [...ads]
-    .filter((a) => a.status === 'scaling' || a.status === 'confirmed_winner')
-    .sort((a, b) => a.costPerResult - b.costPerResult)[0]
-  const worst = [...ads].filter((a) => a.status === 'fatiguing' || a.status === 'loser')[0]
-  const rising = ads.find((a) => a.status === 'emerging_winner') ?? ads[1]
-
-  const cohortCost =
-    ads.length > 0
-      ? ads.reduce((s, a) => s + a.costPerResult, 0) / ads.length
-      : (meta.thresholds.targetCostPerResult ?? 0)
-
-  const nextMoves: NextMove[] = []
-
-  if (best) {
-    const lift = cohortCost > 0 ? Math.round(((cohortCost - best.costPerResult) / cohortCost) * 100) : 0
-    nextMoves.push({
-      type: 'Scale',
-      title: `Scale ${best.name}`,
-      rationale: `It is the cheapest confirmed source of ${RESULT_LABELS[best.resultType].many} on the account and delivery is still healthy.`,
-      evidence: [
-        `$${best.costPerResult.toFixed(0)} ${RESULT_LABELS[best.resultType].cost} vs $${cohortCost.toFixed(0)} across ${ads.length} comparable creatives (${window})`,
-        `${lift}% lower cost per result in this sample`,
-        `${best.primaryResults.toLocaleString()} results · ${money(best.spend)} spend over ${window}`,
-        `Frequency ${best.frequency.toFixed(1)} — headroom before fatigue`,
-      ],
-      confidence: confidenceFrom(ads.length, best.spend),
-      primaryCta: { label: 'Open evidence', href: metaLink(range, undefined, best.id) },
-      evidenceHref: metaLink(range, undefined, best.id),
-      accent: 'emerald',
-    })
-  }
-
-  if (rising) {
-    nextMoves.push({
-      type: 'Iterate',
-      title: `Create 3 hook variations from ${rising.name}`,
-      rationale:
-        'The pattern is working but has only been expressed one way. Controlled hook variants isolate what is doing the work.',
-      evidence: [
-        `$${rising.costPerResult.toFixed(0)} ${RESULT_LABELS[rising.resultType].cost} against a $${meta.thresholds.targetCostPerResult ?? '—'} target`,
-        `${rising.primaryResults.toLocaleString()} results · ${money(rising.spend)} spend over ${window}`,
-        `Only 1 hook tested on this angle so far`,
-      ],
-      confidence: 'Medium',
-      primaryCta: { label: 'Generate variations', href: reactorLink('variations', rising.id) },
-      evidenceHref: metaLink(range, undefined, rising.id),
-      accent: 'cyan',
-    })
-  }
-
-  if (worst) {
-    nextMoves.push({
-      type: 'Replace',
-      title: `Replace ${worst.name}`,
-      rationale: 'Efficiency is deteriorating with delivery signals confirming fatigue. A successor keeps the angle alive.',
-      evidence: [
-        worst.statusReason,
-        `${money(worst.spend)} spend · ${worst.primaryResults.toLocaleString()} results over ${window} · ${worst.daysLive} days live (lifecycle)`,
-      ],
-      confidence: 'High',
-      primaryCta: { label: 'Create successor', href: reactorLink('successor', worst.id) },
-      evidenceHref: metaLink(range, undefined, worst.id),
-      accent: 'pink',
-    })
-  }
-
-  // Explore only fills a remaining slot — proven moves always outrank a guess.
-  if (nextMoves.length < 3) {
-    nextMoves.push({
-      type: 'Explore',
-      title: 'Combine Time Freedom with member proof',
-      rationale:
-        'Time Freedom performs on cold traffic and member-proof performs on warm, but the combination has never been tested.',
-      evidence: [
-        'Time Freedom: 3 winners from 9 tests, all founder-led',
-        `Member proof: strongest hold rate of any creative structure over ${window}`,
-        '0 creatives have carried both — untested, not failed',
-      ],
-      confidence: 'Low',
-      primaryCta: { label: 'Build concept', href: reactorLink('explore') },
-      evidenceHref: metaLink(range),
-      accent: 'violet',
-    })
-  }
 
   /* -------------------------- winning intelligence ------------------------- */
 
@@ -417,7 +305,6 @@ export function buildCreativeOps(input: {
 
   return {
     pulse,
-    nextMoves: nextMoves.slice(0, 3),
     leaderboard: ads.slice(0, 5),
     winning,
     lifecycle,

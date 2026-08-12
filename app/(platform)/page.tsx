@@ -36,8 +36,16 @@ import {
   InfoTip,
 } from '@/components/reactor/Explain'
 import { CreativeLeaderboard } from '@/components/reactor/CreativeLeaderboard'
-import { NextMoves } from '@/components/reactor/NextMoves'
-import { recommendations } from '@/lib/reactor-data'
+import {
+  ActionsRequiredTile,
+  DebugPanel,
+  MikeHeader,
+  OperatorProvider,
+  OperatorToast,
+  OPERATOR_QUEUE_ANCHOR,
+  ProposalQueue,
+  QueueCountPill,
+} from '@/components/reactor/operator'
 import { getDashboardData } from '@/lib/dashboard-data'
 import { buildCreativeOps, type PulseCard, type WinIndexEntry } from '@/lib/creative-ops'
 import { resolveMetaDashboard } from '@/lib/meta-graph'
@@ -222,7 +230,6 @@ export default async function ReactorDashboard({
   const ops = buildCreativeOps({
     meta,
     conceptsReady: pendingConcepts || 24,
-    actionsRequired: recommendations.length,
     inProduction: rendersThisWeek || 6,
     vault: {
       assets: data.total,
@@ -233,7 +240,7 @@ export default async function ReactorDashboard({
   })
 
   return (
-    <>
+    <OperatorProvider>
       {/* Command hero — intelligence command-center header */}
       <div className="command-hero flex flex-wrap items-end justify-between gap-5">
         <div className="animate-fade-up">
@@ -255,6 +262,7 @@ export default async function ReactorDashboard({
           <div className="hero-scanline" />
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <MikeHeader />
           <Link href={`/meta?${rangeQuery(range)}`} className="no-underline">
             <Pill tone="primary">
               <CalendarDays size={12} />
@@ -274,22 +282,29 @@ export default async function ReactorDashboard({
           {ops.pulse.map((card, i) => (
             <PulseTile key={card.key} card={card} index={i} />
           ))}
+          {/* Actions Required reads the operator's own selector — the same one
+              behind the status line and the visible cards, so the three can
+              never drift apart. */}
+          <ActionsRequiredTile />
         </section>
 
-        {/* ── 2 · Your Next Moves ────────────────────────────────────────── */}
-        <SectionLabel hint="Exactly three ranked actions. Each carries its evidence, a confidence level and one primary action.">
+        {/* ── 2 · Your Next Moves — the operator's approval queue ────────── */}
+        <SectionLabel hint="Up to three ranked actions, computed from delivery rather than written down. Each carries the structured evidence that produced it, an evidence-strength tier, and one primary action.">
           Your Next Moves
         </SectionLabel>
-        <Panel>
-          <PanelHeader
-            icon={<Rocket size={16} />}
-            accent="emerald"
-            title="Your Next Moves"
-            subtitle="The three highest-priority creative decisions, ranked by evidence"
-            accessory={<Pill tone="primary">{ops.nextMoves.length} ranked</Pill>}
-          />
-          <NextMoves moves={ops.nextMoves} />
-        </Panel>
+        <div id={OPERATOR_QUEUE_ANCHOR} className="scroll-mt-24">
+          <Panel>
+            <PanelHeader
+              icon={<Rocket size={16} />}
+              accent="emerald"
+              title="Your Next Moves"
+              subtitle="Mike Delight's approval queue — maths decides what is true, he decides what matters, you decide what happens"
+              accessory={<QueueCountPill />}
+            />
+            <ProposalQueue />
+            <DebugPanel />
+          </Panel>
+        </div>
 
         {/* ── 3 · Creative leaderboard ───────────────────────────────────── */}
         <Panel>
@@ -604,6 +619,8 @@ export default async function ReactorDashboard({
           </Link>
         </div>
       </div>
-    </>
+
+      <OperatorToast />
+    </OperatorProvider>
   )
 }

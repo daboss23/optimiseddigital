@@ -47,6 +47,7 @@ import type { ImageModelAvailability } from '@/lib/image/types'
 import { useReactorRun, type Concept } from '@/components/campaign-reactor/ReactorRunContext'
 import { CreativeLedger } from '@/components/campaign-reactor/CreativeLedger'
 import { CLONE_STORAGE_KEY, type CloneReference, type IsolateConfig } from '@/lib/taxonomy'
+import { takeDraft } from '@/lib/operator/draft'
 import type { CanvasMode } from '@/lib/creative-canvas/graph'
 
 // The native campaign-angle choices (the No Preference / Custom sentinels are
@@ -112,6 +113,18 @@ export function Workbench() {
     } catch {
       /* nothing to clone */
     }
+  }, [])
+
+  // A draft approved on Mike Delight's queue, handed over the same rail. It
+  // arrives as a filled-in brief the operator still has to read and fire —
+  // approving a recommendation creates the draft, never the campaign.
+  useEffect(() => {
+    const draft = takeDraft()
+    if (!draft) return
+    setCampaignName(draft.campaignName)
+    setBrief(draft.brief)
+    setVariations(draft.variations)
+    setModalOpen(true)
   }, [])
   // Output surface: the autonomous reactor (default hero), the Creative Canvas
   // (structured creative direction — shape, branch, and sequence the run), or

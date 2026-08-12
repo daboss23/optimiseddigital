@@ -10,7 +10,8 @@
     "selftest": "tsx scripts/reactor-selftest.ts",
     "selftest:render": "tsx scripts/render-prompt-selftest.ts",
     "muapi:slugs": "tsx scripts/muapi-slugs.ts",
-    "verify": "./scripts/verify-reactor.sh"
+    "verify": "./scripts/verify-reactor.sh",
+    "selftest:operator": "tsx scripts/operator-selftest.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.103.0",
