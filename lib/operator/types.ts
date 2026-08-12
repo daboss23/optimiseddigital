@@ -222,6 +222,14 @@ export interface EvidenceSource {
 export interface Evidence {
   id: string
   label: string
+  /**
+   * Two or three characters for the collapsed queue chip — `CPL`, `CTR`, `Freq`.
+   *
+   * Lives on the model rather than being derived in a component, so the one
+   * place that decides how a metric is abbreviated is the place that built it.
+   * `label` stays the full form for the evidence drawer.
+   */
+  short: string
   rawValue: number | string
   displayValue: string
   comparisonValue?: string
@@ -266,6 +274,13 @@ export interface Proposal {
   fatigueSignal?: FatigueSignal
   subjectIds: string[]
   subjectNames: string[]
+  /**
+   * What the row names in its Creative column. Usually the creative; for a
+   * pattern proposal it is the PATTERN, because "The Profit Leak, 45-Hour
+   * Owner, Margin Math" is a list, not a subject, and the members belong in the
+   * drawer.
+   */
+  subjectLabel: string
   /** 0–100, ranking only. Never shown as a confidence. */
   score: number
   strength: EvidenceStrength
@@ -276,8 +291,14 @@ export interface Proposal {
    * The card the dashboard renders when narration is unavailable or fails
    * validation twice. Composed from the evidence, not written by hand — the
    * dashboard never depends on a model call to display.
+   *
+   * Two lengths, because two surfaces need it. `short` is the queue row: plain
+   * English, no figures, because the metric chips sit right beside it. Anything
+   * longer would be truncated at the column edge, and a sentence cut mid-clause
+   * reads as a bug rather than as brevity. `reasoning` is the full read, and it
+   * lives in the evidence drawer.
    */
-  fallback: { recommendation: string; reasoning: string }
+  fallback: { recommendation: string; short: string; reasoning: string }
   /** Where Approve sends the draft. */
   draftIntent: string
   /** Set when a snoozed proposal has come back around. */

@@ -16,10 +16,11 @@
  * what matters most today. If he wants to bury the winner and open with the
  * fatigue call, that is a real analyst judgement and it is his to make.
  *
- * **The dashboard never waits on him.** Every proposal already carries a
- * template card composed from its own evidence. Narration is an upgrade layered
- * on top. No API key, a refusal, a timeout, two failed validations — the board
- * still renders, fully actionable, with real numbers on it.
+ * **The dashboard never waits on him.** Every proposal already carries its own
+ * computed copy — a short line for the queue row, the full read for the
+ * evidence drawer. Narration is an upgrade layered on top of that, never a
+ * dependency of it. No API key, a refusal, a timeout, two failed validations —
+ * the queue still renders, fully actionable, with real numbers on it.
  */
 
 import fs from 'fs'
@@ -142,10 +143,23 @@ Return:
   "sessionNote": "two or three lines to yourself, fed back to you next time"
 }
 
-One card per proposal in "proposals". "recommendation" is the move, in your
-words. "reasoning" is why. "openingRemark" is optional and it is genuinely
-optional — some days you have a view on the account and some days you do not,
-and returning null is a real answer that the interface handles.
+One card per proposal in "proposals".
+
+The interface these land in is an approval queue, not a report. Somebody is
+scanning a short ordered list and deciding. So:
+
+- "recommendation" is the move, in your words, in EIGHT WORDS OR FEWER.
+  "Replace this before you raise the budget." "Build three hooks off this one."
+- "reasoning" is ONE SENTENCE, twelve to twenty-five words. The reason, not the
+  workings — the full evidence sits behind a drawer and they can open it.
+- "openingRemark" is at most one sentence, and it is genuinely optional. Some
+  days you have a view on the account and some days you do not; returning null
+  is a real answer that the interface handles by showing nothing.
+
+This is a constraint on LENGTH, not on you. Be as blunt, as funny or as
+uncertain as the data deserves — just do it in one sentence. Anything that
+genuinely needs a paragraph is a thing to say when they ask you, not something
+to open with.
 `.trim()
 
 /* --------------------------------- the call -------------------------------- */
@@ -214,17 +228,21 @@ export interface NarrationResult {
   model: string
 }
 
-/** The card the UI shows when Mike is unavailable — his own maths, plainly put. */
-function templateOutput(proposals: Proposal[]): NarrationOutput {
+/**
+ * What comes back when Mike is unavailable.
+ *
+ * Deliberately NO cards. Every proposal already carries its own computed copy —
+ * a short line for the queue row and the full read for the evidence drawer —
+ * and the surface falls back to those directly. Fabricating narrated cards here
+ * would hand the row the long form and leave the drawer with nothing else to
+ * show, which is how a degraded board ends up looking more verbose than a
+ * narrated one rather than less.
+ */
+function templateOutput(): NarrationOutput {
   return {
-    leadProposalId: proposals[0]?.id ?? '',
+    leadProposalId: '',
     leadReason: 'Ranked by computed score — no narration available this session.',
-    cards: proposals.map((p) => ({
-      proposalId: p.id,
-      recommendation: p.fallback.recommendation,
-      reasoning: p.fallback.reasoning,
-      evidenceIds: p.evidence.slice(0, 2).map((e) => e.id),
-    })),
+    cards: [],
     openingRemark: null,
     sessionNote: '',
   }
@@ -352,7 +370,7 @@ export async function narrateSession(ctx: NarrationContext): Promise<NarrationRe
 
   if (!constitution || !client()) {
     return {
-      output: templateOutput(ctx.proposals),
+      output: templateOutput(),
       degraded: true,
       degradedReason: !constitution
         ? 'The character constitution could not be read.'
@@ -415,24 +433,11 @@ export async function narrateSession(ctx: NarrationContext): Promise<NarrationRe
     attempts.push(check)
 
     if (check.failures.length === 0) {
-      // Any proposal he skipped still gets its computed card, so the board is
-      // never short a decision because he had nothing to add about one.
-      const covered = new Set(parsed.cards.map((c) => c.proposalId))
-      const cards = [
-        ...parsed.cards,
-        ...ctx.proposals
-          .filter((p) => !covered.has(p.id))
-          .map((p) => ({
-            proposalId: p.id,
-            recommendation: p.fallback.recommendation,
-            reasoning: p.fallback.reasoning,
-            evidenceIds: p.evidence.slice(0, 2).map((e) => e.id),
-          })),
-      ]
+      // A proposal he skipped simply has no card. The row renders its own
+      // computed line rather than a hand-me-down of somebody else's.
       return {
         output: {
           ...parsed,
-          cards,
           openingRemark: parsed.openingRemark?.trim() || null,
           sessionNote: parsed.sessionNote ?? '',
         },
@@ -446,7 +451,7 @@ export async function narrateSession(ctx: NarrationContext): Promise<NarrationRe
   }
 
   return {
-    output: templateOutput(ctx.proposals),
+    output: templateOutput(),
     degraded: true,
     degradedReason:
       attempts.length > 0

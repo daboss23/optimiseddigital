@@ -146,3 +146,13 @@ export function saveNarration(entry: CachedNarration): void {
     /* non-fatal: he just gets asked again next refresh */
   }
 }
+
+/** Drop the cached session so "Refresh analysis" gets a genuinely fresh read. */
+export function clearNarration(): void {
+  if (!isBrowser()) return
+  try {
+    window.sessionStorage.removeItem(NARRATION_KEY)
+  } catch {
+    /* nothing cached to clear */
+  }
+}

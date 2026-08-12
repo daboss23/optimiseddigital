@@ -4,13 +4,18 @@
 
 Mike Delight reads the ad account and puts up to three decisions in front of one
 person every morning. He lives entirely inside the existing **Your Next Moves**
-section of the Reactor Dashboard: a status line in the hero, an optional opening
-remark, three cards, and a collapsed trace. There is no separate page, no
-drawer, no avatar and no chatbot — he is a colleague doing a job, not a feature
-that needs showing off.
+section of the Reactor Dashboard as a **decision queue**: a summary, an ordered
+list of rows, a collapsed history, and an evidence drawer that opens on demand.
+There is no separate page, no avatar and no chatbot — he is a colleague doing a
+job, not a feature that needs showing off.
 
-Built from `docs/mike-delight-build-spec-v2.md` and
-`operator/mike-delight-constitution.md`.
+> **Mike thinks deeply backstage and speaks briefly onstage.**
+
+The full analysis runs on every load. What reaches the screen is the decision.
+
+Built from `docs/mike-delight-build-spec-v2.md` (the engine),
+`docs/mike-decision-queue-brief.md` (the surface) and
+`operator/mike-delight-constitution.md` (the character).
 
 ---
 
@@ -21,6 +26,7 @@ Three layers, separately replaceable, and the boundaries are the whole design:
 | Layer | Owns | Never does |
 |---|---|---|
 | `lib/operator/` (pure) | what is true — signals, baselines, strength, rules, evidence | judge tone, call the clock, call the network |
+| `lib/operator/queue.ts` | what reaches the row — condensing, chips, summary copy | change a figure, or decide what is true |
 | `lib/operator/narrate.ts` | what matters — the lead, the language, the running note | write a single number the UI renders |
 | The operator (a human) | what happens — approve, edit, dismiss, snooze | — |
 
@@ -42,6 +48,7 @@ lib/operator/
   strength.ts       EARLY_SIGNAL / MODERATE / STRONG, with hard floors
   evidence.ts       structured items with stable ids
   fingerprint.ts    proposal identity (weekly) + memory identity (permanent)
+  queue.ts          presentation adapter — proposals → queue rows, all copy rules
   rules/            one file per rule: iterate · fatigue · explore · collect
   memory.ts         decision log, cooldowns, weights, learned defaults
   operator.ts       the pipeline: dedupe → suppress → rank → cap
@@ -56,8 +63,76 @@ lib/operator/
     index.ts        THE ONE LINE that swaps them
 ```
 
+```
+components/reactor/operator/
+  OperatorProvider.tsx     runs the pipeline, owns every action
+  ActionsRequiredTile.tsx  the pulse tile, on the same selector as the queue
+  OperatorToast.tsx        decision confirmation
+  modals.tsx               Edit · Dismiss · Snooze
+  shell.tsx                shared modal + form primitives
+  queue/
+    MikeQueueSummary.tsx   count, one supporting line, controls, filter
+    MikeQueue.tsx          the list and its states
+    MikeQueueRow.tsx       one decision
+    MikeQueueActions.tsx   primary · Edit · overflow · undo
+    MikeEvidenceDrawer.tsx everything, on demand
+    MikeDecisionHistory.tsx completed and dismissed
+    MikeEmptyState.tsx     clear · paused · disconnected · filtered
+```
+
 **Swapping data sources is one line** in `adapters/index.ts`. The self-test
 asserts that nothing outside that file needs to change with it.
+
+---
+
+## The surface
+
+Four regions and nothing else. No charts, no KPI grids, no agent telemetry —
+those belong on Meta Intelligence, and the reason this screen works is that it
+does one job.
+
+**1 · Summary.** `MIKE'S QUEUE`, a generated headline (*"Mike found 2 actions
+worth taking today."*), one supporting sentence describing the mix, and the
+controls: Refresh analysis, pause, and an Open / Done / Dismissed filter. The
+headline is arithmetic and is generated from the queue rather than written by
+Mike — a model asked to phrase a count will eventually phrase it wrongly.
+
+If Mike has a genuine view on the account it appears as ONE sentence beneath.
+Most mornings it does not appear at all, and that absence is in character.
+
+**2 · Queue.** One vertical row per decision, ordered by urgency then evidence
+strength. Priority · Action · Creative · Why · Evidence · Confidence · Decision.
+Copy limits are enforced in `queue.ts`, not in components: title ≤ 8 words,
+reason one sentence ≤ 25 words, ≤ 3 metric chips, one confidence word, one
+primary action.
+
+The chips carry the figures so the sentence does not have to. Each rule supplies
+a **plain-English one-liner** for the row (*"Cost per result is rising, CTR is
+falling and frequency is climbing."*) alongside the full read for the drawer —
+two lengths, because a long sentence cut at a column edge reads as a bug rather
+than as brevity.
+
+**3 · Evidence drawer.** Right-side panel on desktop, bottom sheet on a phone.
+The recommendation once, then the numbers: every evidence item with its window
+and comparison, the cohort definition, the confidence explanation, Ask Mike, and
+a link to the full performance record. For verification — not a second copy of
+the recommendation with more adjectives.
+
+**4 · Completed and dismissed.** Collapsed, quieter than the queue, and read
+from the decision log rather than from a second list that could disagree with it.
+
+### Actions
+
+**Approve** stages a brief and confirms in place with an **Undo** before the row
+leaves. **Edit** adjusts variations, angle, format and instructions, then
+approves and logs the diff. **Dismiss** (reason code required) and **Snooze** sit
+in a restrained overflow — three equally prominent buttons is three decisions to
+make about a decision.
+
+WATCH and COLLECT never get "Approve". Their primary control is **Keep watching**
+or **Acknowledge**, it sets a check-back, and it creates nothing. Labelling a
+non-action as an approval is how an interface teaches somebody that approving
+here does not mean very much.
 
 ---
 
@@ -193,8 +268,10 @@ npm run selftest:operator
 ```
 
 Runs the whole pipeline in-process against the seeded source with the evaluation
-date pinned to `2026-08-12`. No server, no network, no model call. 43 checks
-covering all 41 from the spec.
+date pinned to `2026-08-12`. No server, no network, no model call. **50 checks**:
+all 41 from the engine spec, plus seven covering the queue's presentation
+contract — word limits, chip caps and deduplication, WATCH's own verb, generated
+summary copy at 0/1/n, condensing that never splits a decimal, and undo.
 
 The date is pinned deliberately: without it, "the last 3 complete days" moves
 with the calendar and the suite passes on Monday and fails on Thursday for no

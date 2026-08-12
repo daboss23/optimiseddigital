@@ -29,6 +29,17 @@ import {
 } from '@/lib/operator/rules/shared'
 import type { PrimaryResultType, Proposal } from '@/lib/operator/types'
 
+/**
+ * Tags arrive machine-shaped (`specific-dollar-figure`) because that is what a
+ * tag is. A queue column is read by a person, so it gets the readable form —
+ * and only here, at the presentation boundary, so grouping still matches on the
+ * exact tag.
+ */
+function humanisePattern(pattern: string): string {
+  const spaced = pattern.replace(/[-_]+/g, ' ').trim()
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1)
+}
+
 interface PatternGroup {
   /** "founder-led" or "specific dollar figure" — the shared attribute. */
   pattern: string
@@ -94,9 +105,10 @@ export const exploreRule: Rule = (ctx): RuleResult => {
     groupEvidence({
       kind: 'pattern_cost',
       label: `Group ${costWord(group.resultType)} vs cohort median`,
+      short: 'Cohort',
       creativeIds: ids,
       rawValue: mean,
-      displayValue: `${cheaperBy}% below the cohort median`,
+      displayValue: `${cheaperBy}% below`,
       comparisonValue: `mean of ${members.length} creatives sharing "${group.pattern}" · ${members
         .map((m) => m.creative.name)
         .join(', ')}`,
@@ -106,20 +118,22 @@ export const exploreRule: Rule = (ctx): RuleResult => {
     }),
     groupEvidence({
       kind: 'pattern_volume',
+      short: 'Volume',
       label: 'Evidence behind the pattern',
       creativeIds: ids,
       rawValue: totalResults,
-      displayValue: `${totalResults} ${totalResults === 1 ? resultWord.one.toLowerCase() : resultWord.many}`,
+      displayValue: `${totalResults.toLocaleString()} ${totalResults === 1 ? resultWord.one.toLowerCase() : resultWord.many}`,
       comparisonValue: `${money2(totalSpend)} spend across ${members.length} creatives · ${rangeLabel(from, to)}`,
       direction: 'neutral',
       dateRange: { from, to },
     }),
     groupEvidence({
       kind: 'pattern_scope',
+      short: 'Creatives',
       label: 'Comparability',
       creativeIds: ids,
       rawValue: members.length,
-      displayValue: `${members.length} creatives, one result type`,
+      displayValue: `${members.length}`,
       comparisonValue: `all ${resultWord.many} — no cross-result-type blending in this group mean`,
       direction: 'neutral',
       dateRange: { from, to },
@@ -150,6 +164,10 @@ export const exploreRule: Rule = (ctx): RuleResult => {
     type: 'EXPLORE',
     subjectIds: ids,
     subjectNames: members.map((m) => m.creative.name),
+    // The subject of a pattern proposal is the PATTERN. Listing three creative
+    // names in a queue column is a list, not a subject; the members are in the
+    // drawer where they can be read properly.
+    subjectLabel: humanisePattern(group.pattern),
     score: bandScore(SCORE_BANDS.explore, severity),
     strength,
     evidence,
@@ -162,6 +180,7 @@ export const exploreRule: Rule = (ctx): RuleResult => {
     draftIntent: 'explore',
     fallback: {
       recommendation: `Test "${group.pattern}" deliberately on a new creative`,
+      short: `${members.length} creatives share this pattern and all sit below the cohort median.`,
       reasoning: `${members.length} creatives carrying "${group.pattern}" average ${cheaperBy}% below the cohort median ${costWord(group.resultType)} on ${totalResults} ${
         totalResults === 1 ? resultWord.one.toLowerCase() : resultWord.many
       } (${rangeLabel(from, to)}). The pattern has never been isolated in a creative built around it.`,

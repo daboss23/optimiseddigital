@@ -64,18 +64,21 @@ export const iterateRule: Rule = (ctx): RuleResult => {
       trendEvidence(s, s.trends.ctr3v3, {
         kind: 'ctr_rapid',
         label: 'Outbound CTR — last 3 complete days vs prior 3',
+        short: 'CTR',
         goodWhen: 'up',
         unit: 'pct',
       }),
       trendEvidence(s, s.trends.cpr7v7, {
         kind: 'cost_confirm',
         label: `${RESULT_LABELS[s.primaryResultType].cost} — last 7 complete days vs prior 7`,
+        short: RESULT_LABELS[s.primaryResultType].short,
         goodWhen: 'down',
         unit: 'money',
       }),
       nullWindowEvidence(s, s.trends.cpr7v7, {
         kind: 'cost_confirm_null',
         label: `${RESULT_LABELS[s.primaryResultType].cost} — 7-day confirmation window`,
+        short: RESULT_LABELS[s.primaryResultType].short,
       }),
       frequencyEvidence(s),
     ])
@@ -101,6 +104,7 @@ export const iterateRule: Rule = (ctx): RuleResult => {
       type: 'ITERATE',
       subjectIds: [creative.id],
       subjectNames: [creative.name],
+      subjectLabel: creative.name,
       score: bandScore(SCORE_BANDS.iterate, severity),
       strength,
       evidence,
@@ -116,6 +120,12 @@ export const iterateRule: Rule = (ctx): RuleResult => {
         // where Edit can change it — baking it into the sentence produced a
         // brief whose headline said five while its spec said three.
         recommendation: `Build variations off ${creative.name}`,
+        // Plain English, no figures — the metric chips sit beside this in the
+        // row and repeating the numbers in prose just makes the line longer.
+        short:
+          s.frequencyRising && s.currentFrequency !== null && s.currentFrequency >= 2
+            ? 'Well inside its cohort median, though frequency is starting to climb.'
+            : 'Comfortably inside its cohort median and delivery is still healthy.',
         reasoning: [
           `${money2(s.costPerResult)} ${costWord(s.primaryResultType)} is ${cheaperBy}% inside the cohort median`,
           `on ${s.totalPrimaryResults} ${s.totalPrimaryResults === 1 ? resultWord.one.toLowerCase() : resultWord.many}`,

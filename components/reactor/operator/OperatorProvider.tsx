@@ -20,13 +20,24 @@ import { draftFromProposal, stageDraft } from '@/lib/operator/draft'
 import {
   applyDecision,
   askCount,
+  decisionHistory,
   learnedDefaults,
   logAsk,
   MAX_ASK_EXCHANGES,
   recordOpening,
+  undoLastDecision,
+  type DecisionRecord,
   type LearnedDefault,
   type OperatorMemory,
 } from '@/lib/operator/memory'
+import {
+  condenseRemark,
+  summaryCopy,
+  toQueue,
+  toQueueItem,
+  type MikeQueueItem,
+  type QueueSummaryCopy,
+} from '@/lib/operator/queue'
 import {
   accountDaily,
   creativeSummaries,
@@ -34,6 +45,7 @@ import {
   type OperatorOutput,
 } from '@/lib/operator/operator'
 import {
+  clearNarration,
   loadMemory,
   loadNarration,
   narrationKey,
@@ -72,7 +84,23 @@ import type {
 /** Past this many days away, the strip offers a catch-up instead of a remark. */
 const AWAY_THRESHOLD_DAYS = 2
 
-export type OpeningState = 'JUST NOW' | 'THIS MORNING' | 'FOLLOWING UP'
+/** Which slice of the decision log the surface is showing. */
+export type QueueFilter = 'open' | 'done' | 'dismissed'
+
+/**
+ * A decision taken moments ago, still undoable in place.
+ *
+ * Carries the ROW as it was, because the moment a decision is recorded the
+ * cooldown removes it from the board — and a row that vanishes on click gives
+ * the operator nowhere to put the undo, and no confirmation that the right one
+ * went. It is spliced back at its old position until the window closes.
+ */
+export interface JustDecided {
+  subjectKey: string
+  label: string
+  at: number
+  item: MikeQueueItem
+}
 
 export interface Toast {
   id: number
@@ -103,12 +131,24 @@ interface OperatorContextValue {
   proposals: Proposal[]
   /** THE selector — header count, Actions Required tile and the queue. */
   actionsRequired: number
+  /** The board, condensed for the queue. Copy generation lives in lib/operator/queue.ts. */
+  queue: MikeQueueItem[]
+  summary: QueueSummaryCopy
+  /** Mike's contextual line, if he had one. Never a paragraph. */
+  remark: string | null
+  filter: QueueFilter
+  setFilter: (f: QueueFilter) => void
+  history: DecisionRecord[]
+  lastUpdated: number | null
+  refresh: () => void
+  refreshing: boolean
+  justDecided: JustDecided | null
+  undo: () => void
   narration: NarrationOutput | null
   narrating: boolean
   /** Which card Mike put first, when it is not the top-ranked one. */
   mikesPickId: string | null
   cardFor: (proposalId: string) => NarratedCard | null
-  openingState: OpeningState
   awayDays: number
   needsCatchup: boolean
   catchup: CatchupOutput | null
@@ -119,6 +159,8 @@ interface OperatorContextValue {
   dismissToast: () => void
 
   approve: (proposal: Proposal, params?: ProposalParams) => void
+  /** WATCH and COLLECT: clears the row and creates nothing at all. */
+  acknowledge: (proposal: Proposal) => void
   dismiss: (proposal: Proposal, reason: DismissReason, note?: string) => void
   snooze: (proposal: Proposal, days: number) => void
   keepWatching: (proposal: Proposal) => void
@@ -158,6 +200,10 @@ export function OperatorProvider({ children }: { children: ReactNode }) {
   const [catchup, setCatchup] = useState<CatchupOutput | null>(null)
   const [catchingUp, setCatchingUp] = useState(false)
   const [toast, setToast] = useState<Toast | null>(null)
+  const [filter, setFilter] = useState<QueueFilter>('open')
+  const [justDecided, setJustDecided] = useState<JustDecided | null>(null)
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
 
   // The previous visit, captured before `lastSeenAt` is stamped forward.
   const previousVisit = useRef<string | null>(null)
@@ -185,7 +231,9 @@ export function OperatorProvider({ children }: { children: ReactNode }) {
     const src = operatorDataSource({ evaluationDate: today })
     Promise.all([src.getCreatives(), src.getBaselines(), src.getMetadata()])
       .then(([creatives, baselines, metadata]) => {
-        if (live) setSource({ creatives, baselines, metadata })
+        if (!live) return
+        setSource({ creatives, baselines, metadata })
+        setLastUpdated(Date.now())
       })
       .catch(() => {
         // A data source that cannot be read is reported, never faked. The
@@ -314,6 +362,7 @@ export function OperatorProvider({ children }: { children: ReactNode }) {
         const written = new Date().toISOString()
         setNarration(data.output)
         setNarrationFresh(true)
+        setLastUpdated(Date.now())
         setDebug({
           leadReason: data.output.leadReason ?? '',
           model: data.model ?? null,
@@ -385,11 +434,34 @@ export function OperatorProvider({ children }: { children: ReactNode }) {
     setToast({ ...toastValue, id: Date.now() })
   }, [])
 
+  /**
+   * Mark a row as just-decided so it can confirm in place with an undo before
+   * it leaves. Approving is one click and it stages a brief; a misclick that
+   * cannot be taken back is a misclick people slow down to avoid, which is the
+   * opposite of what an approval queue is for.
+   */
+  const markDecided = useCallback((proposal: Proposal, label: string) => {
+    const priority = Math.max(1, boardRef.current.findIndex((p) => p.id === proposal.id) + 1)
+    setJustDecided({
+      subjectKey: proposal.subjectKey,
+      label,
+      at: Date.now(),
+      item: toQueueItem(proposal, cardForRef.current(proposal.id), priority),
+    })
+  }, [])
+
   const cardFor = useCallback(
     (proposalId: string): NarratedCard | null =>
       narration?.cards.find((c) => c.proposalId === proposalId) ?? null,
     [narration],
   )
+
+  // Both read through refs inside `markDecided`. The board and the narration
+  // are derived further down the file, and a decision handler that depended on
+  // them would be rebuilt every time Mike's words landed.
+  const cardForRef = useRef(cardFor)
+  cardForRef.current = cardFor
+  const boardRef = useRef<Proposal[]>([])
 
   const approve = useCallback(
     (proposal: Proposal, params?: ProposalParams) => {
@@ -416,13 +488,46 @@ export function OperatorProvider({ children }: { children: ReactNode }) {
         decidedAt: new Date().toISOString(),
       })
 
+      markDecided(proposal, 'Approved — draft created')
       showToast({
         message: 'Approved — draft created',
         tone: 'success',
         action: { label: 'Open the brief', href },
       })
     },
-    [cardFor, commit, showToast, tagsOf],
+    [cardFor, commit, markDecided, showToast, tagsOf],
+  )
+
+  /**
+   * Acknowledge — WATCH and COLLECT.
+   *
+   * Clears the row, sets the check-back and creates NOTHING. It is recorded as
+   * a snooze to the review date rather than an approval, because pretending a
+   * non-action is a production task is exactly what the fatigue states exist to
+   * avoid.
+   */
+  const acknowledge = useCallback(
+    (proposal: Proposal) => {
+      const days = proposal.params.reviewInDays ?? 3
+      const until = new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10)
+      commit({
+        proposalId: proposal.id,
+        subjectKey: proposal.subjectKey,
+        type: proposal.type,
+        subjectIds: proposal.subjectIds,
+        subjectTags: tagsOf(proposal),
+        strengthTier: proposal.strength.tier,
+        action: 'snoozed',
+        snoozedUntil: until,
+        decidedAt: new Date().toISOString(),
+      })
+      markDecided(proposal, `Back in ${days} ${days === 1 ? 'day' : 'days'} · no draft created`)
+      showToast({
+        message: `Noted — back in ${days} ${days === 1 ? 'day' : 'days'}. No draft created.`,
+        tone: 'info',
+      })
+    },
+    [commit, markDecided, showToast, tagsOf],
   )
 
   const dismiss = useCallback(
@@ -439,9 +544,10 @@ export function OperatorProvider({ children }: { children: ReactNode }) {
         note,
         decidedAt: new Date().toISOString(),
       })
+      markDecided(proposal, 'Dismissed')
       showToast({ message: 'Dismissed — Mike will not raise it again for a fortnight', tone: 'info' })
     },
-    [commit, showToast, tagsOf],
+    [commit, markDecided, showToast, tagsOf],
   )
 
   const snooze = useCallback(
@@ -458,29 +564,18 @@ export function OperatorProvider({ children }: { children: ReactNode }) {
         snoozedUntil: until,
         decidedAt: new Date().toISOString(),
       })
+      markDecided(proposal, `Snoozed until ${until}`)
       showToast({ message: `Snoozed until ${until}`, tone: 'info' })
     },
-    [commit, showToast, tagsOf],
+    [commit, markDecided, showToast, tagsOf],
   )
 
   /**
-   * Keep watching — sets the check-back and creates NOTHING.
-   *
-   * This is the whole reason WATCH is a separate state. It is recorded as a
-   * snooze to the review date so the card comes back on its own, and it never
-   * touches the draft path.
+   * Keep watching — the WATCH row's primary control, and an alias for
+   * `acknowledge`. Same behaviour, kept under its own name because that is the
+   * word on the button and the two must not be able to drift apart.
    */
-  const keepWatching = useCallback(
-    (proposal: Proposal) => {
-      const days = proposal.params.reviewInDays ?? 3
-      snooze(proposal, days)
-      showToast({
-        message: `Watching — back in ${days} ${days === 1 ? 'day' : 'days'}. No draft created.`,
-        tone: 'info',
-      })
-    },
-    [snooze, showToast],
-  )
+  const keepWatching = acknowledge
 
   const togglePause = useCallback(() => {
     setMemory((current) => {
@@ -610,24 +705,50 @@ export function OperatorProvider({ children }: { children: ReactNode }) {
 
   /* -- derived ------------------------------------------------------------- */
 
-  const openingState = useMemo<OpeningState>(() => {
-    const remark = narration?.openingRemark ?? ''
-    const history = [
-      ...(output?.relationship.openHistory ?? []),
-      ...(output?.relationship.editPatterns ?? []),
-    ]
-    // "Following up" is earned by actually referencing something they did, not
-    // asserted because it is the second visit.
-    const references = history.some((entry) => {
-      const words = entry
-        .toLowerCase()
-        .split(/[^a-z0-9]+/)
-        .filter((w) => w.length > 4)
-      return words.some((w) => remark.toLowerCase().includes(w))
+  /**
+   * Undo the last decision, and put the row straight back on the board.
+   *
+   * The decision log is the record, so undo removes the entry and everything
+   * downstream — weights, cooldowns, the queue itself — recomputes from it.
+   * There is no second place holding a stale copy to fall out of sync.
+   */
+  const undo = useCallback(() => {
+    if (!justDecided) return
+    const { subjectKey } = justDecided
+    setJustDecided(null)
+    setMemory((current) => {
+      if (!current) return current
+      const next = undoLastDecision(current, subjectKey)
+      saveMemory(next)
+      return next
     })
-    if (references) return 'FOLLOWING UP'
-    return narrationFresh ? 'JUST NOW' : 'THIS MORNING'
-  }, [narration, narrationFresh, output])
+    showToast({ message: 'Put back on the queue', tone: 'info' })
+  }, [justDecided, showToast])
+
+  /**
+   * Re-read the account.
+   *
+   * Drops the cached narration for this board so Mike takes a fresh look,
+   * rather than replaying the words he wrote earlier in the session.
+   */
+  const refresh = useCallback(() => {
+    if (!evaluationDate) return
+    narrationRequested.current = null
+    setNarration(null)
+    clearNarration()
+    setLastUpdated(Date.now())
+    const src = operatorDataSource({ evaluationDate })
+    setRefreshing(true)
+    Promise.all([src.getCreatives(), src.getBaselines(), src.getMetadata()])
+      .then(([creatives, baselines, metadata]) => {
+        setSource({ creatives, baselines, metadata })
+        setLastUpdated(Date.now())
+      })
+      .catch(() => {
+        /* the board on screen stays valid — it is recomputed, not fetched */
+      })
+      .finally(() => setRefreshing(false))
+  }, [evaluationDate])
 
   const mikesPickId = useMemo(() => {
     if (!narration?.leadProposalId || proposals.length === 0) return null
@@ -644,11 +765,53 @@ export function OperatorProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [narration?.leadProposalId, boardKey])
 
+  /* -- the queue ----------------------------------------------------------- */
+
+  boardRef.current = ordered
+
+  const queue = useMemo(() => {
+    const live = toQueue(ordered, cardFor)
+    if (!justDecided) return live
+    if (live.some((q) => q.subjectKey === justDecided.subjectKey)) return live
+
+    // Put the just-decided row back where it was, so the confirmation and the
+    // undo appear on the row the operator actually clicked.
+    const held = justDecided.item
+    const next = live.slice()
+    next.splice(Math.min(held.priority - 1, next.length), 0, held)
+    return next.map((q, i) => (q.priority === i + 1 ? q : { ...q, priority: i + 1 }))
+  }, [ordered, cardFor, justDecided])
+  // The headline counts what still needs deciding. A row being confirmed on
+  // its way out is not an action worth taking today.
+  const summary = useMemo(
+    () => summaryCopy(queue.filter((q) => q.subjectKey !== justDecided?.subjectKey)),
+    [queue, justDecided],
+  )
+  const remark = useMemo(
+    () => condenseRemark(narration?.openingRemark),
+    [narration?.openingRemark],
+  )
+
+  const history = useMemo(() => {
+    if (!memory) return []
+    const nameFor = (id: string) => source?.creatives.find((c) => c.id === id)?.name
+    return decisionHistory(memory, nameFor)
+  }, [memory, source])
+
   useEffect(() => {
     if (!toast) return
     const timer = setTimeout(() => setToast(null), 6000)
     return () => clearTimeout(timer)
   }, [toast])
+
+  // The just-decided row confirms in place, then leaves. Long enough to read
+  // and reverse, short enough that the board is current again by the time
+  // anybody looks back at it.
+  useEffect(() => {
+    if (!justDecided) return
+    const timer = setTimeout(() => setJustDecided(null), 7000)
+    return () => clearTimeout(timer)
+  }, [justDecided])
 
   const value = useMemo<OperatorContextValue>(
     () => ({
@@ -659,11 +822,21 @@ export function OperatorProvider({ children }: { children: ReactNode }) {
       output,
       proposals: ordered,
       actionsRequired: ordered.length,
+      queue,
+      summary,
+      remark,
+      filter,
+      setFilter,
+      history,
+      lastUpdated,
+      refresh,
+      refreshing,
+      justDecided,
+      undo,
       narration,
       narrating,
       mikesPickId,
       cardFor,
-      openingState,
       awayDays,
       needsCatchup,
       catchup,
@@ -673,6 +846,7 @@ export function OperatorProvider({ children }: { children: ReactNode }) {
       toast,
       dismissToast: () => setToast(null),
       approve,
+      acknowledge,
       dismiss,
       snooze,
       keepWatching,
@@ -682,10 +856,21 @@ export function OperatorProvider({ children }: { children: ReactNode }) {
       asksRemaining,
     }),
     [
+      acknowledge,
       approve,
       ask,
       asksRemaining,
       awayDays,
+      filter,
+      history,
+      justDecided,
+      lastUpdated,
+      queue,
+      refresh,
+      refreshing,
+      remark,
+      summary,
+      undo,
       cardFor,
       catchingUp,
       catchup,
@@ -698,7 +883,6 @@ export function OperatorProvider({ children }: { children: ReactNode }) {
       narrating,
       narration,
       needsCatchup,
-      openingState,
       ordered,
       output,
       runCatchup,

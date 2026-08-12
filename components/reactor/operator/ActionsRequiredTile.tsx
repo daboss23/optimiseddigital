@@ -6,7 +6,10 @@ import { cn } from '@/lib/utils'
 import { TrendBadge, accentClass } from '@/components/reactor/ui'
 import { InfoTip } from '@/components/reactor/Explain'
 import { useOperator } from '@/components/reactor/operator/OperatorProvider'
-import { OPERATOR_QUEUE_ANCHOR } from '@/components/reactor/operator/MikeHeader'
+
+/** The scroll target for the queue. Declared here to avoid a circular import. */
+const OPERATOR_QUEUE_ANCHOR = 'mikes-queue'
+
 
 /* ----------------------------------------------------------------------------
    The Actions Required pulse tile.
@@ -57,7 +60,7 @@ export function ActionsRequiredTile({ className }: { className?: string }) {
         {state}
         <InfoTip label="Actions required" align="right">
           Proposals on the board that have not been approved, dismissed or snoozed. The same number
-          the Mike Delight status line shows, from the same selector — there is only one count.
+          Mike's queue shows, from the same selector — there is only one count.
         </InfoTip>
       </p>
     </Link>

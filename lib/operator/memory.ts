@@ -152,6 +152,65 @@ export function applyDecision(memory: OperatorMemory, decision: Decision): Opera
   }
 }
 
+/**
+ * Rebuild the derived state from the decision log.
+ *
+ * `applyDecision` updates weights incrementally, which is right for the forward
+ * path and wrong for undo — you cannot subtract a clamped increment and land
+ * back where you started. So undo replays instead: the decision log is the
+ * record, and weights and statuses are functions of it.
+ */
+function rebuildFrom(memory: OperatorMemory, decisions: Decision[]): OperatorMemory {
+  let rebuilt: OperatorMemory = { ...memory, decisions: [], weights: {}, states: {} }
+  for (const decision of decisions) rebuilt = applyDecision(rebuilt, decision)
+  return rebuilt
+}
+
+/**
+ * Take back the last decision on a subject.
+ *
+ * Approving is one click and it stages a brief, so it needs to be one click to
+ * undo — an approval queue where a misclick is unrecoverable is one people stop
+ * clicking through quickly, which defeats the point of the queue.
+ */
+export function undoLastDecision(memory: OperatorMemory, subjectKey: string): OperatorMemory {
+  const index = memory.decisions.map((d) => d.subjectKey).lastIndexOf(subjectKey)
+  if (index === -1) return memory
+  const decisions = memory.decisions.filter((_, i) => i !== index)
+  return rebuildFrom(memory, decisions)
+}
+
+/* --------------------------------- history --------------------------------- */
+
+export interface DecisionRecord {
+  decision: Decision
+  /** Resolved at read time from the live creatives — never stored. */
+  creativeNames: string[]
+}
+
+/**
+ * The completed-and-dismissed list, newest first.
+ *
+ * Names are resolved from the current source rather than persisted alongside
+ * the decision: a creative that gets renamed in Ads Manager should read under
+ * its new name here, not under whatever it was called the day somebody
+ * dismissed a card about it.
+ */
+export function decisionHistory(
+  memory: OperatorMemory,
+  nameFor: (creativeId: string) => string | undefined,
+  limit = 40,
+): DecisionRecord[] {
+  return memory.decisions
+    .slice()
+    .reverse()
+    .slice(0, limit)
+    .map((decision) => ({
+      decision,
+      creativeNames: decision.subjectIds.map((id) => nameFor(id) ?? id),
+    }))
+}
+
 /* -------------------------------- cooldowns -------------------------------- */
 
 export const COOLDOWNS = {

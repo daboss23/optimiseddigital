@@ -145,34 +145,40 @@ function fatigueEvidence(item: EvaluatedCreative, ctx: RuleContext) {
     trendEvidence(s, s.trends.ctr3v3, {
       kind: 'ctr_rapid',
       label: 'Outbound CTR — last 3 complete days vs prior 3',
+      short: 'CTR',
       goodWhen: 'up',
       unit: 'pct',
     }),
     trendEvidence(s, s.trends.ctr7v7, {
       kind: 'ctr_confirm',
       label: 'Outbound CTR — last 7 complete days vs prior 7',
+      short: 'CTR',
       goodWhen: 'up',
       unit: 'pct',
     }),
     nullWindowEvidence(s, s.trends.ctr7v7, {
       kind: 'ctr_confirm_null',
       label: 'Outbound CTR — 7-day confirmation window',
+      short: 'CTR',
     }),
     trendEvidence(s, s.trends.cpr3v3, {
       kind: 'cost_rapid',
       label: `${RESULT_LABELS[s.primaryResultType].cost} — last 3 complete days vs prior 3`,
+      short: RESULT_LABELS[s.primaryResultType].short,
       goodWhen: 'down',
       unit: 'money',
     }),
     trendEvidence(s, s.trends.cpr7v7, {
       kind: 'cost_confirm',
       label: `${RESULT_LABELS[s.primaryResultType].cost} — last 7 complete days vs prior 7`,
+      short: RESULT_LABELS[s.primaryResultType].short,
       goodWhen: 'down',
       unit: 'money',
     }),
     nullWindowEvidence(s, s.trends.cpr7v7, {
       kind: 'cost_confirm_null',
       label: `${RESULT_LABELS[s.primaryResultType].cost} — 7-day confirmation window`,
+      short: RESULT_LABELS[s.primaryResultType].short,
     }),
     frequencyEvidence(s),
     costVsBaselineEvidence(s, baseline),
@@ -272,6 +278,7 @@ export const fatigueRule: Rule = (ctx): RuleResult => {
         fatigueSignal: signal,
         subjectIds: [creative.id],
         subjectNames: [creative.name],
+        subjectLabel: creative.name,
         score: bandScore(
           SCORE_BANDS.replaceConfirmed,
           efficiencySeverity * 0.7 + deliverySeverity * 0.3,
@@ -287,6 +294,18 @@ export const fatigueRule: Rule = (ctx): RuleResult => {
         draftIntent: 'successor',
         fallback: {
           recommendation: `Brief a successor to ${creative.name}`,
+          // Names the signals that fired, in the order a buyer reads them, and
+          // stops there. No figures — the chips carry those alongside — and no
+          // clause about confidence, which has a column of its own.
+          short:
+            [
+              active.includes('cost_rise') ? 'Cost per result is rising' : null,
+              active.includes('ctr_decline') ? 'CTR is falling' : null,
+              frequencySignal ? 'frequency is climbing' : null,
+            ]
+              .filter(Boolean)
+              .join(', ')
+              .replace(/,([^,]*)$/, ' and$1') + '.',
           reasoning:
             [
               ctr7 !== null ? `outbound CTR ${signedPct(ctr7)} over the 7-day window` : null,
@@ -320,6 +339,7 @@ export const fatigueRule: Rule = (ctx): RuleResult => {
       fatigueSignal: signal,
       subjectIds: [creative.id],
       subjectNames: [creative.name],
+      subjectLabel: creative.name,
       score: bandScore(SCORE_BANDS.watch, rapidSeverity),
       strength,
       evidence,
@@ -333,6 +353,9 @@ export const fatigueRule: Rule = (ctx): RuleResult => {
       draftIntent: 'successor',
       fallback: {
         recommendation: `Keep watching ${creative.name}`,
+        short: s.trends.ctr7v7.complete
+          ? 'The last three days dropped, but the week has not confirmed it.'
+          : 'The last three days dropped, and the week is too thin to confirm it.',
         reasoning:
           [
             ctr3 !== null ? `outbound CTR ${signedPct(ctr3)} over the last 3 complete days` : null,

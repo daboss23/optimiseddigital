@@ -104,6 +104,7 @@ export function collectProposal(ctx: RuleContext): RuleResult {
   const evidence = collectEvidence([
     gapEvidence({
       kind: 'collect_gap',
+      short: 'Missing',
       label: `What ${lead.item.creative.name} is short of`,
       creativeIds: [lead.item.creative.id],
       displayValue: lead.gaps.join(' · '),
@@ -115,6 +116,7 @@ export function collectProposal(ctx: RuleContext): RuleResult {
     }),
     gapEvidence({
       kind: 'collect_scope',
+      short: 'Coverage',
       label: 'Account coverage',
       creativeIds: ids,
       displayValue: `${ctx.evaluated.length} creatives analysed, none judgeable`,
@@ -141,6 +143,7 @@ export function collectProposal(ctx: RuleContext): RuleResult {
     type: 'COLLECT',
     subjectIds: ids,
     subjectNames: subjects.map((r) => r.item.creative.name),
+    subjectLabel: lead.item.creative.name,
     score: SCORE_BANDS.collect.min,
     strength,
     evidence,
@@ -148,7 +151,11 @@ export function collectProposal(ctx: RuleContext): RuleResult {
     createdAt: ctx.evaluationDate,
     draftIntent: 'collect',
     fallback: {
-      recommendation: `Let ${lead.item.creative.name} run — nothing on the account is judgeable yet`,
+      recommendation: `Let ${lead.item.creative.name} run`,
+      short:
+        lead.eta === null
+          ? 'Not converting at a measurable rate, so nothing can be judged yet.'
+          : 'Not enough delivery on the account yet to judge anything.',
       reasoning: `${lead.item.creative.name} is short of ${lead.gaps.join(' and ')}. ${
         lead.eta === null
           ? 'It is not converting at a measurable rate, so the shortfall will not close on its own.'

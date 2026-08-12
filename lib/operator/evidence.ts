@@ -105,6 +105,7 @@ export function costVsBaselineEvidence(
   return {
     id: evidenceId('cost_vs_cohort', [s.creativeId]),
     label: `${RESULT_LABELS[s.primaryResultType].cost} vs cohort median`,
+    short: RESULT_LABELS[s.primaryResultType].short,
     rawValue: s.costPerResult,
     displayValue: money2(s.costPerResult),
     comparisonValue: `${money2(baseline.medianCostPerResult)} median for ${baselineLabel(baseline)} — ${
@@ -123,8 +124,11 @@ export function volumeEvidence(s: CreativeSignals, provisional: boolean): Eviden
   return {
     id: evidenceId('volume', [s.creativeId]),
     label: 'Results and spend behind the read',
+    // Not the result word: the value already ends in it, and a chip reading
+    // "LEADS 827 leads" is the same noun twice.
+    short: 'Volume',
     rawValue: s.totalPrimaryResults,
-    displayValue: `${s.totalPrimaryResults} ${resultWords(s.primaryResultType, s.totalPrimaryResults)}`,
+    displayValue: `${s.totalPrimaryResults.toLocaleString()} ${resultWords(s.primaryResultType, s.totalPrimaryResults)}`,
     comparisonValue: `${money0(s.totalSpend)} spend across ${s.completeDays} complete ${
       s.completeDays === 1 ? 'day' : 'days'
     } · ${rangeLabel(s.analysed.from, s.analysed.to)}`,
@@ -140,6 +144,8 @@ export function trendEvidence(
   opts: {
     kind: string
     label: string
+    /** The compact chip form — `CTR`, `CPL`. */
+    short: string
     /** Which direction is the good one — CTR up is good, cost up is not. */
     goodWhen: 'up' | 'down'
     unit: 'pct' | 'money'
@@ -153,6 +159,7 @@ export function trendEvidence(
   return {
     id: evidenceId(opts.kind, [s.creativeId]),
     label: opts.label,
+    short: opts.short,
     rawValue: change,
     displayValue: signedPct(change),
     comparisonValue: `${fmt(window.previous)} → ${fmt(window.current)} · ${rangeLabel(
@@ -175,12 +182,13 @@ export function trendEvidence(
 export function nullWindowEvidence(
   s: CreativeSignals,
   window: TrendWindow,
-  opts: { kind: string; label: string },
+  opts: { kind: string; label: string; short: string },
 ): Evidence | null {
   if (window.complete) return null
   return {
     id: evidenceId(opts.kind, [s.creativeId]),
     label: opts.label,
+    short: opts.short,
     rawValue: 'not resolved',
     displayValue: 'No comparison available',
     comparisonValue: window.reason ?? 'insufficient delivery in the prior window',
@@ -196,6 +204,7 @@ export function frequencyEvidence(s: CreativeSignals): Evidence | null {
   return {
     id: evidenceId('frequency', [s.creativeId]),
     label: 'Frequency (range-level, deduplicated reach)',
+    short: 'Freq',
     rawValue: s.currentFrequency,
     displayValue: s.currentFrequency.toFixed(1),
     comparisonValue:
@@ -218,8 +227,9 @@ export function completenessEvidence(
   return {
     id: evidenceId('provisional', [s.creativeId]),
     label: 'Results still attributing',
+    short: 'Provisional',
     rawValue: s.provisionalResults,
-    displayValue: `${s.provisionalResults} ${resultWords(s.primaryResultType, s.provisionalResults)} provisional`,
+    displayValue: `${s.provisionalResults.toLocaleString()} ${resultWords(s.primaryResultType, s.provisionalResults)} provisional`,
     comparisonValue: `${rangeLabel(from, to)} sits inside the ${opts.attributionWindow} attribution window · complete through ${rangeLabel(opts.completeThrough, opts.completeThrough)}`,
     direction: 'neutral',
     source: {
@@ -234,6 +244,7 @@ export function completenessEvidence(
 export function groupEvidence(opts: {
   kind: string
   label: string
+  short: string
   creativeIds: string[]
   rawValue: number
   displayValue: string
@@ -245,6 +256,7 @@ export function groupEvidence(opts: {
   return {
     id: evidenceId(opts.kind, opts.creativeIds),
     label: opts.label,
+    short: opts.short,
     rawValue: opts.rawValue,
     displayValue: opts.displayValue,
     comparisonValue: opts.comparisonValue,
@@ -261,6 +273,7 @@ export function groupEvidence(opts: {
 export function gapEvidence(opts: {
   kind: string
   label: string
+  short: string
   creativeIds: string[]
   displayValue: string
   comparisonValue: string
@@ -269,6 +282,7 @@ export function gapEvidence(opts: {
   return {
     id: evidenceId(opts.kind, opts.creativeIds),
     label: opts.label,
+    short: opts.short,
     rawValue: opts.displayValue,
     displayValue: opts.displayValue,
     comparisonValue: opts.comparisonValue,

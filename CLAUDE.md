@@ -354,15 +354,15 @@ npm run selftest:operator
 `2026-08-12`. The pin is load-bearing: without it "the last 3 complete days"
 moves with the calendar and the suite passes on Monday and fails on Thursday.
 
-**In the UI:** open `/`. The status line in the hero reads
-`MIKE DELIGHT · ACTIVE · N APPROVALS` and scrolls to the queue. Without
-`ANTHROPIC_API_KEY` the board renders the computed template cards with real
-numbers on them and the Operator Trace says so — the dashboard never depends on
-a model call to display. With the key set, Mike narrates all three cards in one
-call, picks which one leads, and may or may not leave an opening remark.
+**In the UI:** open `/` and look at Your Next Moves. The summary reads
+`Mike found N actions worth taking today.` over one row per decision. Without
+`ANTHROPIC_API_KEY` every row renders its own computed line with real numbers on
+it — the dashboard never depends on a model call to display. With the key set,
+Mike narrates all the rows in one call, picks which one leads, and may or may
+not leave a single opening sentence.
 
 **The honest test:** delete every hardcoded recommendation string from the
-codebase and reload. Three sensible cards still appear, because there are none —
+codebase and reload. The queue still fills, because there are none —
 `lib/creative-ops.ts` no longer composes "Your Next Moves" at all.
 
 Full architecture: `docs/MIKE_DELIGHT.md`.
@@ -403,13 +403,31 @@ Full architecture: `docs/MIKE_DELIGHT.md`.
 - [x] Reactor view toggle is Reactor · Canvas · Studio (`components/campaign-reactor/canvas/AdStudio.tsx` is the renamed Studio; the old free-node Flow view is retired from the toggle)
 
 **Mike Delight — the performance operator on the dashboard**
-- [x] `lib/operator/` — three separately replaceable layers behind the existing
+- [x] `lib/operator/` — separately replaceable layers behind the existing
       "Your Next Moves" section: pure maths (signals · baselines · strength ·
-      rules · evidence), narration (one call per session, all cards together, so
-      he can vary himself and CHOOSE THE LEAD), and a human who approves. Full
-      architecture in `docs/MIKE_DELIGHT.md`; character in
-      `operator/mike-delight-constitution.md`; spec in
-      `docs/mike-delight-build-spec-v2.md`
+      rules · evidence), a presentation adapter (`queue.ts`), narration (one
+      call per session, all cards together, so he can vary himself and CHOOSE
+      THE LEAD), and a human who approves. Full architecture in
+      `docs/MIKE_DELIGHT.md`; character in
+      `operator/mike-delight-constitution.md`; engine spec in
+      `docs/mike-delight-build-spec-v2.md`; surface spec in
+      `docs/mike-decision-queue-brief.md`
+- [x] **The surface is a DECISION QUEUE, not a report.** Mike thinks deeply
+      backstage and speaks briefly onstage: a summary (generated headline + one
+      supporting sentence + Refresh/pause/filter), one vertical row per decision
+      (priority · action · creative · why · ≤3 metric chips · confidence ·
+      controls), a collapsed history, and an evidence drawer holding everything
+      else. Copy limits live in `lib/operator/queue.ts` and nowhere else —
+      title ≤8 words, reason one sentence ≤25 words — so no component truncates
+      and no two surfaces disagree about what Mike said
+- [x] Every rule supplies TWO lengths: a plain-English one-liner for the row
+      ("Cost per result is rising, CTR is falling and frequency is climbing.")
+      and the full read for the drawer. The chips carry the figures so the
+      sentence does not have to, and a long line cut at a column edge — which
+      reads as a bug rather than as brevity — cannot happen
+- [x] WATCH and COLLECT never show "Approve". Their primary control is *Keep
+      watching* / *Acknowledge*, it sets a check-back and it creates nothing.
+      Approve confirms in place with an **Undo** before the row leaves
 - [x] Data disciplines enforced by the TYPES, not by convention: no generic
       `conversions` field (every result carries its `PrimaryResultType` and they
       are never blended); frequency exists only on `RangeDeliveryMetric`, so a
@@ -442,8 +460,11 @@ Full architecture: `docs/MIKE_DELIGHT.md`.
       cards: **the dashboard never depends on a model call to display**
 - [x] Capability allowlist enforced by a throwing assertion — Approve stages a
       brief into the Campaign Reactor and nothing else is reachable
-- [x] `npm run selftest:operator` — 43 in-process checks against a pinned
-      evaluation date, covering all 41 from the spec
+- [x] `npm run selftest:operator` — 50 in-process checks against a pinned
+      evaluation date: all 41 from the engine spec, plus seven guarding the
+      queue's presentation contract (word limits, chip caps and deduplication,
+      WATCH's own verb, generated summary copy at 0/1/n, condensing that never
+      splits a decimal, undo)
 
 **Meta-native output + closed loop**
 - [x] Launch-ready Meta ad units on every concept (`lib/meta-ads.ts`): primary text with 125-char fold discipline, headline/description limits, CTA button types, compliance validator wired into the submit gate + concept cards ("Copy for Ads Manager")

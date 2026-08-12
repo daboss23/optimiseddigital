@@ -11,7 +11,6 @@ import {
   Clapperboard,
   Layers,
   Network,
-  Rocket,
   Sparkles,
   Target,
   Trophy,
@@ -38,13 +37,10 @@ import {
 import { CreativeLeaderboard } from '@/components/reactor/CreativeLeaderboard'
 import {
   ActionsRequiredTile,
-  DebugPanel,
-  MikeHeader,
+  MikeQueue,
   OperatorProvider,
   OperatorToast,
   OPERATOR_QUEUE_ANCHOR,
-  ProposalQueue,
-  QueueCountPill,
 } from '@/components/reactor/operator'
 import { getDashboardData } from '@/lib/dashboard-data'
 import { buildCreativeOps, type PulseCard, type WinIndexEntry } from '@/lib/creative-ops'
@@ -262,7 +258,6 @@ export default async function ReactorDashboard({
           <div className="hero-scanline" />
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <MikeHeader />
           <Link href={`/meta?${rangeQuery(range)}`} className="no-underline">
             <Pill tone="primary">
               <CalendarDays size={12} />
@@ -288,21 +283,13 @@ export default async function ReactorDashboard({
           <ActionsRequiredTile />
         </section>
 
-        {/* ── 2 · Your Next Moves — the operator's approval queue ────────── */}
-        <SectionLabel hint="Up to three ranked actions, computed from delivery rather than written down. Each carries the structured evidence that produced it, an evidence-strength tier, and one primary action.">
+        {/* ── 2 · Mike's decision queue ──────────────────────────────────── */}
+        <SectionLabel hint="The decisions that deserve attention now, ordered by urgency. Mike does the full analysis behind the scenes; the evidence behind any row is one click away.">
           Your Next Moves
         </SectionLabel>
         <div id={OPERATOR_QUEUE_ANCHOR} className="scroll-mt-24">
           <Panel>
-            <PanelHeader
-              icon={<Rocket size={16} />}
-              accent="emerald"
-              title="Your Next Moves"
-              subtitle="Mike Delight's approval queue — maths decides what is true, he decides what matters, you decide what happens"
-              accessory={<QueueCountPill />}
-            />
-            <ProposalQueue />
-            <DebugPanel />
+            <MikeQueue />
           </Panel>
         </div>
 

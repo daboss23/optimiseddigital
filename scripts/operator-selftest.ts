@@ -42,6 +42,16 @@ import { assessStrength } from '@/lib/operator/strength'
 import { isDraftOnly } from '@/lib/operator/safety'
 import { draftFromProposal } from '@/lib/operator/draft'
 import { SCORE_BANDS } from '@/lib/operator/rules'
+import {
+  condenseReason,
+  condenseRemark,
+  MAX_COLLAPSED_METRICS,
+  MAX_REASON_WORDS,
+  MAX_TITLE_WORDS,
+  summaryCopy,
+  toQueue,
+} from '@/lib/operator/queue'
+import { undoLastDecision } from '@/lib/operator/memory'
 import { subjectFingerprint, suppressionKey } from '@/lib/operator/fingerprint'
 import {
   extractNumerals,
@@ -813,6 +823,107 @@ async function main() {
     '41b · the live adapter satisfies the same interface and fails loudly',
     metaThrew,
     'createMetaSource().getCreatives() throws MetaAdapterNotImplemented',
+  )
+
+
+  /* ================ 42–48 · Presentation: the decision queue ============== */
+  section('Decision queue (presentation layer)')
+
+  const wordCount = (text: string) => text.trim().split(/\s+/).filter(Boolean).length
+  const queue = toQueue(output.proposals, () => null)
+
+  // 42 · Collapsed copy stays inside the queue's limits
+  check(
+    '42 · every row is one short title and one sentence, inside the word limits',
+    queue.length > 0 &&
+      queue.every(
+        (q) =>
+          wordCount(q.title) <= MAX_TITLE_WORDS &&
+          wordCount(q.shortReason) <= MAX_REASON_WORDS &&
+          /[.!?…]$/.test(q.shortReason) &&
+          // One sentence: no full stop followed by a new capitalised clause.
+          !/[.!?]\s+[A-Z]/.test(q.shortReason),
+      ),
+    queue.map((q) => `${wordCount(q.title)}w / ${wordCount(q.shortReason)}w`).join(' · '),
+  )
+
+  // 43 · Metrics are capped and deduplicated
+  check(
+    '43 · at most three metrics per row, never the same label twice',
+    queue.every((q) => {
+      const labels = q.keyMetrics.map((m) => m.label)
+      return labels.length <= MAX_COLLAPSED_METRICS && new Set(labels).size === labels.length
+    }),
+    queue.map((q) => q.keyMetrics.map((m) => m.label).join('/')).join(' · '),
+  )
+
+  // 44 · WATCH and COLLECT never masquerade as production actions
+  const watchItem = watch ? toQueue([watch], () => null)[0] : null
+  const draftItems = queue.filter((q) => q.primaryAction.intent === 'draft')
+  check(
+    '44 · WATCH gets its own verb and stages nothing',
+    watchItem?.family === 'WATCH' &&
+      watchItem.primaryAction.intent === 'acknowledge' &&
+      watchItem.primaryAction.label === 'Keep watching' &&
+      draftItems.every((q) => q.family !== 'WATCH' && q.family !== 'COLLECT'),
+    `watch action=${watchItem?.primaryAction.label}/${watchItem?.primaryAction.intent}`,
+  )
+
+  // 45 · Summary copy is generated from the queue, with honest singular/plural
+  const empty = summaryCopy([])
+  const one = summaryCopy(queue.slice(0, 1))
+  const all = summaryCopy(queue)
+  check(
+    '45 · the summary headline counts the queue and reads naturally at 0, 1 and n',
+    empty.headline === 'Nothing needs your attention today.' &&
+      one.headline === 'Mike found 1 action worth taking today.' &&
+      all.headline === `Mike found ${queue.length} actions worth taking today.` &&
+      all.supporting.length > 0 &&
+      !all.supporting.includes('undefined'),
+    `${all.headline} — ${all.supporting}`,
+  )
+
+  // 46 · Condensing never cuts a number in half
+  check(
+    '46 · condensing splits on sentences, not on decimal points',
+    condenseReason('$28.76 CPL is 30% inside the cohort median. The rest is detail.') ===
+      '$28.76 CPL is 30% inside the cohort median.' &&
+      condenseRemark(null) === null &&
+      wordCount(condenseReason('a '.repeat(60))) <= MAX_REASON_WORDS + 1,
+    condenseReason('$28.76 CPL is 30% inside the cohort median. The rest is detail.'),
+  )
+
+  // 47 · Undo puts the row straight back
+  const undone = undoLastDecision(
+    applyDecision(emptyMemory(), {
+      proposalId: iterate.id,
+      subjectKey: iterate.subjectKey,
+      type: 'ITERATE',
+      subjectIds: iterate.subjectIds,
+      subjectTags: ['founder-led'],
+      strengthTier: iterate.strength.tier,
+      action: 'approved',
+      decidedAt: `${EVALUATION_DATE}T09:00:00Z`,
+    }),
+    iterate.subjectKey,
+  )
+  const afterUndo = run(fixture, undone)
+  check(
+    '47 · undo removes the decision and the row returns to the queue',
+    undone.decisions.length === 0 &&
+      Object.keys(undone.states).length === 0 &&
+      weightFor(undone, { type: 'ITERATE' }, []) === 1 &&
+      afterUndo.proposals.some((p) => p.subjectKey === iterate.subjectKey),
+    `decisions=${undone.decisions.length} weight=${weightFor(undone, { type: 'ITERATE' }, [])}`,
+  )
+
+  // 48 · Evidence carries its own compact label — no truncation in components
+  check(
+    '48 · every evidence item ships a short chip label',
+    output.candidates.every((p) =>
+      p.evidence.every((e) => typeof e.short === 'string' && e.short.length > 0 && e.short.length <= 12),
+    ),
+    Array.from(new Set(output.candidates.flatMap((p) => p.evidence.map((e) => e.short)))).join(', '),
   )
 
   /* -------------------------------- summary -------------------------------- */
