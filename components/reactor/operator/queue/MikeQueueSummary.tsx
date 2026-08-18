@@ -37,6 +37,7 @@ export function MikeQueueSummary() {
   const {
     ready,
     paused,
+    queue,
     summary,
     remark,
     filter,
@@ -53,8 +54,15 @@ export function MikeQueueSummary() {
     runCatchup,
   } = useOperator()
 
+  const demanding = ready && !paused && queue.length > 0
+
   return (
-    <div className="border-b border-border px-5 py-5">
+    <div
+      className={cn(
+        'mike-summary px-5 py-5 sm:py-6',
+        demanding && 'mike-summary--live',
+      )}
+    >
       <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
         <div className="min-w-0 max-w-2xl">
           <p className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.28em] text-glow/70">
@@ -69,10 +77,10 @@ export function MikeQueueSummary() {
             {paused && <span className="text-white/40">· off the clock</span>}
           </p>
 
-          <h2 className="mt-2 font-display text-[20px] font-semibold leading-snug tracking-tight text-white md:text-[22px]">
+          <h2 className="mt-2.5 font-display text-[26px] font-bold leading-[1.12] tracking-tight text-white sm:text-[30px] md:text-[34px]">
             {ready ? summary.headline : 'Reading the account…'}
           </h2>
-          <p className="mt-1.5 text-[14px] leading-relaxed text-white/70">
+          <p className="mt-2 text-[15px] leading-relaxed text-white/70">
             {ready ? summary.supporting : 'Mike is working through the last complete delivery window.'}
           </p>
 
