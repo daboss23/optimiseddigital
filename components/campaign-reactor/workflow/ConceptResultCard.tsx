@@ -20,6 +20,7 @@ import {
 import { Pill } from '@/components/reactor/ui'
 import { validateAdPackage, type AdComplianceIssue } from '@/lib/meta-ads'
 import { modelDisplayName } from '@/lib/model-menu'
+import { VARIATION_METHOD_LABEL } from '@/lib/variations'
 import { NEURO_AXES, NEURO_PASS_MARK, type NeuroScore } from '@/lib/reactor-inputs'
 import type {
   Concept,
@@ -209,10 +210,22 @@ export function ConceptResultCard({
           screen they wrap to their own line instead of squeezing the pills or
           pushing the card into horizontal scroll. */}
       <div className="mb-1.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Pill tone="primary">{c.type}</Pill>
           {typeof c.score === 'number' && (
             <Pill tone={c.score >= 8 ? 'success' : 'warning'}>{c.score}/10</Pill>
+          )}
+          {/* The one difference this version carries. Shown because a wall of
+              near-identical cards is unreadable without it — and because it is
+              the same label the performance loop grades the set by, so what the
+              builder compares on screen is what ORACLE compares later. */}
+          {c.variationLabel && c.variationMethod && (
+            <span
+              className="text-[11px] text-white/55"
+              title={`Varying ${VARIATION_METHOD_LABEL[c.variationMethod]}${c.variantId ? ` · ${c.variantId}` : ''}`}
+            >
+              {VARIATION_METHOD_LABEL[c.variationMethod]}: {c.variationLabel}
+            </span>
           )}
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">

@@ -15,7 +15,6 @@ import {
   Film,
   GalleryHorizontalEnd,
   ImageIcon,
-  Layers,
   Loader2,
   Radio,
   ShieldCheck,
@@ -39,6 +38,15 @@ import {
   type ModelMenu,
 } from '@/lib/model-menu'
 import type { IsolateConfig } from '@/lib/taxonomy'
+import {
+  DEFAULT_VARIATION_COUNT,
+  DEFAULT_VARIATION_METHOD,
+  VARIATION_COUNTS,
+  VARIATION_METHODS,
+  VARIATION_METHOD_LABEL,
+  variationSummary,
+  type VariationMethod,
+} from '@/lib/variations'
 
 // The launch sequence — six bold steps, each a moment, not a form field. `orb`
 // is the short label under the stepper node; `label` titles the step.
@@ -105,12 +113,15 @@ export interface ReactorForm {
   toggleOutput: (v: string) => void
   recommendedDeliverables: string[]
   deliverablesReason: string
-  // Step 2 — formats & sizes: selected aspect ratios per deliverable, plus how
-  // many distinct versions of every image/video creative the reactor makes.
+  // Step 2 — formats & sizes: selected aspect ratios per deliverable, plus that
+  // deliverable's own variation count and lever. Every format configures
+  // independently — changing Video's count never touches Static's.
   dimensions: Record<string, string[]>
   toggleDimension: (deliverable: string, ratio: string) => void
-  variations: number
-  setVariations: (n: number) => void
+  variationCounts: Record<string, number>
+  setVariationCount: (deliverable: string, n: number) => void
+  variationMethods: Record<string, VariationMethod>
+  setVariationMethod: (deliverable: string, method: VariationMethod) => void
   // Render model per deliverable — the system recommends, the user can override.
   // Menus are keyed by deliverable; a null menu means the reactor decides fully.
   modelMenus: Record<string, ModelMenu | null>
@@ -358,13 +369,85 @@ function deliverableMeta(label: string) {
     return { Icon: GalleryHorizontalEnd, blurb: 'Multi-card swipe ads — proof, steps, or a story arc.' }
   if (l.includes('montage') || l.includes('scene'))
     return { Icon: Film, blurb: 'A multi-scene sequence — hook, proof, payoff — shaped in the Creative Canvas.' }
-  if (l.includes('variation'))
-    return { Icon: Layers, blurb: 'One core concept spun into controlled variants — one lever changed at a time.' }
-  if (l.includes('recommend'))
-    return { Icon: Wand2, blurb: 'Not sure? The reactor weighs your brief against proven winners and picks the format.' }
   if (l.includes('video'))
     return { Icon: Clapperboard, blurb: 'Founder VSLs, testimonials & cinematic on-site B-roll.' }
   return { Icon: ImageIcon, blurb: 'Proof statics, founder photos & concept stills.' }
+}
+
+/**
+ * The variation block for ONE creative format — count cards, the lever pills,
+ * and the live summary — rendered directly under that format's size grid.
+ *
+ * It is per-format rather than global because the decision is per-format: three
+ * hook variations of a video and one static is a normal campaign, and a single
+ * shared number could not express it. Each instance reads and writes only its
+ * own deliverable's entry, so the formats never interfere.
+ */
+function VariationControls({
+  deliverable,
+  sizes,
+  count,
+  method,
+  onCount,
+  onMethod,
+}: {
+  deliverable: string
+  sizes: string[]
+  count: number
+  method: VariationMethod
+  onCount: (n: number) => void
+  onMethod: (m: VariationMethod) => void
+}) {
+  const multiple = count > 1
+
+  return (
+    <div className="space-y-2.5 pt-1">
+      <SectionLabel>Variations</SectionLabel>
+      <div className="grid grid-cols-4 gap-2">
+        {VARIATION_COUNTS.map((n) => (
+          <button
+            key={n}
+            type="button"
+            onClick={() => onCount(n)}
+            aria-pressed={count === n}
+            aria-label={`${n} ${n === 1 ? 'version' : 'versions'} of ${deliverable}`}
+            className={`count-card px-2 py-2 text-center ${count === n ? 'is-on' : ''}`}
+          >
+            <span className="font-display text-base font-bold text-white">×{n}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Kept mounted at ×1 rather than unmounted, so the lever the builder
+          already chose is still here when they go back up to ×2. */}
+      <div className="method-reveal" data-open={multiple} aria-hidden={!multiple}>
+        <div className="space-y-2 pt-1.5">
+          <SectionLabel>What should vary?</SectionLabel>
+          <div className="flex flex-wrap gap-1.5">
+            {VARIATION_METHODS.map((m) => (
+              <button
+                key={m}
+                type="button"
+                tabIndex={multiple ? 0 : -1}
+                onClick={() => onMethod(m)}
+                aria-pressed={method === m}
+                className={`method-pill px-3 py-1.5 text-xs font-semibold ${method === m ? 'is-on' : ''}`}
+              >
+                {VARIATION_METHOD_LABEL[m]}
+                {m === DEFAULT_VARIATION_METHOD && (
+                  <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#38E8FF]">
+                    Rec
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <p className="text-[11px] text-white/60">{variationSummary(deliverable, count, method, sizes)}</p>
+    </div>
+  )
 }
 
 /**
@@ -529,16 +612,53 @@ function fieldSummary(field: StrategicField): string {
   return field.value || 'No Preference — Reactor decides'
 }
 
-// Compact "Static 1:1, 9:16 · Video 9:16 · ×2 variations" line for the review step.
-function formatsSummary(form: ReactorForm): string {
-  const parts = form.outputs
-    .map((o) => {
-      const r = form.dimensions[o] ?? []
-      return r.length ? `${o.replace(/ Creatives?$/, '')} ${r.join('/')}` : ''
-    })
-    .filter(Boolean)
-  const base = parts.length ? parts.join(' · ') : 'Reactor decides'
-  return form.variations > 1 ? `${base} · ×${form.variations} variations` : base
+/**
+ * The Ignition deliverables breakdown — every selected format listed on its own
+ * with its sizes, its variation count and the lever that separates them.
+ *
+ * Deliberately NOT collapsed into one global line: a run can legitimately be
+ * "3 hook variations of the video, 1 static", and a single "×N variations"
+ * summary would misreport it. The total counts VERSIONS, not exported assets —
+ * a size is a placement adaptation of a variation, never another variation, so
+ * counting sizes here would promise files the run does not produce.
+ */
+function DeliverablesSummary({ form }: { form: ReactorForm }) {
+  if (form.outputs.length === 0) {
+    return <SummaryRow label="Deliverables" value="Reactor decides" />
+  }
+
+  const total = form.outputs.reduce(
+    (n, o) => n + (form.variationCounts[o] ?? DEFAULT_VARIATION_COUNT),
+    0,
+  )
+
+  return (
+    <div className="flex gap-3 text-sm">
+      <span className="w-24 shrink-0 text-[11px] uppercase tracking-[0.08em] text-white/55">
+        Deliverables
+      </span>
+      <div className="min-w-0 space-y-1.5">
+        {form.outputs.map((o) => (
+          <div key={o}>
+            <span className="block text-white/95">{o}</span>
+            <span className="block text-[11px] text-white/60">
+              {variationSummary(
+                o,
+                form.variationCounts[o] ?? DEFAULT_VARIATION_COUNT,
+                form.variationMethods[o] ?? DEFAULT_VARIATION_METHOD,
+                form.dimensions[o] ?? [],
+              )}
+            </span>
+          </div>
+        ))}
+        {form.outputs.length > 1 && (
+          <span className="block border-t border-white/10 pt-1.5 text-[11px] font-semibold text-white/75">
+            {total} creative{total === 1 ? '' : 's'} this run
+          </span>
+        )}
+      </div>
+    </div>
+  )
 }
 
 // "Static — FLUX.1 · Montage — FLUX.1 stills / Seedance 2.0 motion" line.
@@ -921,6 +1041,14 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                               )
                             })}
                           </div>
+                          <VariationControls
+                            deliverable={o}
+                            sizes={chosen}
+                            count={form.variationCounts[o] ?? DEFAULT_VARIATION_COUNT}
+                            method={form.variationMethods[o] ?? DEFAULT_VARIATION_METHOD}
+                            onCount={(n) => form.setVariationCount(o, n)}
+                            onMethod={(m) => form.setVariationMethod(o, m)}
+                          />
                         </div>
                       )
                     }
@@ -974,44 +1102,19 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                                 )
                               })}
                             </div>
+                            <VariationControls
+                              deliverable={o}
+                              sizes={chosen}
+                              count={form.variationCounts[o] ?? DEFAULT_VARIATION_COUNT}
+                              method={form.variationMethods[o] ?? DEFAULT_VARIATION_METHOD}
+                              onCount={(n) => form.setVariationCount(o, n)}
+                              onMethod={(m) => form.setVariationMethod(o, m)}
+                            />
                           </>
                         )}
                       </div>
                     )
                   })}
-
-                  {/* How many distinct versions of every creative the reactor makes */}
-                  <div className="border-t border-white/10 pt-4">
-                    <SectionLabel>Variations per creative</SectionLabel>
-                    <p className="-mt-1 mb-3 text-sm text-white/60">
-                      The reactor creates this many distinct versions of every image and video
-                      creative — different hook, pattern, and proof on each.
-                    </p>
-                    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                      {[1, 2, 3, 4].map((n) => {
-                        const on = form.variations === n
-                        return (
-                          <button
-                            key={n}
-                            type="button"
-                            onClick={() => form.setVariations(n)}
-                            aria-pressed={on}
-                            className={`pick-card flex flex-col items-center gap-1 p-3 text-center ${on ? 'is-on' : ''}`}
-                          >
-                            <span className="font-display text-xl font-bold text-white">×{n}</span>
-                            <span className="text-[11px] text-white/65">
-                              {n === 1 ? 'Single' : `${n} versions`}
-                            </span>
-                            {n === 2 && (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-[#38E8FF]">
-                                <Sparkles size={9} /> Recommended
-                              </span>
-                            )}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
 
                   {form.outputs.some((o) => /ugc/i.test(o)) && (
                     <div className="border-t border-white/10 pt-4">
@@ -1136,12 +1239,8 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                 <SummaryRow label="Sophistication" value={fieldSummary(form.sophisticationField)} />
                 <SummaryRow label="Offer" value={fieldSummary(form.offerField)} />
                 <SummaryRow label="CTA name" value={form.offerName.trim() || '—'} />
-                <SummaryRow
-                  label="Deliverables"
-                  value={form.outputs.length ? form.outputs.join(' · ') : 'Reactor decides'}
-                />
+                <DeliverablesSummary form={form} />
                 <SummaryRow label="Models" value={modelsSummary(form)} />
-                <SummaryRow label="Formats" value={formatsSummary(form)} />
                 {form.refCount > 0 && (
                   <SummaryRow
                     label="References"

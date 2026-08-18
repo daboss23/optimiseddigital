@@ -683,6 +683,4 @@ export const reactorOutputTypes = [
   'UGC Creative',
   'Carousel Creatives',
   'Montage / Scene Flow',
-  'Creative Variations',
-  'Recommend Format',
 ]

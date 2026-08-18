@@ -39,6 +39,12 @@ interface PublishBody {
   testId?: string
   variantId?: string
   isolatedAxis?: string
+  // The brief-configured variation lever and this version's concrete
+  // difference. Carried here because the ingest can only recover testId /
+  // variantId from an ad NAME — the lever has to be banked at push time or the
+  // graded outcome comes back knowing which version won but not what it tested.
+  variationMethod?: string
+  variationLabel?: string
   taxonomy?: CreativeTaxonomy
   angle?: string
   conceptType?: string
@@ -106,6 +112,8 @@ export async function POST(req: Request) {
           testId: body.testId,
           variantId: body.variantId,
           isolatedAxis: body.isolatedAxis,
+          variationMethod: body.variationMethod,
+          variationLabel: body.variationLabel,
           taxonomy: body.taxonomy,
         },
         verdict: 'pending',
