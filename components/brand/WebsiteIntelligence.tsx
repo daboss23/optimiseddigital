@@ -103,6 +103,63 @@ function ProgressList({ steps, done }: { steps: string[]; done: boolean }) {
   )
 }
 
+/* --------------------------- Extraction health ---------------------------- */
+
+/**
+ * One sentence explaining WHY the intelligence fields are blank. A scan that
+ * indexed every page but derived nothing looks identical to a site that states
+ * nothing — and only one of those is worth re-running. Shared by the completion
+ * card and the connected panel so both surfaces tell the same story: the
+ * completion card used to report only failed PAGES, which is how a run with no
+ * ANTHROPIC_API_KEY rendered as "partially complete — the rest of the
+ * intelligence is ready" above six zeroes.
+ */
+export function extractionNotice(summary: WebsiteSummary): string | null {
+  const failed = summary.extractionFailed ?? []
+  const nothingDerived = summary.metrics.profilesCreated === 0 && summary.pages.length > 0
+  if (summary.extractionBlocked === true) {
+    return 'The website scanned and indexed correctly — the crawl is fine. What failed is the model call ATLAS makes to turn those pages into intelligence, and it failed for an account reason, not a site reason. Fix that below and re-run; nothing about the connection needs rebuilding.'
+  }
+  if (summary.extractionSkipped) {
+    return 'Pages were indexed, but no ANTHROPIC_API_KEY was configured for the scan, so no intelligence was derived. Set the key on this deployment, then retry.'
+  }
+  if (failed.length >= 5 || (nothingDerived && failed.length === 0)) {
+    return 'Pages were indexed, but no intelligence profiles came out of them. The fields below are blank because extraction produced nothing — not because the site says nothing. Retry to rebuild them.'
+  }
+  if (failed.length > 0) {
+    return `${failed.join(' and ')} intelligence could not be derived. Those fields are blank because extraction failed, not because the site says nothing.`
+  }
+  return null
+}
+
+/** The warning block both surfaces render for an unhealthy extraction. */
+function ExtractionNotice({
+  summary,
+  action,
+}: {
+  summary: WebsiteSummary
+  action?: React.ReactNode
+}) {
+  const notice = extractionNotice(summary)
+  if (!notice) return null
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning/30 bg-warning/[0.06] px-3 py-2">
+      <span className="flex items-start gap-2 text-[12px] leading-relaxed text-warning">
+        <AlertCircle size={13} className="mt-0.5 shrink-0" />
+        <span>
+          {notice}
+          {summary.extractionError && (
+            <span className="mt-1 block text-[11px] text-warning/70">
+              Reason: {summary.extractionError}
+            </span>
+          )}
+        </span>
+      </span>
+      {action}
+    </div>
+  )
+}
+
 /* --------------------------- Website Link input --------------------------- */
 
 type InputPhase =
@@ -111,7 +168,7 @@ type InputPhase =
   | { kind: 'complete'; summary: WebsiteSummary }
   | { kind: 'error'; message: string }
 
-export function WebsiteLinkInput({ onChanged }: { onChanged: () => void }) {
+export function WebsiteLinkInput({ onChanged }: { onChanged: (summary?: WebsiteSummary) => void }) {
   const [url, setUrl] = useState('')
   const [phase, setPhase] = useState<InputPhase>({ kind: 'idle' })
 
@@ -128,7 +185,10 @@ export function WebsiteLinkInput({ onChanged }: { onChanged: () => void }) {
         )
       } else if (e.type === 'complete') {
         setPhase({ kind: 'complete', summary: e.summary })
-        onChanged()
+        // Hand the summary up as well as the reload ping: when Supabase is not
+        // configured nothing is persisted, so a re-fetch of /api/vault/website
+        // returns null and the profile the builder just paid for would vanish.
+        onChanged(e.summary)
       } else if (e.type === 'error') {
         setPhase({ kind: 'error', message: e.message })
       }
@@ -160,7 +220,12 @@ export function WebsiteLinkInput({ onChanged }: { onChanged: () => void }) {
 
   if (phase.kind === 'complete') {
     const { summary } = phase
-    const partial = summary.failedPages.length > 0
+    // "Partial" means the intelligence is incomplete for ANY reason — pages
+    // that could not be read, or (far more consequentially) profiles that were
+    // never derived. Reporting only the former is what let a scan with no model
+    // key present itself as a success.
+    const notice = extractionNotice(summary)
+    const partial = summary.failedPages.length > 0 || notice !== null
     return (
       <div className="rounded-xl border border-success/30 bg-success/[0.04] p-5">
         <div className="mb-4 flex items-center gap-2">
@@ -176,10 +241,26 @@ export function WebsiteLinkInput({ onChanged }: { onChanged: () => void }) {
 
         <CompletionMetrics summary={summary} />
 
-        {partial && (
+        {notice && (
+          <div className="mt-3">
+            <ExtractionNotice
+              summary={summary}
+              action={
+                <button
+                  type="button"
+                  onClick={analyze}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-warning/30 bg-warning/10 px-2.5 py-1 text-[11px] font-medium text-warning hover:bg-warning/20"
+                >
+                  <RotateCw size={12} /> Retry
+                </button>
+              }
+            />
+          </div>
+        )}
+        {summary.failedPages.length > 0 && (
           <p className="mt-3 text-[11px] text-warning/80">
             {summary.failedPages.length} page{summary.failedPages.length === 1 ? '' : 's'} could not
-            be analysed — the rest of the intelligence is ready.
+            be analysed — the rest of the scan completed.
           </p>
         )}
         {!summary.stored && (
@@ -278,6 +359,9 @@ const METRIC_DEFS: { key: keyof WebsiteSummary['metrics']; label: string }[] = [
   { key: 'offersFound', label: 'Offers found' },
   { key: 'audiencesDetected', label: 'Audiences detected' },
   { key: 'proofAssets', label: 'Proof assets' },
+  // Zero here is the single clearest signal that extraction, not the crawl,
+  // is what failed — worth its own tile rather than buried in the prose.
+  { key: 'profilesCreated', label: 'Profiles derived' },
 ]
 
 function CompletionMetrics({ summary }: { summary: WebsiteSummary }) {
@@ -644,21 +728,34 @@ function ProfileBody({
 export function WebsiteIntelligencePanel({
   reloadKey,
   onChanged,
+  sessionSummary,
 }: {
   reloadKey: number
-  onChanged: () => void
+  onChanged: (summary?: WebsiteSummary | null) => void
+  /**
+   * The scan completed in this session. Used when the Vault holds nothing —
+   * without Supabase configured, `getConnectedWebsite()` returns null, so the
+   * panel never mounted and every profile ATLAS just derived was thrown away
+   * the moment the run finished. Demo mode now shows the same intelligence; it
+   * simply does not survive a reload, which the Demo pill already says.
+   */
+  sessionSummary?: WebsiteSummary | null
 }) {
-  const [website, setWebsite] = useState<WebsiteSummary | null>(null)
+  const [persisted, setWebsite] = useState<WebsiteSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<TabId>('overview')
   const [refreshing, setRefreshing] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
+  // The connected website — from the Vault when persistence is configured,
+  // otherwise from the scan just run in this session.
+  const website = persisted ?? sessionSummary ?? null
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
       const res = await fetch('/api/vault/website', { cache: 'no-store' }).then((r) => r.json())
-      if (res.success) setWebsite(res.website)
+      if (res.success) setWebsite(res.website ?? null)
     } catch {
       /* leave existing state */
     } finally {
@@ -678,7 +775,7 @@ export function WebsiteIntelligencePanel({
       else if (e.type === 'complete') {
         setRefreshing(null)
         setWebsite(e.summary)
-        onChanged()
+        onChanged(e.summary)
       } else if (e.type === 'error') {
         setRefreshing(null)
       }
@@ -692,11 +789,17 @@ export function WebsiteIntelligencePanel({
     }
     setBusy(true)
     try {
-      await fetch(`/api/vault/website?domain=${encodeURIComponent(website.domain)}`, {
-        method: 'DELETE',
-      })
+      // Nothing is persisted in demo mode, so there is nothing to delete —
+      // calling the endpoint would only return "Vector store not configured".
+      if (website.stored) {
+        await fetch(`/api/vault/website?domain=${encodeURIComponent(website.domain)}`, {
+          method: 'DELETE',
+        })
+      }
       setWebsite(null)
-      onChanged()
+      // Clears the session-held scan too, so demo mode returns to the connect
+      // card instead of re-showing the site that was just disconnected.
+      onChanged(null)
     } finally {
       setBusy(false)
     }
@@ -709,27 +812,6 @@ export function WebsiteIntelligencePanel({
   const lastScanned = website.lastScanned
     ? new Date(website.lastScanned).toLocaleString()
     : 'Not yet recorded'
-
-  // A site whose pages indexed but whose profiles are blank reads as a healthy
-  // connection with nothing to say — the two states are indistinguishable in
-  // the fields themselves, and only one of them is worth re-running. Cover all
-  // three causes, including a scan banked before extraction health was
-  // recorded (no flags, no profiles: still worth a retry).
-  const failed = website.extractionFailed ?? []
-  const nothingDerived = website.metrics.profilesCreated === 0 && website.pages.length > 0
-  // The account itself could not call the model (no credit, rejected key,
-  // exhausted quota). The scan and the site are both fine, and a retry is
-  // guaranteed to fail until the account is fixed — so say that instead.
-  const blocked = website.extractionBlocked === true
-  const extractionNotice = blocked
-    ? 'The website scanned and indexed correctly — the crawl is fine. What failed is the model call ATLAS makes to turn those pages into intelligence, and it failed for an account reason, not a site reason. Fix that below and re-run; nothing about the connection needs rebuilding.'
-    : website.extractionSkipped
-    ? 'Pages were indexed, but no ANTHROPIC_API_KEY was configured for the scan, so no intelligence was derived. Set the key, then retry.'
-    : failed.length >= 5 || (nothingDerived && failed.length === 0)
-      ? 'Pages were indexed, but no intelligence profiles came out of them. The fields below are blank because extraction produced nothing — not because the site says nothing. Retry to rebuild them.'
-      : failed.length > 0
-        ? `${failed.join(' and ')} intelligence could not be derived. Those fields are blank because extraction failed, not because the site says nothing.`
-        : null
 
   return (
     <Panel className="scroll-mt-6" >
@@ -788,29 +870,20 @@ export function WebsiteIntelligencePanel({
         {/* An extraction that failed reads identically to a site that states
             nothing — every field shows "Not confidently identified". Only this
             tells the two apart, and only one of them is worth a re-run. */}
-        {extractionNotice && (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning/30 bg-warning/[0.06] px-3 py-2">
-            <span className="flex items-start gap-2 text-[12px] leading-relaxed text-warning">
-              <AlertCircle size={13} className="mt-0.5 shrink-0" />
-              <span>
-                {extractionNotice}
-                {website.extractionError && (
-                  <span className="mt-1 block text-[11px] text-warning/70">
-                    Reason: {website.extractionError}
-                  </span>
-                )}
-              </span>
-            </span>
+        <ExtractionNotice
+          summary={website}
+          action={
             <button
               type="button"
               onClick={refresh}
               disabled={!!refreshing || busy}
               className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-warning/40 bg-warning/10 px-2.5 py-1 text-[11px] font-medium text-warning transition-colors hover:bg-warning/20 disabled:opacity-50"
             >
-              <RotateCw size={12} /> {blocked ? 'Re-run after fixing' : 'Retry extraction'}
+              <RotateCw size={12} />{' '}
+              {website.extractionBlocked === true ? 'Re-run after fixing' : 'Retry extraction'}
             </button>
-          </div>
-        )}
+          }
+        />
 
         {/* Summary metrics */}
         <CompletionMetrics summary={website} />

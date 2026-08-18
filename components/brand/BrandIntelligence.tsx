@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Globe, Loader2 } from 'lucide-react'
 import { Panel, PanelHeader } from '@/components/reactor/ui'
 import { WebsiteLinkInput, WebsiteIntelligencePanel } from './WebsiteIntelligence'
+import type { WebsiteSummary } from '@/lib/website-intelligence'
 
 /**
  * Brand Intelligence surface. A fresh workspace shows the connect card; once a
@@ -14,6 +15,11 @@ import { WebsiteLinkInput, WebsiteIntelligencePanel } from './WebsiteIntelligenc
 export function BrandIntelligence() {
   const [reloadKey, setReloadKey] = useState(0)
   const [connected, setConnected] = useState<boolean | null>(null)
+  // The scan run in this session. Without Supabase configured nothing is
+  // persisted, so the Vault read comes back empty and the profile ATLAS just
+  // built would never be shown at all. Holding it here keeps the connected
+  // panel identical in demo mode — it just does not survive a reload.
+  const [session, setSession] = useState<WebsiteSummary | null>(null)
 
   const check = useCallback(async () => {
     try {
@@ -28,7 +34,10 @@ export function BrandIntelligence() {
     check()
   }, [check, reloadKey])
 
-  const onChanged = useCallback(() => setReloadKey((k) => k + 1), [])
+  const onChanged = useCallback((summary?: WebsiteSummary | null) => {
+    if (summary !== undefined) setSession(summary)
+    setReloadKey((k) => k + 1)
+  }, [])
 
   if (connected === null) {
     return (
@@ -40,7 +49,7 @@ export function BrandIntelligence() {
 
   return (
     <>
-      {!connected && (
+      {!connected && !session && (
         <Panel>
           <PanelHeader
             icon={<Globe size={16} />}
@@ -53,7 +62,11 @@ export function BrandIntelligence() {
           </div>
         </Panel>
       )}
-      <WebsiteIntelligencePanel reloadKey={reloadKey} onChanged={onChanged} />
+      <WebsiteIntelligencePanel
+        reloadKey={reloadKey}
+        onChanged={onChanged}
+        sessionSummary={session}
+      />
     </>
   )
 }
