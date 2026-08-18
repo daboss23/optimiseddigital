@@ -51,6 +51,18 @@ export interface OutcomeAttributes {
   variantId?: string
   /** Which axis the test isolated (hook | persona | painPoint | visualFormat | assetType). */
   isolatedAxis?: string
+  /**
+   * Brief-configured variation attribution. `variationMethod` is the lever the
+   * set was built on (hooks / angles / visual-execution / copy / smart-mix) and
+   * `variationLabel` is the concrete difference THIS version carried.
+   *
+   * These exist alongside `isolatedAxis` rather than inside it because only two
+   * of the levers map onto that closed axis list — filing an angle test under
+   * "painPoint" would make the memory wrong in a way that is worse than having
+   * no axis at all.
+   */
+  variationMethod?: string
+  variationLabel?: string
   /** Confidence in the winner score, from spend + impression volume (low = thin data). */
   scoreConfidence?: 'low' | 'high'
 }
@@ -297,6 +309,51 @@ export async function listOutcomes(limit = 50): Promise<OutcomeRow[]> {
     console.error('listOutcomes failed:', err)
     return []
   }
+}
+
+/**
+ * How a single variation lever has actually performed — the answer to "do
+ * specific-dollar hooks beat problem hooks for this offer?".
+ *
+ * Grouped by the concrete per-version label rather than the lever alone: the
+ * lever says what was tested, the label says which value won. Rows only appear
+ * for outcomes that carry both, so a campaign fired before variations were
+ * attributable contributes nothing here rather than diluting it.
+ */
+export interface VariationPerformance {
+  method: string
+  label: string
+  wins: number
+  total: number
+  confidence: number
+}
+
+/**
+ * Aggregate graded outcomes by the lever value that produced them.
+ *
+ * Distinct from `patternConfidence()`, which buckets by pattern/angle: two
+ * versions of one campaign share a pattern, so a hook test's two rows cancel
+ * out there into "this pattern won 50%" and teach nothing. Splitting on the
+ * variation label is what makes a controlled set legible.
+ */
+export async function variationPerformance(): Promise<VariationPerformance[]> {
+  const rows = await listOutcomes(500)
+  const map = new Map<string, { method: string; label: string; wins: number; total: number }>()
+
+  for (const r of rows) {
+    const method = r.attributes.variationMethod
+    const label = r.attributes.variationLabel
+    if (!method || !label) continue
+    const key = `${method}::${label}`
+    const entry = map.get(key) ?? { method, label, wins: 0, total: 0 }
+    entry.total += 1
+    if (WIN_VERDICTS.includes(r.verdict)) entry.wins += 1
+    map.set(key, entry)
+  }
+
+  return Array.from(map.values())
+    .map((e) => ({ ...e, confidence: Math.round((e.wins / Math.max(e.total, 1)) * 100) }))
+    .sort((a, b) => b.confidence - a.confidence || b.total - a.total)
 }
 
 export interface PatternConfidence {

@@ -153,9 +153,6 @@ export function modelMenuFor(
   videoAvail: ModelAvailability[],
   ctx: VideoRecommendationContext = {},
 ): ModelMenu | null {
-  // "Recommend Format" carries no model choice — the reactor decides the
-  // format, the model, and the sizes downstream.
-  if (/recommend format/i.test(deliverable)) return null
   // Montage has TWO real model picks (still + motion), not one — handled by
   // montageMenus() and rendered as two dedicated pickers, never this single menu.
   if (isMontageDeliverable(deliverable)) return null

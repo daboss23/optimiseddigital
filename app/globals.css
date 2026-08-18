@@ -2304,6 +2304,62 @@ body {
   box-shadow: 0 0 14px -2px rgb(var(--lg-cyan) / 0.9);
 }
 
+/* Variation count cards — deliberately smaller and quieter than .pick-card.
+   They sit under a format's size grid, carry a bare number and a short label,
+   and never take an icon or a recommendation badge: the count is the builder's
+   call, so nothing on the card should argue for one number over another. */
+.count-card {
+  position: relative;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+.count-card:hover {
+  border-color: rgb(var(--lg-cyan) / 0.4);
+}
+.count-card.is-on {
+  border-color: rgb(var(--lg-cyan) / 0.7);
+  background: rgb(var(--lg-cyan) / 0.1);
+  /* Restrained next to .pick-card's 30px bloom — these are a secondary choice. */
+  box-shadow: 0 0 16px -6px rgb(var(--lg-cyan) / 0.55);
+}
+
+/* Variation method pills — quieter again than the count cards. The lever is a
+   refinement of the count, so it must never out-shout it. */
+.method-pill {
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.02);
+  color: rgba(255, 255, 255, 0.7);
+  transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+.method-pill:hover {
+  border-color: rgb(var(--lg-cyan) / 0.35);
+  color: #fff;
+}
+.method-pill.is-on {
+  border-color: rgb(var(--lg-cyan) / 0.55);
+  background: rgb(var(--lg-cyan) / 0.12);
+  color: #d9f6ff;
+}
+
+/* Reveal of the method row when the count first goes above x1. Height is
+   animated from a fixed-enough max rather than a measured one: the row is a
+   single wrapping line, so an over-estimated max only affects the easing curve,
+   never the resting layout. Collapsed state stays in the DOM so the remembered
+   method survives a trip back to x1. */
+.method-reveal {
+  overflow: hidden;
+  max-height: 8rem;
+  opacity: 1;
+  transition: max-height 0.24s ease, opacity 0.2s ease;
+}
+.method-reveal[data-open='false'] {
+  max-height: 0;
+  opacity: 0;
+}
+
 /* Footer navigation buttons */
 .launch-nav {
   display: inline-flex;
@@ -2358,6 +2414,7 @@ body {
   .launch-panel { animation: none; }
   .launch-orb[data-state='active'] { transform: none; }
   .pick-card:hover { transform: none; }
+  .method-reveal { transition: none; }
 }
 
 /* ============================================================================

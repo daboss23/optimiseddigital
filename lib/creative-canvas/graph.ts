@@ -95,22 +95,18 @@ export const KIND_DEFS: Record<CanvasNodeKind, KindDef> = {
 /* ------------------------------ Canvas modes ------------------------------ */
 
 /** The canvas adapts its structure to what the brief asked for. */
-export type CanvasMode = 'montage' | 'video' | 'static' | 'variations' | 'recommend' | 'mixed'
+export type CanvasMode = 'montage' | 'video' | 'static' | 'mixed'
 
 export const MODE_LABELS: Record<CanvasMode, string> = {
   montage: 'Montage / Scene Flow',
   video: 'Short-Form Video',
   static: 'Static Image',
-  variations: 'Variation Pack',
-  recommend: 'Recommended Format',
   mixed: 'Mixed Deliverables',
 }
 
 export function canvasMode(outputs: string[] | undefined, montage: boolean): CanvasMode {
   const o = (outputs ?? []).map((s) => s.toLowerCase())
   if (montage || o.some((s) => /montage|scene/.test(s))) return 'montage'
-  if (o.some((s) => /recommend/.test(s))) return 'recommend'
-  if (o.some((s) => /variation/.test(s))) return 'variations'
   const video = o.some((s) => /video|ugc/.test(s))
   const still = o.some((s) => /static|carousel/.test(s))
   if (video && still) return 'mixed'
@@ -136,8 +132,6 @@ const TRACK_LABELS: Partial<Record<CanvasMode, string>> = {
   static: 'Image',
   video: 'Video',
   montage: 'Montage',
-  variations: 'Variations',
-  recommend: 'Recommended',
 }
 
 /**
@@ -154,8 +148,6 @@ export function canvasTracks(outputs: string[] | undefined, montage: boolean): C
   if (o.some((s) => /static|carousel/.test(s))) add('static')
   if (o.some((s) => /video|ugc/.test(s))) add('video')
   if (montage || o.some((s) => /montage|scene/.test(s))) add('montage')
-  if (o.some((s) => /variation/.test(s))) add('variations')
-  if (o.some((s) => /recommend/.test(s))) add('recommend')
   if (tracks.length === 0) {
     const single = canvasMode(outputs, montage)
     tracks.push({ id: single, label: TRACK_LABELS[single] ?? MODE_LABELS[single] })
@@ -183,11 +175,6 @@ export function conceptsForTrack(concepts: Concept[], track: CanvasMode): Concep
     case 'montage':
       // Montage lanes need a scene sequence — prefer concepts with briefs.
       matched = visual.filter((c) => c.productionBrief?.frames?.length)
-      break
-    case 'recommend':
-      matched = visual.length
-        ? [[...visual].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0]]
-        : []
       break
     default:
       matched = visual
@@ -376,10 +363,7 @@ export function buildCanvasGraph(concepts: Concept[], mode: CanvasMode): CanvasG
 
     push('output', id('output'), {
       title: c.type,
-      text:
-        mode === 'recommend'
-          ? `Recommended format: ${c.type}. ${KIND_DEFS.output.hint}`
-          : 'Launch-ready ad unit assembled from this lane.',
+      text: 'Launch-ready ad unit assembled from this lane.',
       sub: typeof c.score === 'number' ? `Rubric ${c.score}/10` : undefined,
     })
     link(id('cta'), id('output'))

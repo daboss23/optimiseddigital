@@ -78,8 +78,11 @@ Off The Tools — Q3   [ IMAGE | VIDEO | MONTAGE ]
 ```
 
 - Deliverables map to tabs: Static/Carousel → **Image**, Video/UGC →
-  **Video**, Montage / Scene Flow → **Montage**, Creative Variations →
-  **Variations**, Recommend Format → **Recommended**.
+  **Video**, Montage / Scene Flow → **Montage**.
+- Variations are NOT a tab. Each format carries its own variation count and
+  lever (set on the Formats step), so a format's versions all land inside that
+  format's own tab — three static hook variations are three cards in **Image**,
+  never a separate track.
 - Every tab inherits the same strategy chips and the same brief intelligence;
   only the creative flow inside differs (per-mode node structures, §4).
   Formats are never mixed into one graph — no mixed-node chaos, ever.

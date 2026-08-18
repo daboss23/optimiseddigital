@@ -31,6 +31,11 @@ import {
   type ReactorSuggestion,
 } from '@/lib/reactor-inputs'
 import {
+  DEFAULT_VARIATION_COUNT,
+  clampVariationCount,
+  type VariationMethod,
+} from '@/lib/variations'
+import {
   modelMenuFor,
   montageMenus,
   isMontageDeliverable,
@@ -137,7 +142,12 @@ export function Workbench() {
     if (!draft) return
     setCampaignName(draft.campaignName)
     setBrief(draft.brief)
-    setVariations(draft.variations)
+    // The operator proposes ONE number; variations are now per format. Carry it
+    // as the count for every format the operator's draft leads to, clamped onto
+    // the ladder — its default of 5 predates the ×1–×4 range, and a count the
+    // reactor cannot deliver inside one function is worse than a smaller one it
+    // can. `draftVariations` seeds each format as it is selected.
+    setDraftVariations(clampVariationCount(draft.variations))
     setModalOpen(true)
   }, [])
   // Output surface: the autonomous reactor (default hero), the Creative Canvas
@@ -166,8 +176,18 @@ export function Workbench() {
   // Selected aspect ratios per deliverable (Formats step). Each selected
   // deliverable is seeded with its default size so the step is never blank.
   const [dimensions, setDimensions] = useState<Record<string, string[]>>({})
-  // How many distinct versions of every image/video creative the reactor makes.
-  const [variations, setVariations] = useState(2)
+  // Per-deliverable variation settings: how many distinct versions of THIS
+  // format the reactor makes, and which single lever separates them. Keyed by
+  // deliverable so Video at ×3 hooks and Static at ×2 visuals coexist.
+  //
+  // Deliberately NOT pruned when a deliverable is deselected: stepping back to
+  // the brief, unticking a format and re-ticking it restores what was already
+  // configured instead of silently resetting it.
+  const [variationCounts, setVariationCounts] = useState<Record<string, number>>({})
+  // A count handed over by an operator draft, applied to formats as they are
+  // seeded. Null when the brief was opened by hand.
+  const [draftVariations, setDraftVariations] = useState<number | null>(null)
+  const [variationMethods, setVariationMethods] = useState<Record<string, VariationMethod>>({})
   // The concept the user sent into the Studio via "Configure in Studio".
   const [studioSeed, setStudioSeed] = useState<Concept | null>(null)
   // Strategic reasoning for the recommended angle (Dynamic Strategy Engine).
@@ -319,7 +339,6 @@ export function Workbench() {
   const pinnedImage = [
     'Static Creative',
     'Carousel Creatives',
-    'Creative Variations',
     ...(montageDeliverable ? [montageStillKey(montageDeliverable)] : []),
   ]
     .map((d) => (deliverableModels[d] && deliverableModels[d] !== 'auto' ? deliverableModels[d] : undefined))
@@ -381,6 +400,27 @@ export function Workbench() {
       return next
     })
   }, [outputs, modelMenus, montageModelMenus, deliverableModels])
+
+  // Seed a newly selected deliverable with the default variation count so the
+  // controls are never blank. Existing entries are left alone — that is what
+  // makes a deselect/reselect round trip non-destructive.
+  useEffect(() => {
+    setVariationCounts((prev) => {
+      const missing = outputs.filter((o) => prev[o] === undefined)
+      if (missing.length === 0) return prev
+      const next = { ...prev }
+      for (const o of missing) next[o] = draftVariations ?? DEFAULT_VARIATION_COUNT
+      return next
+    })
+  }, [outputs, draftVariations])
+
+  const setVariationCount = (deliverable: string, n: number) =>
+    setVariationCounts((prev) => ({ ...prev, [deliverable]: clampVariationCount(n) }))
+
+  // Picking a method is only meaningful above ×1, but the choice is remembered
+  // when the count drops back to ×1 so returning to ×2 restores it.
+  const setVariationMethod = (deliverable: string, method: VariationMethod) =>
+    setVariationMethods((prev) => ({ ...prev, [deliverable]: method }))
 
   /* ----------------------- Agent pre-selection (suggest) ------------------- */
   // The reactor strategist pre-picks a concrete angle / awareness / audience /
@@ -547,7 +587,8 @@ export function Workbench() {
       outputTypesAgentDecided: outputs.length === 0,
       dimensions,
       models: deliverableModels,
-      variations,
+      variationCounts,
+      variationMethods,
       angleDirective: menu.angles.find((a) => a.label === angle)?.directive || undefined,
       awarenessStage: awareness.label,
       awarenessDirective: awareness.directive,
@@ -699,7 +740,21 @@ export function Workbench() {
         const res = await fetch('/api/meta/publish', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pkg: c.adPackage, imageUrl: imageFor(c), name: c.type }),
+          // Thread the test attribution so the creative NAME leads with the RXN
+          // token and a pending outcome row is pre-seeded. Without these the
+          // Meta ingest has nothing to parse, and a graded ad can never be
+          // matched back to the variation it was testing.
+          body: JSON.stringify({
+            pkg: c.adPackage,
+            imageUrl: imageFor(c),
+            name: c.type,
+            testId: c.testId,
+            variantId: c.variantId,
+            isolatedAxis: c.isolatedAxis,
+            variationMethod: c.variationMethod,
+            variationLabel: c.variationLabel,
+            taxonomy: c.taxonomy,
+          }),
         }).then((r) => r.json())
         if (res.ok) {
           return {
@@ -896,8 +951,10 @@ export function Workbench() {
     deliverablesReason,
     dimensions,
     toggleDimension,
-    variations,
-    setVariations,
+    variationCounts,
+    setVariationCount,
+    variationMethods,
+    setVariationMethod,
     modelMenus,
     montageMenus: montageModelMenus,
     models: deliverableModels,

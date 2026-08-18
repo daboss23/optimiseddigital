@@ -509,6 +509,14 @@ export function AdStudio({
           imageUrl: image,
           videoUrl,
           name: creativeConcept?.type,
+          // Same attribution thread as the concept-card push — a creative
+          // composed in the Studio is still the variation it came from.
+          testId: creativeConcept?.testId,
+          variantId: creativeConcept?.variantId,
+          isolatedAxis: creativeConcept?.isolatedAxis,
+          variationMethod: creativeConcept?.variationMethod,
+          variationLabel: creativeConcept?.variationLabel,
+          taxonomy: creativeConcept?.taxonomy,
         }),
       }).then((r) => r.json())
       if (res.ok) {

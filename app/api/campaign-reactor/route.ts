@@ -1,5 +1,18 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { NextRequest } from 'next/server'
+import {
+  resolveVariationConfigs,
+  totalVariations,
+  variationFormat,
+  variationPromptBlock,
+  DEFAULT_VARIATION_METHOD,
+  DEMO_VARIATION_LABELS,
+  DEMO_VARIATION_TWISTS,
+  METHOD_ITERATION_AXIS,
+  type VariationConfig,
+  type VariationFormat,
+  type VariationMethod,
+} from '@/lib/variations'
 import { searchKnowledge } from '@/lib/knowledge'
 import { learnings } from '@/lib/reactor-data'
 import { INTELLIGENCE, INTELLIGENCE_IDS, isIntelligenceId, type IntelligenceId } from '@/lib/agents'
@@ -272,6 +285,14 @@ interface Concept {
   testId?: string
   variantId?: string
   isolatedAxis?: string
+  /** OPUS's 2-5 word label for the one difference this version carries. */
+  variationLabel?: string
+  /**
+   * Which lever separates this concept from the others in its set. Set for a
+   * brief-configured variation run; the levers that map onto a closed ORACLE
+   * axis also set `isolatedAxis`, the rest are attributable through this alone.
+   */
+  variationMethod?: VariationMethod
 }
 
 /* ------------------------- Test-ID attribution ---------------------------- */
@@ -308,6 +329,107 @@ function tagIsolatedConcepts(concepts: Concept[], isolate: IsolateInput, testId:
     c.variantId = `${testId}-${variantLabel(i)}`
     c.isolatedAxis = isolate.axis
   })
+}
+
+/**
+ * Reconcile what OPUS submitted against what the brief asked for, per format.
+ *
+ * The count reaches OPUS as an instruction in English, and an instruction is
+ * not a contract — a heavy multi-format run can come back with two statics when
+ * three were ordered, and the results screen would silently show two. This
+ * closes that gap from the server side.
+ *
+ * The two directions are NOT symmetrical, on purpose:
+ *
+ * - Over-delivery is trimmed here and now. Dropping a surplus concept costs
+ *   nothing and cannot fail.
+ * - Under-delivery costs a whole extra orchestrator turn to fix, against a
+ *   ~280s wall clock. On a big run that re-ask is the difference between a
+ *   short campaign and a campaign cut off mid-render, so it is only worth
+ *   spending on a small one. `RECOUNT_MAX_TOTAL` draws that line.
+ *
+ * Returns the kept concepts plus the shortfall, so the caller decides whether
+ * to spend the turn.
+ */
+const RECOUNT_MAX_TOTAL = 6
+
+function reconcileConceptCounts(
+  concepts: Concept[],
+  configs: VariationConfig[],
+): { kept: Concept[]; shortfall: { output: string; owed: number; got: number }[] } {
+  if (configs.length === 0) return { kept: concepts, shortfall: [] }
+
+  // Bucket by creative family rather than exact label: OPUS submits internal
+  // concept types ("Testimonial Concept"), not the builder's deliverable names.
+  const owedBy = new Map<VariationFormat, { output: string; owed: number }>()
+  for (const c of configs) {
+    const fmt = variationFormat(c.output)
+    if (!fmt) continue
+    const prev = owedBy.get(fmt)
+    owedBy.set(fmt, { output: c.output, owed: (prev?.owed ?? 0) + c.count })
+  }
+
+  const kept: Concept[] = []
+  const taken = new Map<VariationFormat, number>()
+  for (const concept of concepts) {
+    const fmt = variationFormat(concept.type ?? '')
+    const owed = fmt ? owedBy.get(fmt) : undefined
+    // A concept for a family the brief never asked for is left alone rather
+    // than dropped — copy-only concepts and agent-decided formats land here,
+    // and silently deleting them would lose real work.
+    if (!fmt || !owed) {
+      kept.push(concept)
+      continue
+    }
+    const used = taken.get(fmt) ?? 0
+    if (used >= owed.owed) continue
+    taken.set(fmt, used + 1)
+    kept.push(concept)
+  }
+
+  const shortfall = Array.from(owedBy.entries())
+    .map(([fmt, { output, owed }]) => ({ output, owed, got: taken.get(fmt) ?? 0 }))
+    .filter((s) => s.got < s.owed)
+
+  return { kept, shortfall }
+}
+
+/**
+ * Stamp a run's variation sets for attribution.
+ *
+ * Every concept in one format's set shares the run's test id and carries its
+ * own variant id, exactly like an isolation test — because that is what it is.
+ * `isolatedAxis` is only set where the lever maps onto a real ORACLE axis
+ * (`METHOD_ITERATION_AXIS`); for the levers that do not, `variationMethod`
+ * carries the attribution instead of forcing a wrong axis value into a closed
+ * taxonomy. Concepts already tagged by isolation mode are left untouched — that
+ * configurator is the more specific instruction.
+ */
+function tagVariationConcepts(concepts: Concept[], configs: VariationConfig[], testId: string): void {
+  if (!testId) return
+  const methodBy = new Map<VariationFormat, VariationMethod>()
+  for (const c of configs) {
+    const fmt = variationFormat(c.output)
+    if (fmt && c.count > 1) methodBy.set(fmt, c.method)
+  }
+
+  // One running letter across the whole run, NOT per format. `TEST_ID_RE` in
+  // lib/meta-ads.ts parses a variant as RXN-XXXXX-<LETTERS>, so a segmented id
+  // like RXN-XXXXX-STATIC-A would come back from a Meta ad name as variant
+  // "STATIC" and collide across every static in the run.
+  let n = 0
+  for (const concept of concepts) {
+    if (concept.testId) continue
+    const fmt = variationFormat(concept.type ?? '')
+    const method = fmt ? methodBy.get(fmt) : undefined
+    if (!method) continue
+    concept.testId = testId
+    concept.variantId = `${testId}-${variantLabel(n)}`
+    concept.variationMethod = method
+    n += 1
+    const axis = METHOD_ITERATION_AXIS[method]
+    if (axis) concept.isolatedAxis = axis
+  }
 }
 
 /* ------------------------------ Meta Ads MCP ------------------------------ */
@@ -512,6 +634,11 @@ function buildTools(
               basis: { type: 'string', description: 'Which intelligence layer / asset / pattern this draws from' },
               learningCheck: { type: 'string', description: 'How it satisfies the rubric' },
               score: { type: 'integer', description: 'Self-assessed 1-10. Only submit 7+.' },
+              variationLabel: {
+                type: 'string',
+                description:
+                  'REQUIRED when this concept is one of several versions of the same format: a 2-5 word label for the ONE difference this version carries, e.g. "Specific-dollar hook", "Contrarian claim", "Split-screen layout". This is what the performance loop compares the set by, so make it concrete and never "Variation 2".',
+              },
               imageUrl: { type: 'string', description: 'The Higgsfield image URL for this concept, if one was generated.' },
               adPackage: adPackageSchema,
               productionBrief: {
@@ -756,16 +883,6 @@ function buildInputBlocks(inputs: ReactorInputs | undefined): string {
         'MONTAGE / SCENE FLOW: This campaign ships as a multi-scene montage. For each montage concept, write the production brief as an ordered SCENE SEQUENCE (4–6 frames): each frame is one scene with its own visual direction and a one-line on-screen caption or VO beat. The scenes must build one argument — hook scene → tension/proof scenes → payoff scene → CTA scene. Frame labels become scene titles in the Creative Canvas, so make them specific ("Scene 1 — 5:47am, still on the tools"), never generic ("Frame 1").',
       )
     }
-    if (chosen.some((o) => /creative variations/.test(o))) {
-      parts.push(
-        'CREATIVE VARIATIONS PACK: The deliverable is a controlled variation pack, not standalone one-offs. Anchor ONE core concept, then produce the requested variations by changing exactly one strategic lever per variation (hook, proof asset, or visual construction) while holding everything else constant — so performance differences are attributable. Name the changed lever in each concept’s basis.',
-      )
-    }
-    if (chosen.some((o) => /recommend format/.test(o))) {
-      parts.push(
-        'RECOMMEND FORMAT: The user asked the platform to choose the best creative format. Weigh the angle, awareness stage, sophistication stage, and audience temperature against retrieved winners, then produce the single best-fit format (static, video, UGC, carousel, or montage) and state WHY that format wins in the concept basis. Do not hedge across formats.',
-      )
-    }
 
     // Block 7a2 — Render engines the user pinned per deliverable (informational;
     // actual rendering honours these picks client-side and in the tools).
@@ -802,21 +919,16 @@ function buildInputBlocks(inputs: ReactorInputs | undefined): string {
       }
     }
 
-    // Block 7c — Concept count per deliverable. The variation count is the ONLY
-    // knob that controls how many concepts each deliverable produces: ×1 → exactly
-    // one concept per selected output type, ×N → exactly N. Always state the count
-    // explicitly so the agent never invents extra concepts or splits one
-    // deliverable into several internal categories.
-    const variations = Math.min(Math.max(inputs.variations ?? 1, 1), 4)
-    if (variations > 1) {
-      parts.push(
-        `CONCEPT COUNT: Produce exactly ${variations} distinct concepts for EACH selected output type — no more, no less. The concepts for one output type must each take a genuinely different creative approach (a different hook, winning pattern or proof asset, or visual construction), never a paraphrase of another. Do not split a single output type into multiple internal concept categories. Submit each concept with its own production brief and ad package.`,
-      )
-    } else {
-      parts.push(
-        'CONCEPT COUNT: Produce exactly ONE concept per selected output type — no more, no less. Do not submit alternates, and do not split a single output type into multiple internal concept categories.',
-      )
-    }
+    // Block 7c — Concept count AND variation lever, stated per deliverable.
+    //
+    // This replaced one global "produce N of everything" line. Two things were
+    // wrong with that: a campaign genuinely can want 3 variations of the video
+    // and 1 static, and — more importantly — it never said WHICH lever should
+    // separate the versions, so OPUS chose silently and the resulting ads could
+    // not be compared against each other once they ran. `lib/variations.ts`
+    // owns both the counts and the per-format lever language.
+    const variationConfigs = resolveVariationConfigs(inputs)
+    if (variationConfigs.length) parts.push(variationPromptBlock(variationConfigs))
   }
 
   // Block 8 — Intelligence systems (every run)
@@ -942,33 +1054,73 @@ async function runIntelligence(
  */
 const MANDATORY_LAYERS: IntelligenceId[] = ['atlas', 'nova', 'spark', 'echo', 'oracle']
 
-/**
- * The focused question each mandatory layer is briefed with, built from the
- * run's own strategic inputs so retrieval is scoped to this campaign rather
- * than the angle alone.
- */
-function preflightQuestion(id: IntelligenceId, ctx: {
+interface PreflightContext {
   angle: string
   audience?: string
   awareness?: string
   offer?: string
   brief?: string
-}): string {
+  /** Extra demands a variation lever places on a specific layer's briefing. */
+  variationDemands?: Partial<Record<'oracle' | 'spark' | 'echo', string>>
+}
+
+/**
+ * Translate the run's variation levers into what the briefing must return.
+ *
+ * Only the levers that need EVIDENCE rather than execution appear here. A set
+ * of hook variations is a writing task OPUS can do from the same briefing; a
+ * set of angle variations is not — each angle is a separate strategic claim,
+ * and without ORACLE surfacing several that have actually worked, "3 angle
+ * variations" becomes three guesses wearing the same campaign's clothes.
+ */
+function variationDemands(configs: VariationConfig[]): PreflightContext['variationDemands'] {
+  const most = (method: VariationMethod) =>
+    configs.filter((c) => c.method === method && c.count > 1).reduce((n, c) => Math.max(n, c.count), 0)
+
+  const demands: PreflightContext['variationDemands'] = {}
+  const angles = most('angles')
+  const visuals = most('visual-execution')
+  const copy = most('copy')
+
+  if (angles > 1) {
+    demands.oracle = `This run must produce ${angles} DISTINCT strategic angles for the same offer and audience, so name at least ${angles} separate angles that have evidence behind them, each with its own result — not one angle described ${angles} ways.`
+  }
+  if (visuals > 1) {
+    demands.spark = `This run must produce ${visuals} DISTINCT visual executions of one message, so name at least ${visuals} separate proven design constructions — layout, composition and contrast device for each.`
+  }
+  if (copy > 1) {
+    demands.echo = `This run must produce ${copy} DISTINCT written executions of one concept, so name at least ${copy} separate proven copy patterns that could each carry it.`
+  }
+  return demands
+}
+
+/**
+ * The focused question each mandatory layer is briefed with, built from the
+ * run's own strategic inputs so retrieval is scoped to this campaign rather
+ * than the angle alone.
+ */
+function preflightQuestion(id: IntelligenceId, ctx: PreflightContext): string {
   const who = ctx.audience && ctx.audience !== 'No Preference' ? ctx.audience : 'builders'
   const stage = ctx.awareness && ctx.awareness !== 'No Preference' ? ctx.awareness : 'mixed-awareness'
   const offer = ctx.offer && ctx.offer !== 'No Preference' ? ctx.offer : 'the core offer'
   const briefTail = ctx.brief?.trim() ? ` Campaign brief: ${ctx.brief.trim().slice(0, 400)}` : ''
+  // A variation lever changes what the briefing has to COME BACK WITH, not just
+  // what OPUS is told afterwards. Asking for N angles at generation time, from a
+  // briefing that only surfaced one, makes OPUS invent the other N-1 unbacked —
+  // so the demand is pushed up into the question the layer is briefed with.
+  const levers = ctx.variationDemands ?? {}
+  const demand = (id: 'oracle' | 'spark' | 'echo') => (levers[id] ? ` ${levers[id]}` : '')
   switch (id) {
     case 'atlas':
       return `Which frameworks, SOPs, and Vault assets should ground a "${ctx.angle}" campaign for ${who} at ${stage} awareness? Name the specific documents and what each one dictates.${briefTail}`
     case 'nova':
       return `For ${who}, what are the sharpest pains, desires, objections, and beliefs relevant to the "${ctx.angle}" angle at ${stage} awareness? Quote the market's own language.${briefTail}`
     case 'oracle':
-      return `Which past winning patterns and strategic configurations match a "${ctx.angle}" campaign for ${who} driving to ${offer}? Name what won, what lost, and why.${briefTail}`
+      return `Which past winning patterns and strategic configurations match a "${ctx.angle}" campaign for ${who} driving to ${offer}? Name what won, what lost, and why.${demand('oracle')}${briefTail}`
     case 'spark':
-      return `Which winning creative structures, hooks, openings, and visual patterns should shape a "${ctx.angle}" campaign for ${who} at ${stage} awareness? Name the creatives and the repeatable DNA in each.${briefTail}`
+      return `Which winning creative structures, hooks, openings, and visual patterns should shape a "${ctx.angle}" campaign for ${who} at ${stage} awareness? Name the creatives and the repeatable DNA in each.${demand('spark')}${briefTail}`
     case 'echo':
-      return `Which proven messaging patterns, emotional drivers, and objection-handling moves fit a "${ctx.angle}" campaign for ${who} at ${stage} awareness driving to ${offer}? Quote the copy and name the pattern.${briefTail}`
+      return `Which proven messaging patterns, emotional drivers, and objection-handling moves fit a "${ctx.angle}" campaign for ${who} at ${stage} awareness driving to ${offer}? Quote the copy and name the pattern.${demand('echo')}${briefTail}`
     default:
       return `What matters most for a "${ctx.angle}" campaign aimed at ${who}?${briefTail}`
   }
@@ -996,7 +1148,7 @@ function preflightQuestion(id: IntelligenceId, ctx: {
 async function preflightBriefing(
   anthropic: Anthropic,
   controller: ReadableStreamDefaultController,
-  ctx: { angle: string; audience?: string; awareness?: string; offer?: string; brief?: string },
+  ctx: PreflightContext,
   builderId: string | null,
   /**
    * Hard cap on the briefing. The briefing is research, not output — a layer
@@ -1281,8 +1433,6 @@ async function runDemo(controller: ReadableStreamDefaultController, body: Reacto
     // multiple concepts (×1 → 1 concept, ×N → N). Never split one deliverable
     // into several internal categories here — that silently doubles the total.
     if (/montage|scene/.test(l)) return ['Video Concept']
-    if (/variation/.test(l)) return ['Static Concept']
-    if (/recommend/.test(l)) return ['Campaign Concept']
     if (l.includes('static')) return ['Static Concept']
     if (l.includes('ugc')) return ['Testimonial Concept']
     if (l.includes('carousel')) return ['Static Concept']
@@ -1290,30 +1440,48 @@ async function runDemo(controller: ReadableStreamDefaultController, body: Reacto
     return [o]
   }
   const wanted = outputs.flatMap(expand).map(norm)
-  // Honor the requested variation count: every VISUAL concept fans out into N
-  // distinct takes (copy concepts stay single — variations are a creative knob).
-  const variations = Math.min(Math.max(body.reactorInputs?.variations ?? 1, 1), 4)
-  const variantTwists = [
-    '',
-    'Alternate take — flip the hook to the cost of waiting, swap in a different named member proof.',
-    'Alternate take — lead with the after-state (margin + weekends back) before revealing the mechanism.',
-    'Alternate take — problem-first pattern interrupt on a chaotic site, single stark stat as the turn.',
-  ]
+
+  // Honour the PER-FORMAT variation contract, exactly as the live path does:
+  // each deliverable fans out into its own count under its own lever, and every
+  // version carries the same test/variant/label attribution a real run stamps.
+  // Copy-only concepts stay single — variations are a creative knob.
+  const demoConfigs = resolveVariationConfigs(body.reactorInputs ?? {})
+  const countFor = (conceptType: string): { count: number; method: VariationMethod } => {
+    const fmt = variationFormat(conceptType)
+    const cfg = fmt ? demoConfigs.find((c) => variationFormat(c.output) === fmt) : undefined
+    return { count: cfg?.count ?? 1, method: cfg?.method ?? DEFAULT_VARIATION_METHOD }
+  }
+  const demoTestId =
+    demoConfigs.some((c) => c.count > 1) ? mintTestId() : ''
+  let variantN = 0
+
   for (const c of pool.filter((c) => wanted.includes(norm(c.type)) && (c.score ?? 0) >= 7)) {
     c.neuro = demoNeuroScore(c.score, c.type)
-    sse(controller, { type: 'concept', concept: c })
-    await pace(800)
-    if (/concept/i.test(c.type) && !/hook|headline|primary|vsl/i.test(c.type)) {
-      for (let k = 2; k <= variations; k++) {
-        const twist = variantTwists[k - 1] ?? variantTwists[1]
-        const variant: Concept = {
-          ...c,
-          text: `${c.text} Variation ${k}: ${twist}`,
-          adPackage: demoAdPackage(c.type, a),
-          neuro: demoNeuroScore(c.score, c.type),
-        }
-        sse(controller, { type: 'concept', concept: variant })
+    const isVisual = /concept/i.test(c.type) && !/hook|headline|primary|vsl/i.test(c.type)
+    const { count, method } = isVisual ? countFor(c.type) : { count: 1, method: DEFAULT_VARIATION_METHOD }
+    const labels = DEMO_VARIATION_LABELS[method]
+
+    for (let k = 0; k < count; k++) {
+      const variant: Concept =
+        k === 0
+          ? c
+          : {
+              ...c,
+              text: `${c.text} ${labels[k % labels.length]} — ${DEMO_VARIATION_TWISTS[method]}.`,
+              adPackage: demoAdPackage(c.type, a),
+              neuro: demoNeuroScore(c.score, c.type),
+            }
+      if (count > 1 && demoTestId) {
+        variant.testId = demoTestId
+        variant.variantId = `${demoTestId}-${variantLabel(variantN)}`
+        variant.variationMethod = method
+        variant.variationLabel = labels[k % labels.length]
+        const axis = METHOD_ITERATION_AXIS[method]
+        if (axis) variant.isolatedAxis = axis
+        variantN += 1
       }
+      sse(controller, { type: 'concept', concept: variant })
+      if (k === 0) await pace(800)
     }
   }
   sse(controller, { type: 'done' })
@@ -1465,6 +1633,10 @@ export async function POST(request: NextRequest) {
         }
 
         const ri = body.reactorInputs
+        // The run's per-format variation contract, resolved once and reused by
+        // the briefing, the submit gate and the outcome attribution so all
+        // three agree on how many concepts are owed and which lever moved.
+        const runVariations = resolveVariationConfigs(ri ?? {})
 
         // The run is live from the first byte — these announce the configured
         // engines and must not sit behind a retrieval round trip.
@@ -1542,6 +1714,7 @@ export async function POST(request: NextRequest) {
               awareness: ri?.awarenessStage,
               offer: ri?.offerType,
               brief: ri?.brief,
+              variationDemands: variationDemands(runVariations),
             },
             body.builderId ?? null,
             Math.max(8_000, RUN_BUDGET_MS * PREFLIGHT_MAX_SHARE - elapsed()),
@@ -1586,9 +1759,13 @@ export async function POST(request: NextRequest) {
             preferredImageModel: body.imageModel ?? null,
           }, tenantDescriptor(await getTenant())) + inputBlocks + brandBlock + oracleMemory + cloneClause + isolationClause
 
-        // One test ID per isolation run — stamped onto every submitted concept so
-        // outcomes attribute back to which single variable was under test.
-        const runTestId = body.isolate ? mintTestId() : ''
+        // One test ID per run — stamped onto every submitted concept so outcomes
+        // attribute back to which single variable was under test. Minted for an
+        // isolation run AND for any run carrying real variations: a set of ×3
+        // hook variations IS an isolation test, just one configured from the
+        // brief instead of the configurator, and it earns the same grading.
+        const runTestId =
+          body.isolate || runVariations.some((c) => c.count > 1) ? mintTestId() : ''
         if (body.cloneReference && !body.cloneReference.designOnly) {
           sse(controller, {
             type: 'step',
@@ -1623,6 +1800,16 @@ export async function POST(request: NextRequest) {
         // repeat fires resolve instantly. Errors are swallowed inside the helper.
         const neuroPrinciplesPromise = retrieveNeuroPrinciples(body.angle ?? '', body.builderId ?? null)
         let neuroRevisions = 0
+        // One top-up round at most. A second would compound against the wall
+        // clock for diminishing returns — if OPUS came back short twice, the
+        // run ships what it has rather than spending the render budget asking.
+        let countRevisions = 0
+        // Concepts retained across a count top-up. OPUS answers a "you are
+        // short" hand-back with ONLY the missing concepts, so the first batch
+        // has to be carried forward and merged — otherwise asking for 3,
+        // receiving 2 and topping up 1 would ship a single concept, which is
+        // worse than never having checked the count at all.
+        let carriedConcepts: Concept[] = []
 
         // Run budget. The host can kill this function without warning, which
         // ends the stream mid-sentence and loses everything the run produced.
@@ -1988,7 +2175,7 @@ export async function POST(request: NextRequest) {
               continue
             }
             if (tu.name === 'submit_concepts') {
-              const concepts = (tu.input as { concepts?: Concept[] }).concepts ?? []
+              let concepts = (tu.input as { concepts?: Concept[] }).concepts ?? []
 
               // An empty submission is a FAILED submission, never a finished
               // run. It happens when the turn is cut off mid-array (see the
@@ -2023,6 +2210,56 @@ export async function POST(request: NextRequest) {
                       ? ' Your previous turn was cut off before the array finished — write FEWER concepts per call and keep each one tighter so the whole call fits in one turn.'
                       : ''
                   } Call submit_concepts again with at least one complete concept covering the requested output types.`,
+                })
+                continue
+              }
+
+              // Merge in anything retained from a previous short submission
+              // before counting, so the gate judges the whole set. Deduped by
+              // text: a top-up that re-sends an earlier concept despite being
+              // told not to must not inflate the count.
+              if (carriedConcepts.length) {
+                const seenText = new Set(concepts.map((c) => c.text))
+                concepts = [...carriedConcepts.filter((c) => !seenText.has(c.text)), ...concepts]
+                carriedConcepts = []
+              }
+
+              // Count gate — the brief's per-format counts are a contract, not
+              // a suggestion. Surplus is trimmed for free; a shortfall is only
+              // worth an extra turn on a small run (see reconcileConceptCounts).
+              const counted = reconcileConceptCounts(concepts, runVariations)
+              if (counted.kept.length !== concepts.length) {
+                sse(controller, {
+                  type: 'step',
+                  text: `Trimmed ${concepts.length - counted.kept.length} concept(s) beyond the requested counts.`,
+                })
+              }
+              concepts = counted.kept
+              const owedTotal = totalVariations(runVariations)
+              if (
+                counted.shortfall.length > 0 &&
+                countRevisions < 1 &&
+                owedTotal <= RECOUNT_MAX_TOTAL &&
+                !FAST_PATH &&
+                !overNudge()
+              ) {
+                countRevisions += 1
+                const missing = counted.shortfall
+                  .map((s) => `${s.output}: ${s.got} of ${s.owed}`)
+                  .join(' · ')
+                sse(controller, {
+                  type: 'step',
+                  text: `Short of the requested counts (${missing}) — asking OPUS for the missing concept(s).`,
+                })
+                // Retain what did land on BOTH paths: `carriedConcepts` merges
+                // it into the top-up submission, `pendingConcepts` ships it if
+                // the top-up never arrives at all.
+                carriedConcepts = concepts
+                pendingConcepts = concepts
+                results.push({
+                  type: 'tool_result',
+                  tool_use_id: tu.id,
+                  content: `The submission is SHORT of the requested counts — ${missing}. Call submit_concepts again with ONLY the missing concept(s), each one a genuinely different execution under the lever already stated for that format. Do not resubmit the concepts you already sent, and do not pad with paraphrases.`,
                 })
                 continue
               }
@@ -2088,6 +2325,7 @@ export async function POST(request: NextRequest) {
                   c.neuro = scores[i]
                 })
                 if (body.isolate) tagIsolatedConcepts(concepts, body.isolate, runTestId)
+                tagVariationConcepts(concepts, runVariations, runTestId)
                 pendingConcepts = concepts
                 sse(controller, {
                   type: 'step',
@@ -2118,6 +2356,7 @@ export async function POST(request: NextRequest) {
                 // Isolation mode: stamp taxonomy + test/variant IDs so the
                 // outcome loop can attribute a win to the single varied axis.
                 if (body.isolate) tagIsolatedConcepts(concepts, body.isolate, runTestId)
+                tagVariationConcepts(concepts, runVariations, runTestId)
                 for (const c of concepts) sse(controller, { type: 'concept', concept: c })
                 sse(controller, { type: 'done' })
                 controller.close()

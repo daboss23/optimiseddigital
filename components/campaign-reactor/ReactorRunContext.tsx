@@ -21,6 +21,8 @@ import {
 } from '@/lib/creative-ledger'
 import { briefToVideoPrompt, compileRenderPrompt } from '@/lib/render-prompt'
 import type { MetaAdPackage } from '@/lib/meta-ads'
+import { VARIATION_METHOD_LABEL, type VariationMethod } from '@/lib/variations'
+import type { CreativeTaxonomy } from '@/lib/taxonomy'
 import type { Verdict, OutcomeAttributes } from '@/lib/outcomes'
 import {
   idleWorkflow,
@@ -52,6 +54,20 @@ export interface Concept {
   neuro?: NeuroScore
   /** The complete, launch-ready Meta ad unit for this concept. */
   adPackage?: MetaAdPackage
+  /**
+   * Variation attribution — which set this concept belongs to, which version it
+   * is, and the single lever that separates it from its siblings. Set whenever
+   * a format was run above ×1, and rendered on the card so the difference the
+   * builder asked for is visible rather than implied.
+   */
+  testId?: string
+  variantId?: string
+  variationMethod?: VariationMethod
+  /** OPUS's 2-5 word label for the one difference this version carries. */
+  variationLabel?: string
+  /** Isolation-run attribution, threaded to Meta alongside the variation set. */
+  isolatedAxis?: string
+  taxonomy?: CreativeTaxonomy
 }
 
 export interface TelemetryLine {

@@ -7,6 +7,8 @@
  * + types) so both sides can import it.
  */
 
+import type { VariationMethod } from './variations'
+
 export interface BrandSettings {
   voiceGuidelines: string
   toneRules: string
@@ -136,7 +138,23 @@ export interface ReactorInputs {
   dimensions?: Record<string, string[]>
   /** Selected render model per deliverable, e.g. { 'Video Creative': 'veo-3.1' }. 'auto' = system pick. */
   models?: Record<string, string>
-  /** How many distinct versions of every image/video creative the reactor makes (1–4). */
+  /**
+   * Per-deliverable variation settings, keyed exactly like `dimensions` and
+   * `models`: how many distinct versions of THIS format to make (1–4), and the
+   * single lever that separates them. A format absent from the maps runs at ×1.
+   *
+   * These replaced a single global `variations` count, which forced every
+   * selected format to the same number and gave the run no way to say WHICH
+   * lever moved — leaving the resulting ads unattributable in ORACLE.
+   */
+  variationCounts?: Record<string, number>
+  variationMethods?: Record<string, VariationMethod>
+  /**
+   * @deprecated The pre-per-format global count. Still read by the route so a
+   * payload from an older client (or a saved request) keeps working: it seeds
+   * every selected format when `variationCounts` is absent. Never written by
+   * the current modal.
+   */
   variations?: number
   awarenessStage: string
   awarenessDirective: string
@@ -295,12 +313,6 @@ export const CREATIVE_SIZES: Record<string, CreativeSize[]> = {
     { ratio: '1:1', label: 'Square', use: 'Feed', dims: '1080×1080' },
     { ratio: '16:9', label: 'Landscape', use: 'In-stream / YouTube', dims: '1920×1080' },
   ],
-  'Creative Variations': [
-    { ratio: '4:5', label: 'Tall feed', use: 'Meta feed — largest mobile footprint', dims: '1080×1350' },
-    { ratio: '1:1', label: 'Square', use: 'Feed', dims: '1080×1080' },
-    { ratio: '9:16', label: 'Vertical', use: 'Stories / Reels', dims: '1080×1920' },
-    { ratio: '16:9', label: 'Landscape', use: 'Desktop / in-stream', dims: '1920×1080' },
-  ],
 }
 
 // The size pre-selected for a deliverable so the Formats step is never blank.
@@ -314,7 +326,6 @@ export const DEFAULT_SIZE: Record<string, CreativeRatio> = {
   'UGC Creative': '9:16',
   'Carousel Creatives': '1:1',
   'Montage / Scene Flow': '9:16',
-  'Creative Variations': '4:5',
 }
 
 /* ------------------------------- Slide 2 ---------------------------------- */

@@ -39,10 +39,20 @@ interface AgentObservation {
   summary?: string
 }
 
+/** The concept fields this test asserts on — the variation contract included. */
+interface ObservedConcept {
+  type: string
+  text: string
+  testId?: string
+  variantId?: string
+  variationMethod?: string
+  variationLabel?: string
+}
+
 interface RunResult {
   events: SseEvent[]
   agents: Record<IntelligenceId, AgentObservation>
-  concepts: { type: string; text: string }[]
+  concepts: ObservedConcept[]
   steps: string[]
   errors: string[]
   demo: boolean
@@ -156,7 +166,7 @@ async function fireReactor(payload: Record<string, unknown>): Promise<RunResult>
           break
         }
         case 'concept':
-          result.concepts.push(ev.concept as { type: string; text: string })
+          result.concepts.push(ev.concept as ObservedConcept)
           break
         case 'error':
           result.errors.push(String(ev.message ?? 'unknown'))
@@ -185,7 +195,11 @@ async function main() {
         'Builders doing $2M–$3M who are still on the tools and losing margin they cannot see.',
       angle: 'Profit',
       outputTypes: ['Hook', 'Static Creative', 'Video Creative'],
-      variations: 2,
+      // Deliberately ASYMMETRIC: the whole point of the per-format system is
+      // that Static and Video can differ. A regression back to one global count
+      // would make these equal and fail the check below.
+      variationCounts: { 'Static Creative': 3, 'Video Creative': 2 },
+      variationMethods: { 'Static Creative': 'hooks', 'Video Creative': 'visual-execution' },
       audienceType: 'Builders $1M–$3M',
       awarenessStage: 'Problem-Aware',
       offerType: 'Strategy Call',
@@ -268,9 +282,8 @@ async function main() {
   )
   check('concepts were produced', run.concepts.length > 0, `${run.concepts.length} concepts`)
 
-  // One Hook (copy is single) plus 2 variations each of the two visual
-  // deliverables — the variation count is the only knob that fans a
-  // deliverable out.
+  // One Hook (copy is single) plus the per-format variation counts asked for
+  // above — 3 statics under the Hooks lever, 2 videos under Visuals.
   const byType = run.concepts.reduce<Record<string, number>>((acc, c) => {
     acc[c.type] = (acc[c.type] ?? 0) + 1
     return acc
@@ -280,10 +293,56 @@ async function main() {
     'every concept carries non-empty text',
     run.concepts.every((c) => c.text?.trim().length > 0),
   )
+
+  const countOf = (re: RegExp) =>
+    Object.entries(byType)
+      .filter(([type]) => re.test(type))
+      .reduce((n, [, v]) => n + v, 0)
+  const statics = countOf(/static/i)
+  const videos = countOf(/video|founder/i)
   check(
-    'requested visual deliverables produced their variations',
-    Object.entries(byType).some(([type, n]) => /concept/i.test(type) && n >= 2),
-    `no visual deliverable produced 2 variations: ${JSON.stringify(byType)}`,
+    'the static deliverable produced exactly its 3 requested versions',
+    statics === 3,
+    `expected 3 static concepts, got ${statics}: ${JSON.stringify(byType)}`,
+  )
+  check(
+    'the video deliverable produced exactly its 2 requested versions',
+    videos === 2,
+    `expected 2 video concepts, got ${videos}: ${JSON.stringify(byType)}`,
+  )
+  check(
+    'the two formats honoured DIFFERENT counts (per-format, not one global knob)',
+    statics !== videos,
+    `both formats produced ${statics} — the per-format counts collapsed into one`,
+  )
+
+  // Attribution: a variation set is only useful if every version says which
+  // lever moved and which value it carried, under one shared test id.
+  const varied = run.concepts.filter((c) => /static|video|founder/i.test(c.type))
+  check(
+    'every variation carries its lever + concrete difference label',
+    varied.every((c) => Boolean(c.variationMethod && c.variationLabel)),
+    `unlabelled: ${varied
+      .filter((c) => !c.variationMethod || !c.variationLabel)
+      .map((c) => c.type)
+      .join(', ')}`,
+  )
+  const testIds = new Set(varied.map((c) => c.testId).filter(Boolean))
+  check(
+    'the whole run shares ONE test id so its versions are comparable',
+    testIds.size === 1,
+    `expected 1 test id, got ${testIds.size}: ${Array.from(testIds).join(', ')}`,
+  )
+  const variantIds = varied.map((c) => c.variantId).filter(Boolean)
+  check(
+    'every version has a distinct variant id',
+    new Set(variantIds).size === variantIds.length && variantIds.length === varied.length,
+    `variant ids: ${variantIds.join(', ')}`,
+  )
+  check(
+    'variant ids parse as RXN test tokens (so Meta ad names round-trip)',
+    variantIds.every((v) => /^RXN-[A-Z0-9]{5}-[A-Z]+$/.test(v ?? '')),
+    `unparseable: ${variantIds.filter((v) => !/^RXN-[A-Z0-9]{5}-[A-Z]+$/.test(v ?? '')).join(', ')}`,
   )
 
   /* -- 4. The pre-flight briefing runs before OPUS's first turn ------------- */
