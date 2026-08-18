@@ -10,6 +10,7 @@
 import { listOutcomes } from '@/lib/outcomes'
 import { formatBand } from '@/lib/winner-score'
 import type { CreativeTaxonomy } from '@/lib/taxonomy'
+import { demoDataEnabled } from '@/lib/demo-mode'
 
 const WIN = new Set(['winner', 'high_performer'])
 
@@ -104,6 +105,11 @@ export async function getWinners(limit = 24): Promise<{ configured: boolean; win
     .sort((a, b) => (b.metrics.winnerScore ?? 0) - (a.metrics.winnerScore ?? 0))
     .slice(0, limit)
 
-  if (winners.length === 0) return { configured, winners: demoWinners() }
+  // The curated winners are one business's ads. Offered as clone references on
+  // a different deployment they are not just noise — the user clones them, and
+  // the structure of someone else's campaign silently becomes theirs.
+  if (winners.length === 0) {
+    return { configured, winners: demoDataEnabled() ? demoWinners() : [] }
+  }
   return { configured, winners }
 }

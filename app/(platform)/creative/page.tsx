@@ -1,14 +1,25 @@
 import { Sparkles, Video, Layers, Play, Megaphone, type LucideIcon } from 'lucide-react'
-import { PageHeader, Panel, ProgressBar, Pill, accentClass, type Accent } from '@/components/reactor/ui'
+import {
+  PageHeader,
+  Panel,
+  ProgressBar,
+  Pill,
+  EmptyState,
+  accentClass,
+  type Accent,
+} from '@/components/reactor/ui'
 import { creativeAnalyses } from '@/lib/reactor-data'
 import { AdIngest } from '@/components/spark/AdIngest'
 import { cn } from '@/lib/utils'
+import { demoDataEnabled } from '@/lib/demo-mode'
 
+// Counts of creatives studied. Zero until real ads are ingested — the labels
+// stay so the page still explains what it tracks.
 const creativeStats: { label: string; icon: LucideIcon; n: number; accent: Accent }[] = [
-  { label: 'Static Ads', icon: Layers, n: 188, accent: 'blue' },
-  { label: 'Video Ads', icon: Video, n: 137, accent: 'emerald' },
-  { label: 'Founder Videos', icon: Play, n: 96, accent: 'violet' },
-  { label: 'UGC Concepts', icon: Megaphone, n: 64, accent: 'amber' },
+  { label: 'Static Ads', icon: Layers, n: demoDataEnabled() ? 188 : 0, accent: 'blue' },
+  { label: 'Video Ads', icon: Video, n: demoDataEnabled() ? 137 : 0, accent: 'emerald' },
+  { label: 'Founder Videos', icon: Play, n: demoDataEnabled() ? 96 : 0, accent: 'violet' },
+  { label: 'UGC Concepts', icon: Megaphone, n: demoDataEnabled() ? 64 : 0, accent: 'amber' },
 ]
 
 const analysisAccents: Accent[] = ['blue', 'emerald', 'violet', 'cyan']
@@ -47,8 +58,18 @@ export default function CreativePage() {
 
       <AdIngest />
 
+      {!demoDataEnabled() && (
+        <Panel>
+          <EmptyState
+            icon={<Sparkles size={20} />}
+            message="No creatives analysed yet."
+            hint="Drop a winning ad into the box above — SPARK reads its structure and design, and the breakdown by creative type builds here."
+          />
+        </Panel>
+      )}
+
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {creativeAnalyses.map((c, i) => {
+        {(demoDataEnabled() ? creativeAnalyses : []).map((c, i) => {
           const accent = analysisAccents[i % analysisAccents.length]
           return (
             <Panel key={c.type} hover className="p-5">

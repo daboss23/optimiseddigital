@@ -39,6 +39,17 @@ export interface DerivedOption {
   basis: 'site' | 'category'
 }
 
+export interface DerivedResearchSource {
+  /** 'reddit' renders as r/<label>; 'forum' and 'web' render as a link. */
+  kind: 'reddit' | 'forum' | 'web'
+  /** Subreddit name without r/, or the site's name. */
+  label: string
+  /** Absolute URL for forum/web sources. Absent for subreddits. */
+  url?: string
+  /** One line on why this place is worth reading. */
+  note: string
+}
+
 export interface DerivedStrategyOptions {
   angles: DerivedOption[]
   offers: DerivedOption[]
@@ -46,6 +57,11 @@ export interface DerivedStrategyOptions {
   personas: string[]
   /** The pains those segments feel, in the business's own market language. */
   painPoints: string[]
+  /**
+   * Where this audience actually talks — the places NOVA should mine for
+   * voice-of-customer. Derived from the business category, never a fixed list.
+   */
+  researchSources: DerivedResearchSource[]
   /** Short read of what kind of business this is — shown in the panel. */
   businessCategory: string
   derivedAt: string
@@ -56,6 +72,7 @@ export const EMPTY_DERIVED: DerivedStrategyOptions = {
   offers: [],
   personas: [],
   painPoints: [],
+  researchSources: [],
   businessCategory: '',
   derivedAt: '',
 }
@@ -65,6 +82,41 @@ export const EMPTY_DERIVED: DerivedStrategyOptions = {
 /** Loose match so "Webinar/Masterclass" doesn't get appended next to "Webinar / Masterclass". */
 function fingerprint(label: string): string {
   return label.toLowerCase().replace(/[^a-z0-9]+/g, '')
+}
+
+/** Research sources, validated so a hallucinated URL never reaches the UI. */
+function asResearchSources(raw: unknown): DerivedResearchSource[] {
+  if (!Array.isArray(raw)) return []
+  const seen = new Set<string>()
+  const out: DerivedResearchSource[] = []
+  for (const v of raw) {
+    if (!v || typeof v !== 'object') continue
+    const r = v as Record<string, unknown>
+    const kind = r.kind === 'reddit' || r.kind === 'forum' || r.kind === 'web' ? r.kind : null
+    const label = typeof r.label === 'string' ? r.label.trim().replace(/^r\//i, '') : ''
+    if (!kind || !label || label.length > 60) continue
+
+    // A forum or web source without a usable https URL is unreachable, and a
+    // link the user cannot open reads as a broken feature.
+    let url: string | undefined
+    if (kind !== 'reddit') {
+      const candidate = typeof r.url === 'string' ? r.url.trim() : ''
+      if (!/^https?:\/\//i.test(candidate)) continue
+      url = candidate
+    }
+
+    const fp = `${kind}:${label.toLowerCase()}`
+    if (seen.has(fp)) continue
+    seen.add(fp)
+    out.push({
+      kind,
+      label,
+      url,
+      note: typeof r.note === 'string' ? r.note.trim().slice(0, 120) : '',
+    })
+    if (out.length >= MAX_DERIVED_PER_AXIS * 2) break
+  }
+  return out
 }
 
 /** Short menu labels (personas / pain points). Drops sentences and duplicates. */
@@ -171,10 +223,12 @@ HARD RULES
 - Return at most ${MAX_DERIVED_PER_AXIS} angles and at most ${MAX_DERIVED_PER_AXIS} offers. Fewer is better than padding.
 - If the extracted profiles are too thin to support a confident read, return empty arrays. An empty list is a valid, honest answer.
 
+Also return RESEARCH SOURCES — the specific places this business's audience actually talks about their problems in public, where voice-of-customer can be mined. Name real, existing communities for THIS market: subreddits (kind "reddit", label without the r/ prefix), industry forums (kind "forum", with a real URL), or review/community sites (kind "web", with a real URL). Never invent a community that does not exist; return fewer, or none, rather than a plausible-sounding guess.
+
 Also return the audience PERSONAS this business sells to and the PAIN POINTS those personas feel, as short menu labels (2-4 words each, title case, max ${MAX_DERIVED_PER_AXIS} of each). These are the axes a creative test is isolated on, so they must be distinct from one another and phrased in the business's own market language.
 
 Reply with ONLY a JSON object, no prose, no markdown fences:
-{"businessCategory":"short phrase, e.g. 'B2B marketing agency'","angles":[{"label":"","directive":"","evidence":"","basis":"site|category"}],"offers":[{"label":"","directive":"","evidence":"","basis":"site|category"}],"personas":["",""],"painPoints":["",""]}`
+{"businessCategory":"short phrase, e.g. 'B2B marketing agency'","angles":[{"label":"","directive":"","evidence":"","basis":"site|category"}],"offers":[{"label":"","directive":"","evidence":"","basis":"site|category"}],"personas":["",""],"painPoints":["",""],"researchSources":[{"kind":"reddit|forum|web","label":"","url":"","note":""}]}`
 }
 
 /**
@@ -223,6 +277,7 @@ export async function deriveStrategyOptions(
       offers: mergeDerived(seedOffers, offers),
       personas: asLabels(raw.personas),
       painPoints: asLabels(raw.painPoints),
+      researchSources: asResearchSources(raw.researchSources),
       businessCategory: typeof raw.businessCategory === 'string' ? raw.businessCategory.trim() : '',
       derivedAt: new Date().toISOString(),
     }

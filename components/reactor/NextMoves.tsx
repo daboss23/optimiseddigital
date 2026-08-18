@@ -43,12 +43,21 @@ export function NextMoves({ moves }: { moves: NextMove[] }) {
   const visible = moves.filter((m) => state[m.title] !== 'dismissed')
 
   if (visible.length === 0) {
+    // "Every move is actioned" is only true if there were moves to action. On a
+    // platform with nothing connected the honest message is that there is not
+    // yet enough evidence to rank anything.
+    const neverHadAny = moves.length === 0
     return (
       <div className="grid place-items-center px-6 py-14 text-center">
-        <Check size={30} className="mb-3 text-success/40" />
+        {neverHadAny ? (
+          <Lightbulb size={30} className="mb-3 text-white/25" />
+        ) : (
+          <Check size={30} className="mb-3 text-success/40" />
+        )}
         <p className="max-w-sm text-[14px] text-white/60">
-          Every move is actioned. New priorities appear as the next results land — or fire the
-          Reactor to generate fresh concepts now.
+          {neverHadAny
+            ? 'No moves to rank yet. Connect your Meta ad account so the reactor can read what is running, or fire a campaign to create the first concepts.'
+            : 'Every move is actioned. New priorities appear as the next results land — or fire the Reactor to generate fresh concepts now.'}
         </p>
       </div>
     )

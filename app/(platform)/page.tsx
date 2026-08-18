@@ -26,6 +26,7 @@ import {
   ProgressBar,
   Pill,
   TrendBadge,
+  EmptyState,
   accentClass,
   type Accent,
 } from '@/components/reactor/ui'
@@ -39,6 +40,7 @@ import { CreativeLeaderboard } from '@/components/reactor/CreativeLeaderboard'
 import { NextMoves } from '@/components/reactor/NextMoves'
 import { recommendations } from '@/lib/reactor-data'
 import { getDashboardData } from '@/lib/dashboard-data'
+import { demoDataEnabled } from '@/lib/demo-mode'
 import { buildCreativeOps, type PulseCard, type WinIndexEntry } from '@/lib/creative-ops'
 import { resolveMetaDashboard } from '@/lib/meta-graph'
 import { money } from '@/lib/meta-data'
@@ -177,12 +179,21 @@ function WinPanel({
 }) {
   return (
     <Panel>
+      {/* Title and subtitle stay on an empty panel — the user still needs to
+          know what this card ranks and what will make it fill. */}
       <PanelHeader icon={icon} accent={accent} title={title} subtitle={subtitle} />
-      <div className="space-y-1 p-4">
-        {entries.map((e) => (
-          <WinRow key={e.name} entry={e} />
-        ))}
-      </div>
+      {entries.length === 0 ? (
+        <EmptyState
+          message="Nothing ranked yet."
+          hint="A rank needs graded outcomes to compare. Connect your Meta ad account, or mark concepts as winners, and this fills in."
+        />
+      ) : (
+        <div className="space-y-1 p-4">
+          {entries.map((e) => (
+            <WinRow key={e.name} entry={e} />
+          ))}
+        </div>
+      )}
     </Panel>
   )
 }
@@ -214,16 +225,23 @@ export default async function ReactorDashboard({
   ])
 
   const live = meta.source === 'live'
+  // 'empty' is not demo data — nothing is being illustrated, there is simply
+  // nothing connected yet. Badging it DEMO DATA tells the user their real zero
+  // state is fake.
+  const seeded = meta.source === 'demo'
   const pendingConcepts = outcomes.filter((o) => o.verdict === 'pending').length
   const rendersThisWeek = data.activity.filter(
     (e) => e.kind === 'render' && Date.now() - new Date(e.at).getTime() < 7 * 86_400_000,
   ).length
 
+  // `|| 24` and `|| 6` were placeholder counts that made an untouched platform
+  // report two dozen concepts waiting and six renders in production. Zero is
+  // the truthful reading, and the tiles explain themselves either way.
   const ops = buildCreativeOps({
     meta,
-    conceptsReady: pendingConcepts || 24,
-    actionsRequired: recommendations.length,
-    inProduction: rendersThisWeek || 6,
+    conceptsReady: pendingConcepts || (demoDataEnabled() ? 24 : 0),
+    actionsRequired: demoDataEnabled() ? recommendations.length : 0,
+    inProduction: rendersThisWeek || (demoDataEnabled() ? 6 : 0),
     vault: {
       assets: data.total,
       frameworks: data.kpis.find((k) => k.label === 'Frameworks')?.value ?? 0,
@@ -261,7 +279,7 @@ export default async function ReactorDashboard({
               {rangeLabel(range)} · change on Meta Intelligence
             </Pill>
           </Link>
-          {!live && <DemoBadge />}
+          {seeded && <DemoBadge />}
         </div>
       </div>
 
@@ -300,7 +318,7 @@ export default async function ReactorDashboard({
             subtitle={`Top and at-risk creatives over ${rangeLabel(range).toLowerCase()} — the compact decision view`}
             accessory={
               <div className="flex items-center gap-2">
-                {!live && <DemoBadge />}
+                {seeded && <DemoBadge />}
                 <Link
                   href={`/meta?${rangeQuery(range)}`}
                   className="brief-cta !mt-0 !px-3.5 !py-2 !text-[12px]"
@@ -531,6 +549,12 @@ export default async function ReactorDashboard({
               title="Recent Activity"
               subtitle="Latest ingests, renders & graded outcomes"
             />
+            {data.activity.length === 0 ? (
+              <EmptyState
+                message="No activity yet."
+                hint="Ingests, renders and graded outcomes appear here as you use the platform."
+              />
+            ) : (
             <div className="p-5">
               <ul className="space-y-3">
                 {data.activity.slice(0, 6).map((e, i) => {
@@ -552,6 +576,7 @@ export default async function ReactorDashboard({
                 })}
               </ul>
             </div>
+            )}
           </Panel>
 
           <Link

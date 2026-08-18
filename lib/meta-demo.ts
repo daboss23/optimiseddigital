@@ -297,6 +297,37 @@ function efficiencyMetrics(totals: Totals, prior: Totals): MetaMetric[] {
 /* --------------------------------- assembly -------------------------------- */
 
 /** Build the whole demo dashboard for one range. Pure and deterministic. */
+/**
+ * The dashboard with no Meta account connected and demo data off.
+ *
+ * Same shape, all zeroes, no ads. The seeded snapshot names another company's
+ * campaigns and spend — shown to a customer who has connected nothing, it reads
+ * as their own account, and no badge fixes that.
+ */
+export function buildEmptyDashboard(range: DateRange): MetaDashboard {
+  const demo = buildDemoDashboard(range)
+  return {
+    ...demo,
+    source: 'empty',
+    heroKpis: demo.heroKpis.map((k) => ({ ...k, value: '—', delta: '0', trend: 'flat' as const })),
+    metrics: [],
+    topAds: [],
+    spendTrend: [],
+    audienceBreakdown: [],
+    placementBreakdown: [],
+    agentInsights: [],
+    resultMix: [],
+    revenueConnected: false,
+    spendTotal: 0,
+    learningStats: {
+      signalsIngested: 0,
+      winnersLogged: 0,
+      patternsUpdated: 0,
+      lastSync: 'never',
+    },
+  }
+}
+
 export function buildDemoDashboard(range: DateRange): MetaDashboard {
   const comparison = previousRange(range)
   const totals = totalsFor(range)

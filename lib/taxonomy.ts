@@ -80,35 +80,22 @@ export const ASSET_TYPES = [
 export type AssetType = (typeof ASSET_TYPES)[number]
 
 /**
- * Fallback personas, used until a website is connected. Business-OWNER segments
- * for a coaching/services buyer — deliberately generic rather than tied to one
- * vertical. Once ATLAS reads a site, its derived personas lead this list.
- * Kept as a plain string[] (not a locked union) precisely because it grows.
+ * Personas ship EMPTY. This axis describes who a specific business sells to, so
+ * any built-in value is either that business's market or the wrong one, and a
+ * wrong persona silently mistags every creative it touches.
+ *
+ * Filled by `getTaxonomyLocks` from the personas ATLAS derived off the connected
+ * website, plus whatever real runs have produced. Kept as a plain string[] (not
+ * a locked union) precisely because it grows.
  */
-export const PERSONA_SEEDS: readonly string[] = [
-  'Solo Operator',
-  'Sub-$1M Builder',
-  'Scaling Builder ($1–5M)',
-  'Overwhelmed Owner',
-  'Tradie Turned Business Owner',
-  'Established Director',
-]
+export const PERSONA_SEEDS: readonly string[] = []
 
 /**
- * Fallback pain points, used until a website is connected — mapped to the seed
- * angle vocabulary (Profit / Time Freedom / Systems / Owner Identity → Profit
- * Leak / No Time / Chaos / Stuck as Operator). ATLAS-derived pains lead these
- * once a site is read. Extensible.
+ * Pain points ship EMPTY, for the same reason as PERSONA_SEEDS: they are the
+ * language of one market. Derived from the connected website and grown by real
+ * runs. Extensible.
  */
-export const PAIN_POINT_SEEDS: readonly string[] = [
-  'Profit Leak',
-  'No Time / Weekends Gone',
-  'Chaos / No Systems',
-  'Can’t Scale Past Myself',
-  'Stuck as Operator Not Owner',
-  'Cash-Flow Stress',
-  'Bad Hires / Team Problems',
-]
+export const PAIN_POINT_SEEDS: readonly string[] = []
 
 /* -------------------------------- Axes ------------------------------------- */
 
@@ -227,6 +214,8 @@ export function defaultLockedTaxonomy(): CreativeTaxonomy {
     hookStyle: HOOK_STYLES[0],
     visualFormat: VISUAL_FORMATS[0],
     assetType: ASSET_TYPES[0],
+    // Undefined when the audience axes have not been derived yet — an untagged
+    // axis is correct, an invented one is not.
     persona: PERSONA_SEEDS[0],
     painPoint: PAIN_POINT_SEEDS[0],
   }

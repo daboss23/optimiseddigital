@@ -23,6 +23,7 @@ import { RESULT_LABELS } from '@/lib/creative-status'
 import { money, type MetaAd, type MetaDashboard } from '@/lib/meta-data'
 import { rangeLabel, rangeQuery, type DateRange } from '@/lib/date-range'
 import type { Accent } from '@/components/reactor/ui'
+import { demoDataEnabled } from '@/lib/demo-mode'
 
 /* ------------------------------ pulse cards -------------------------------- */
 
@@ -163,6 +164,67 @@ function resultWord(type: PrimaryResultType): string {
 
 /* ------------------------------- construction ------------------------------ */
 
+/**
+ * The seeded Winning Intelligence panel — illustrative win indexes, test counts
+ * and spend. Only reachable with NEXT_PUBLIC_REACTOR_DEMO_DATA=1; a live
+ * deployment computes these from graded outcomes or shows nothing.
+ */
+function buildDemoWinning(cost: string): WinningIntelligence {
+  return {
+    angles: [
+      { name: 'Profit', winIndex: 94, tests: 11, winners: 4, lift: `23% lower ${cost}`, spendAnalysed: 31400, confidence: 'High', comparedWith: 'lead campaigns, cold + lookalike audiences', accent: 'emerald' },
+      { name: 'Systems', winIndex: 88, tests: 9, winners: 3, lift: `17% lower ${cost}`, spendAnalysed: 24900, confidence: 'High', comparedWith: 'lead campaigns, cold audiences', accent: 'cyan' },
+      { name: 'Time Freedom', winIndex: 85, tests: 9, winners: 3, lift: `14% lower ${cost}`, spendAnalysed: 19200, confidence: 'Medium', comparedWith: 'lead campaigns, cold audiences', accent: 'blue' },
+      { name: 'Leadership', winIndex: 79, tests: 6, winners: 2, lift: `6% lower ${cost}`, spendAnalysed: 11800, confidence: 'Medium', comparedWith: 'lead campaigns, warm audiences', accent: 'pink' },
+      { name: 'Cashflow', winIndex: 76, tests: 4, winners: 1, lift: 'no material difference', spendAnalysed: 6400, confidence: 'Low', comparedWith: 'lead campaigns, mixed audiences', accent: 'amber' },
+    ],
+    hooks: [
+      { name: 'Specific dollar figure in line one', winIndex: 91, tests: 14, winners: 6, lift: `21% lower ${cost}`, spendAnalysed: 38600, confidence: 'High', comparedWith: 'same offer, same result type', accent: 'emerald' },
+      { name: 'Contrarian "stop" opener', winIndex: 84, tests: 8, winners: 3, lift: `12% lower ${cost}`, spendAnalysed: 17300, confidence: 'Medium', comparedWith: 'same offer, cold audiences', accent: 'violet' },
+      { name: 'Named member proof', winIndex: 80, tests: 7, winners: 2, lift: `9% lower ${cost}`, spendAnalysed: 14100, confidence: 'Medium', comparedWith: 'same offer, warm audiences', accent: 'cyan' },
+    ],
+    formats: [
+      { name: 'Founder video', winIndex: 93, tests: 12, winners: 5, lift: `26% lower ${cost}`, spendAnalysed: 42800, confidence: 'High', comparedWith: 'static and carousel on the same offer', accent: 'emerald' },
+      { name: 'UGC video', winIndex: 86, tests: 8, winners: 3, lift: `15% lower ${cost}`, spendAnalysed: 21500, confidence: 'Medium', comparedWith: 'static on the same offer', accent: 'violet' },
+      { name: 'Static proof', winIndex: 72, tests: 10, winners: 2, lift: 'baseline', spendAnalysed: 18900, confidence: 'Medium', comparedWith: 'the format cohort average', accent: 'blue' },
+    ],
+    offers: [
+      { name: 'Free Lead Magnet', winIndex: 89, tests: 13, winners: 5, lift: '$31 CPL', spendAnalysed: 52300, confidence: 'High', comparedWith: 'its own target, not other offers', accent: 'cyan' },
+      { name: 'Strategy Call / Application', winIndex: 81, tests: 7, winners: 2, lift: '$186 cost per booked call', spendAnalysed: 28700, confidence: 'Medium', comparedWith: 'its own target, not other offers', accent: 'emerald' },
+      { name: 'Webinar / Masterclass', winIndex: 74, tests: 5, winners: 1, lift: '$44 cost per registration', spendAnalysed: 12600, confidence: 'Low', comparedWith: 'its own target, not other offers', accent: 'amber' },
+    ],
+  }
+}
+
+/** The seeded learning-loop entries. Demo only, for the same reason. */
+function buildDemoLearnings(cost: string, window: string): LearningEntry[] {
+  return [
+    {
+      finding: 'Founder-led video is associated with a materially lower cost per lead than static on cold traffic.',
+      evidence: `26% lower ${cost} across 12 comparable creatives · ${money(42800)} analysed · ${window}`,
+      confidence: 'High',
+      agentResponse: 'OPUS now defaults cold-prospecting concepts to founder-led delivery unless the brief overrides it.',
+      observedResult: `4 of the 5 creatives generated under this rule are inside target ${cost}.`,
+      influencedCreatives: 5,
+    },
+    {
+      finding: 'Hooks that open with a specific dollar figure outperformed vague claims in this sample.',
+      evidence: `21% lower ${cost} across 14 comparable creatives · ${money(38600)} analysed · ${window}`,
+      confidence: 'High',
+      agentResponse: 'A real client figure is now required in the hook or headline of every Profit-angle concept.',
+      observedResult: 'Too early — 3 creatives live under 5 days.',
+      influencedCreatives: 3,
+    },
+    {
+      finding: 'Reels placement looks stronger than Feed for UGC — a promising pattern, not a conclusion.',
+      evidence: `19% lower ${cost} across 6 comparable creatives · ${money(9400)} analysed · ${window}`,
+      confidence: 'Low',
+      agentResponse: 'No rule change. Below the confidence bar required to alter agent behaviour — flagged for a controlled test.',
+      influencedCreatives: 0,
+    },
+  ]
+}
+
 export function buildCreativeOps(input: {
   meta: MetaDashboard
   /** Concepts approved and waiting to be produced. */
@@ -190,8 +252,8 @@ export function buildCreativeOps(input: {
       key: 'testing',
       label: 'Currently testing',
       count: testing,
-      delta: '+2',
-      trend: 'up',
+      delta: testing > 0 ? '+2' : '0',
+      trend: testing > 0 ? 'up' : 'flat',
       state: testing > 0 ? 'Gathering data' : 'Nothing in test',
       definition: `Creatives still below the evaluation threshold (${meta.thresholds.minSpend.toLocaleString()} spend, ${meta.thresholds.minDays} days, ${meta.thresholds.minResults} results). No conclusion is drawn until all three clear.`,
       accent: 'amber',
@@ -201,8 +263,8 @@ export function buildCreativeOps(input: {
       key: 'emerging',
       label: 'Emerging winners',
       count: emerging,
-      delta: '+1',
-      trend: 'up',
+      delta: emerging > 0 ? '+1' : '0',
+      trend: emerging > 0 ? 'up' : 'flat',
       state: emerging > 0 ? 'Confidence incomplete' : 'None yet',
       definition: `Inside the ${cost} target but without enough results to confirm. Treat as a promising signal, not a decision.`,
       accent: 'cyan',
@@ -212,8 +274,8 @@ export function buildCreativeOps(input: {
       key: 'confirmed',
       label: 'Confirmed winners',
       count: confirmed,
-      delta: '+1',
-      trend: 'up',
+      delta: confirmed > 0 ? '+1' : '0',
+      trend: confirmed > 0 ? 'up' : 'flat',
       state: confirmed > 0 ? 'Ready to scale' : 'None confirmed',
       definition: `Meets the configured ${cost} target with enough spend, time and results behind it to trust.`,
       accent: 'emerald',
@@ -234,8 +296,8 @@ export function buildCreativeOps(input: {
       key: 'concepts',
       label: 'Concepts ready',
       count: conceptsReady,
-      delta: '+4',
-      trend: 'up',
+      delta: conceptsReady > 0 ? '+4' : '0',
+      trend: conceptsReady > 0 ? 'up' : 'flat',
       state: conceptsReady > 0 ? 'Approved, awaiting production' : 'Queue empty',
       definition: 'Approved concepts sitting in the ledger, ready to generate or produce.',
       accent: 'blue',
@@ -323,7 +385,9 @@ export function buildCreativeOps(input: {
   }
 
   // Explore only fills a remaining slot — proven moves always outrank a guess.
-  if (nextMoves.length < 3) {
+  // Its copy is written around one business's angles, so on a real deployment
+  // three real moves (or fewer) beat a fabricated fourth.
+  if (nextMoves.length < 3 && demoDataEnabled()) {
     nextMoves.push({
       type: 'Explore',
       title: 'Combine Time Freedom with member proof',
@@ -343,30 +407,16 @@ export function buildCreativeOps(input: {
 
   /* -------------------------- winning intelligence ------------------------- */
 
-  const winning: WinningIntelligence = {
-    angles: [
-      { name: 'Profit', winIndex: 94, tests: 11, winners: 4, lift: `23% lower ${cost}`, spendAnalysed: 31400, confidence: 'High', comparedWith: 'lead campaigns, cold + lookalike audiences', accent: 'emerald' },
-      { name: 'Systems', winIndex: 88, tests: 9, winners: 3, lift: `17% lower ${cost}`, spendAnalysed: 24900, confidence: 'High', comparedWith: 'lead campaigns, cold audiences', accent: 'cyan' },
-      { name: 'Time Freedom', winIndex: 85, tests: 9, winners: 3, lift: `14% lower ${cost}`, spendAnalysed: 19200, confidence: 'Medium', comparedWith: 'lead campaigns, cold audiences', accent: 'blue' },
-      { name: 'Leadership', winIndex: 79, tests: 6, winners: 2, lift: `6% lower ${cost}`, spendAnalysed: 11800, confidence: 'Medium', comparedWith: 'lead campaigns, warm audiences', accent: 'pink' },
-      { name: 'Cashflow', winIndex: 76, tests: 4, winners: 1, lift: 'no material difference', spendAnalysed: 6400, confidence: 'Low', comparedWith: 'lead campaigns, mixed audiences', accent: 'amber' },
-    ],
-    hooks: [
-      { name: 'Specific dollar figure in line one', winIndex: 91, tests: 14, winners: 6, lift: `21% lower ${cost}`, spendAnalysed: 38600, confidence: 'High', comparedWith: 'same offer, same result type', accent: 'emerald' },
-      { name: 'Contrarian "stop" opener', winIndex: 84, tests: 8, winners: 3, lift: `12% lower ${cost}`, spendAnalysed: 17300, confidence: 'Medium', comparedWith: 'same offer, cold audiences', accent: 'violet' },
-      { name: 'Named member proof', winIndex: 80, tests: 7, winners: 2, lift: `9% lower ${cost}`, spendAnalysed: 14100, confidence: 'Medium', comparedWith: 'same offer, warm audiences', accent: 'cyan' },
-    ],
-    formats: [
-      { name: 'Founder video', winIndex: 93, tests: 12, winners: 5, lift: `26% lower ${cost}`, spendAnalysed: 42800, confidence: 'High', comparedWith: 'static and carousel on the same offer', accent: 'emerald' },
-      { name: 'UGC video', winIndex: 86, tests: 8, winners: 3, lift: `15% lower ${cost}`, spendAnalysed: 21500, confidence: 'Medium', comparedWith: 'static on the same offer', accent: 'violet' },
-      { name: 'Static proof', winIndex: 72, tests: 10, winners: 2, lift: 'baseline', spendAnalysed: 18900, confidence: 'Medium', comparedWith: 'the format cohort average', accent: 'blue' },
-    ],
-    offers: [
-      { name: 'Free Lead Magnet', winIndex: 89, tests: 13, winners: 5, lift: '$31 CPL', spendAnalysed: 52300, confidence: 'High', comparedWith: 'its own target, not other offers', accent: 'cyan' },
-      { name: 'Strategy Call / Application', winIndex: 81, tests: 7, winners: 2, lift: '$186 cost per booked call', spendAnalysed: 28700, confidence: 'Medium', comparedWith: 'its own target, not other offers', accent: 'emerald' },
-      { name: 'Webinar / Masterclass', winIndex: 74, tests: 5, winners: 1, lift: '$44 cost per registration', spendAnalysed: 12600, confidence: 'Low', comparedWith: 'its own target, not other offers', accent: 'amber' },
-    ],
-  }
+  // Every figure below is a seeded illustration — win indexes, test counts and
+  // spend for campaigns that may never have run on this account. Real ones
+  // arrive once outcomes are graded, so on a live deployment the panels render
+  // their own empty state instead.
+  const winning: WinningIntelligence = demoDataEnabled()
+    ? buildDemoWinning(cost)
+    : { angles: [], hooks: [], formats: [], offers: [] }
+
+  const learnings: LearningEntry[] = demoDataEnabled() ? buildDemoLearnings(cost, window) : []
+
 
   /* -------------------------------- lifecycle ------------------------------ */
 
@@ -380,31 +430,6 @@ export function buildCreativeOps(input: {
 
   /* ------------------------------ learning loop ---------------------------- */
 
-  const learnings: LearningEntry[] = [
-    {
-      finding: 'Founder-led video is associated with a materially lower cost per lead than static on cold traffic.',
-      evidence: `26% lower ${cost} across 12 comparable creatives · ${money(42800)} analysed · ${window}`,
-      confidence: 'High',
-      agentResponse: 'OPUS now defaults cold-prospecting concepts to founder-led delivery unless the brief overrides it.',
-      observedResult: `4 of the 5 creatives generated under this rule are inside target ${cost}.`,
-      influencedCreatives: 5,
-    },
-    {
-      finding: 'Hooks that open with a specific dollar figure outperformed vague profit claims in this sample.',
-      evidence: `21% lower ${cost} across 14 comparable creatives · ${money(38600)} analysed · ${window}`,
-      confidence: 'High',
-      agentResponse: 'A real member figure is now required in the hook or headline of every Profit-angle concept.',
-      observedResult: 'Too early — 3 creatives live under 5 days.',
-      influencedCreatives: 3,
-    },
-    {
-      finding: 'Reels placement looks stronger than Feed for UGC — a promising pattern, not a conclusion.',
-      evidence: `19% lower ${cost} across 6 comparable creatives · ${money(9400)} analysed · ${window}`,
-      confidence: 'Low',
-      agentResponse: 'No rule change. Below the confidence bar required to alter agent behaviour — flagged for a controlled test.',
-      influencedCreatives: 0,
-    },
-  ]
 
   const base: IntelligenceBase = {
     assets: vault.assets,

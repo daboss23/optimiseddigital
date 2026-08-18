@@ -40,18 +40,6 @@ export interface NovaSubreddit {
   note: string
 }
 
-export const NOVA_SUBREDDITS: NovaSubreddit[] = [
-  { sub: 'Construction', note: 'General trade + jobsite reality' },
-  { sub: 'Contractor', note: 'Contractors on clients, pricing, stress' },
-  { sub: 'GeneralContractor', note: 'GC business operations' },
-  { sub: 'electricians', note: 'Sparkies — trade + going out on their own' },
-  { sub: 'Plumbing', note: 'Plumbers — trade + running the business' },
-  { sub: 'HVAC', note: 'HVAC techs and owners' },
-  { sub: 'Carpentry', note: 'Carpenters + finish trades' },
-  { sub: 'skilledtrades', note: 'Cross-trade money, career, pride' },
-  { sub: 'smallbusiness', note: 'Owner cashflow, hiring, burnout' },
-  { sub: 'Entrepreneur', note: 'Business-owner mindset + scaling' },
-]
 
 export interface NovaForum {
   name: string
@@ -59,10 +47,6 @@ export interface NovaForum {
   note: string
 }
 
-export const NOVA_FORUMS: NovaForum[] = [
-  { name: 'ContractorTalk', url: 'https://www.contractortalk.com/forums/', note: 'Largest pro-contractor forum' },
-  { name: 'JLC / Breaktime', url: 'https://forums.jlconline.com/', note: 'Seasoned builders — business + craft' },
-]
 
 /* -------------------------------- Types ----------------------------------- */
 
@@ -653,7 +637,10 @@ function sweepSubs(): string[] {
       .map((s) => sanitizeSubreddit(s))
       .filter(Boolean)
   }
-  return NOVA_SUBREDDITS.map((s) => s.sub)
+  // No built-in list any more: a scheduled sweep with nothing configured would
+  // mine one fixed market on every deployment. Set NOVA_SWEEP_SUBS to name the
+  // communities worth sweeping for this business.
+  return []
 }
 
 export interface NovaSweepResult {

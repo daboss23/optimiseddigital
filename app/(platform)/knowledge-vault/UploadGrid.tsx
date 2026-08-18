@@ -48,7 +48,7 @@ const routing: Record<string, { system: KnowledgeSystem; category: string }> = {
   'Upload Offer Framework': { system: 'vault', category: 'Offer Framework' },
   'Upload VSL Framework': { system: 'vault', category: 'VSL Framework' },
   'Upload Creative SOP': { system: 'vault', category: 'Creative SOP' },
-  'Upload Member Win': { system: 'transformation', category: 'Member Win' },
+  'Upload Client Win': { system: 'transformation', category: 'Client Win' },
   'Upload Event Content': { system: 'vault', category: 'Event Content' },
   'Upload Podcast Transcript': { system: 'vault', category: 'Podcast Transcript' },
   'Upload Webinar': { system: 'vault', category: 'Webinar' },

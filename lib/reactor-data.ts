@@ -144,7 +144,7 @@ export const uploadCards: UploadCard[] = [
   { title: 'Upload Offer Framework', accept: 'Doc / PDF', icon: 'Tag' },
   { title: 'Upload VSL Framework', accept: 'Doc / Script', icon: 'Film' },
   { title: 'Upload Creative SOP', accept: 'Doc / PDF', icon: 'ListChecks' },
-  { title: 'Upload Member Win', accept: 'Story / Video', icon: 'Trophy' },
+  { title: 'Upload Client Win', accept: 'Story / Video', icon: 'Trophy' },
   { title: 'Upload Event Content', accept: 'Video / Deck', icon: 'CalendarDays' },
   { title: 'Upload Podcast Transcript', accept: 'Audio / Text', icon: 'Mic' },
   { title: 'Upload Webinar', accept: 'Video / Deck', icon: 'MonitorPlay' },
@@ -204,7 +204,7 @@ export const vaultCategories: VaultCategory[] = [
   {
     group: 'Transformation Assets',
     items: [
-      { name: 'Member Wins', count: 538 },
+      { name: 'Client Wins', count: 538 },
       { name: 'Testimonials', count: 312 },
       { name: 'Success Stories', count: 196 },
     ],
@@ -542,14 +542,14 @@ export const foundationAssets: FoundationAsset[] = [
     category: 'Creative Frameworks',
     title: 'PAS — Problem · Agitate · Solve',
     content:
-      'Name the reader\'s problem, twist the knife on what it costs them, then resolve it with the brand\'s proof. Best for fear-led angles — cost blowouts, profit leaks, the builder disappearing, owner dependency. Pairs with problem-aware and solution-aware traffic.',
+      'Name the reader\'s problem, twist the knife on what it costs them, then resolve it with the brand\'s proof. Best for fear-led angles — money leaking, time lost, a supplier who vanishes, dependence on one person. Pairs with problem-aware and solution-aware traffic.',
   },
   {
     system: 'vault',
     category: 'Creative Frameworks',
     title: 'BAB — Before · After · Bridge',
     content:
-      'Paint the "before" (stress, uncertainty, chaos on site), then the "after" (calm, margin, finished work, time back), and position the mechanism as the bridge between them. Best for aspiration and transformation angles where a named member win supplies the after-state.',
+      'Paint the "before" (stress, uncertainty, everything on fire), then the "after" (calm, margin, work finished, time back), and position the mechanism as the bridge between them. Best for aspiration and transformation angles where a named client win supplies the after-state.',
   },
   {
     system: 'vault',
@@ -589,7 +589,7 @@ export const foundationAssets: FoundationAsset[] = [
   {
     system: 'vault',
     category: 'Story Mining SOPs',
-    title: 'Mining a member win into creative',
+    title: 'Mining a client win into creative',
     content:
       'Pull the before-state in the member\'s own words (hours, margin, the moment it broke), the turning point (which mechanism, applied when), and the after-state with one hard figure. Ship it as: named member, concrete number, the mechanism between the two. Refresh proof inventory monthly — named-member proof ads booked 38% versus 21% for promise-led creative.',
   },
@@ -657,7 +657,7 @@ export const learnings: Learning[] = [
   {
     insight: 'Member wins outperform generic promises.',
     evidence: 'Named-member proof ads booked 38% vs 21% for promise-led.',
-    recommendation: 'Mine new member wins monthly to refresh proof inventory.',
+    recommendation: 'Mine new client wins monthly to refresh proof inventory.',
   },
 ]
 

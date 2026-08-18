@@ -17,6 +17,7 @@ import {
   vaultCategories,
   foundationAssets,
 } from '@/lib/reactor-data'
+import { demoDataEnabled } from '@/lib/demo-mode'
 
 export type KnowledgeSystem =
   | 'vault'
@@ -211,6 +212,10 @@ export async function vaultStats(): Promise<VaultStats> {
     }
   }
 
+  // Curated counts describe a vault that was filled elsewhere. Off by default,
+  // so an unconfigured deployment reads zero rather than someone else's totals.
+  if (!demoDataEnabled()) return { live: false, total: 0, groups: [] }
+
   const groups: VaultStatGroup[] = vaultCategories.flatMap((g) =>
     g.items.map((i) => ({ system: g.group, category: i.name, count: i.count })),
   )
@@ -286,7 +291,10 @@ export async function browseKnowledge(
     }
   }
 
-  // Demo fallback: browse the curated corpus.
+  // Demo fallback: browse the curated corpus. Opt-in for the same reason as the
+  // counts above — an empty vault must not list another business's assets.
+  if (!demoDataEnabled()) return { live: false, items: [] }
+
   const corpus = buildDemoCorpus().filter((d) => !opts.system || d.system === opts.system)
   const filtered = q
     ? corpus.filter((d) => `${d.title} ${d.content} ${d.category}`.toLowerCase().includes(q.toLowerCase()))

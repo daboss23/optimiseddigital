@@ -35,7 +35,7 @@ export const MAX_ADS_PER_READ = 12
 
 // The repeatable pattern categories SPARK classifies winning creatives into.
 export const CREATIVE_PATTERNS = [
-  'Member Win',
+  'Client Win',
   'Identity Shift',
   'Profit Leak',
   'Authority Builder',
@@ -148,7 +148,7 @@ function heuristicDNA(text: string): CreativeDNA {
         : /system|process|sop|chaos/.test(t)
           ? 'Systems Transformation'
           : /member|client|result|case study/.test(t)
-            ? 'Member Win'
+            ? 'Client Win'
             : /founder|story|journey/.test(t)
               ? 'Founder Story'
               : 'Authority Builder'

@@ -1,12 +1,32 @@
 import { Anchor, Heading, Network, Tag } from 'lucide-react'
-import { PageHeader, Panel, PanelHeader, Pill, ProgressBar, accentClass, type Accent } from '@/components/reactor/ui'
+import {
+  PageHeader,
+  Panel,
+  PanelHeader,
+  Pill,
+  ProgressBar,
+  EmptyState,
+  accentClass,
+  type Accent,
+} from '@/components/reactor/ui'
 import { topHooks, topHeadlines, topOffers, patterns } from '@/lib/reactor-data'
 import type { CopyItem } from '@/lib/reactor-data'
 import { cn } from '@/lib/utils'
+import { demoDataEnabled } from '@/lib/demo-mode'
 
 const patternAccents: Accent[] = ['emerald', 'cyan', 'blue', 'amber', 'violet', 'pink']
 
-function CopyList({ items, rank }: { items: CopyItem[]; rank: string }) {
+function CopyList({ items, rank, kind }: { items: CopyItem[]; rank: string; kind: string }) {
+  // The heading above this list stays either way — a card with no rows still
+  // has to tell the user what will eventually live in it.
+  if (items.length === 0) {
+    return (
+      <EmptyState
+        message={`No ${kind} yet.`}
+        hint="Fire a campaign and mark the winners — the copy that performs is collected here automatically."
+      />
+    )
+  }
   return (
     <ol className="space-y-2.5 p-5">
       {items.map((item, i) => (
@@ -63,15 +83,15 @@ export default function PlaybookPage() {
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <Panel>
           <PanelHeader icon={<Anchor size={16} />} accent="blue" title="Top Performing Hooks" />
-          <CopyList items={topHooks} rank="H" />
+          <CopyList items={demoDataEnabled() ? topHooks : []} rank="H" kind="winning hooks" />
         </Panel>
         <Panel>
           <PanelHeader icon={<Heading size={16} />} accent="violet" title="Top Performing Headlines" />
-          <CopyList items={topHeadlines} rank="L" />
+          <CopyList items={demoDataEnabled() ? topHeadlines : []} rank="L" kind="winning headlines" />
         </Panel>
         <Panel>
           <PanelHeader icon={<Tag size={16} />} accent="amber" title="Top Performing Offers" />
-          <CopyList items={topOffers} rank="O" />
+          <CopyList items={demoDataEnabled() ? topOffers : []} rank="O" kind="winning offers" />
         </Panel>
       </div>
 
@@ -83,8 +103,18 @@ export default function PlaybookPage() {
         recommendation.
       </p>
 
+      {!demoDataEnabled() && (
+        <Panel>
+          <EmptyState
+            icon={<Network size={20} />}
+            message="ORACLE has no patterns yet."
+            hint="A pattern forms once several campaigns with the same strategic configuration have been graded. Fire campaigns and record outcomes, and they build here."
+          />
+        </Panel>
+      )}
+
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {patterns.map((p, i) => {
+        {(demoDataEnabled() ? patterns : []).map((p, i) => {
           const accent = patternAccents[i % patternAccents.length]
           return (
             <Panel key={p.name} hover className="p-5">

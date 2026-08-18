@@ -405,7 +405,7 @@ const SYSTEMS: { value: KnowledgeSystem; label: string }[] = [
   { value: 'copy', label: 'Copy · Hook / Headline' },
   { value: 'creative', label: 'Creative' },
   { value: 'design', label: 'Ad Design DNA' },
-  { value: 'transformation', label: 'Member Win' },
+  { value: 'transformation', label: 'Client Win' },
   { value: 'research', label: 'Research' },
   { value: 'pattern', label: 'Pattern' },
   { value: 'learning', label: 'Learning' },

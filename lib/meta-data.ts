@@ -117,7 +117,8 @@ export interface LearningStats {
 
 /** Everything both dashboards render for one date range. */
 export interface MetaDashboard {
-  source: 'live' | 'demo'
+  /** 'empty' = Meta is not connected and demo data is off — a real zero state. */
+  source: 'live' | 'demo' | 'empty'
   /** The single window every figure below was computed over. */
   range: DateRange
   /** The equally long window immediately before it, used for every delta. */

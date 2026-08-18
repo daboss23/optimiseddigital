@@ -24,6 +24,10 @@ export interface BrandIdentity {
   initials: string
   /** True once a real business has been connected — the shell is white-labelled. */
   branded: boolean
+  /** True when the logo was uploaded by hand rather than read off the site. */
+  logoUploaded: boolean
+  /** Whether this deployment can persist an uploaded logo at all. */
+  canUploadLogo: boolean
 }
 
 /** Shown until a website is connected. */
@@ -32,6 +36,8 @@ export const DEFAULT_IDENTITY: BrandIdentity = {
   logoUrl: null,
   initials: 'CR',
   branded: false,
+  logoUploaded: false,
+  canUploadLogo: false,
 }
 
 /**
