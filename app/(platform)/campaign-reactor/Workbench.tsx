@@ -833,8 +833,24 @@ export function Workbench() {
     },
   }
 
+  // Where each derived offer came from, keyed by label. Seeds get no entry —
+  // they are the options the user already knows.
+  const offerDescriptions = menu.offers.reduce<Record<string, string>>((acc, o) => {
+    if (!o.derived) return acc
+    const evidence = o.derived.evidence.trim()
+    acc[o.label] =
+      o.derived.basis === 'site'
+        ? `From your website${evidence ? ` — ${evidence}` : ''}`
+        : `Typical for ${menu.businessCategory || 'this kind of business'}${evidence ? ` — ${evidence}` : ''}`
+    return acc
+  }, {})
+
   const offerField: StrategicField = {
     options: menu.offers.slice(1).map((o) => o.label),
+    // Anything ATLAS added from the site read is indistinguishable from a seed
+    // option once it is just a label in a list — which reads as "the scan added
+    // nothing". Each derived offer now says where it came from, in the menu.
+    descriptions: offerDescriptions,
     value: offerCustom || offer.label === NO_PREFERENCE ? '' : offer.label,
     recommended: rec.offer ?? null,
     noPreference: offer.label === NO_PREFERENCE && !offerCustom,
@@ -844,7 +860,7 @@ export function Workbench() {
       active: offerCustom,
       value: customOffer,
       placeholder: 'Name your offer',
-      examples: ['Builder Profit Audit', 'The Owner Freedom Blueprint', 'The 45-Hour Builder System'],
+      examples: ['AI Automation Masterclass', 'The 5-Day Pipeline Audit', 'Founder Growth Intensive'],
     },
     onSelect: (label) => {
       setOfferCustom(false)

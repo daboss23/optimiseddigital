@@ -17,6 +17,7 @@ import {
   ImageIcon,
   Layers,
   Loader2,
+  Megaphone,
   Radio,
   ShieldCheck,
   SlidersHorizontal,
@@ -639,6 +640,14 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
   }
 
   const meta = STEPS[step - 1]
+
+  // How many distinct creatives step 2 is currently set to build: one per
+  // chosen size per deliverable, and one for any deliverable the reactor sizes
+  // itself. Multiplied by the variation count, this is the run's real output.
+  const creativeCount = form.outputs.reduce(
+    (total, o) => total + Math.max(1, (form.dimensions[o] ?? []).length),
+    0,
+  )
   const progress = (step / LAST_STEP) * 100
   const feedTitle = FEED_OPTIONS.find((f) => f.id === form.metaProvider)?.title ?? 'Standalone'
 
@@ -749,34 +758,53 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
         >
           {step === 1 && (
             <div className="animate-fade-up space-y-6">
-              <div>
-                <SectionLabel>
-                  <span className="inline-flex items-center gap-1.5">
-                    <Tag size={12} /> Campaign Name
-                  </span>
-                </SectionLabel>
-                <input
-                  value={form.campaignName}
-                  onChange={(e) => form.setCampaignName(e.target.value)}
-                  placeholder={`e.g. "Profit Leak — Q3 Prospecting"`}
-                  className="launch-input px-4 py-3.5 text-[15px]"
-                />
-              </div>
-
+              {/* Campaign Name and Offer Name sit on one line because they are
+                  the two names in play and were being confused for each other.
+                  The distinction is WHO READS THEM: the campaign name is
+                  internal filing, the offer name is what the market is told it
+                  gets — so each carries a one-line note saying exactly that. */}
               <div className="grid gap-5 sm:grid-cols-2 sm:gap-4">
                 <div>
-                  <SectionLabel thinking={form.suggesting}>Campaign Offer</SectionLabel>
-                  <StrategicSelect field={form.offerField} />
+                  <SectionLabel>
+                    <span className="inline-flex items-center gap-1.5">
+                      <Tag size={12} /> Campaign Name
+                    </span>
+                  </SectionLabel>
+                  <input
+                    value={form.campaignName}
+                    onChange={(e) => form.setCampaignName(e.target.value)}
+                    placeholder={`e.g. "Q3 Cold Traffic — Automation"`}
+                    className="launch-input px-4 py-3.5 text-[15px]"
+                  />
+                  <p className="mt-2 text-xs leading-relaxed text-white/55">
+                    Internal label, for finding this campaign later. Never appears in an ad.
+                  </p>
                 </div>
                 <div>
-                  <SectionLabel>Offer Name</SectionLabel>
+                  <SectionLabel>
+                    <span className="inline-flex items-center gap-1.5">
+                      <Megaphone size={12} /> Offer Name
+                    </span>
+                  </SectionLabel>
                   <input
                     value={form.offerName}
                     onChange={(e) => form.setOfferName(e.target.value)}
-                    placeholder={`e.g. "The Owner Freedom Roadmap"`}
+                    placeholder={`e.g. "AI Automation Masterclass"`}
                     className="launch-input px-4 py-3.5 text-[15px]"
                   />
+                  <p className="mt-2 text-xs leading-relaxed text-white/55">
+                    What your audience is told they are getting. Written into the copy and the CTA.
+                  </p>
                 </div>
+              </div>
+
+              <div>
+                <SectionLabel thinking={form.suggesting}>Campaign Offer</SectionLabel>
+                <p className="-mt-1 mb-2.5 text-sm text-white/60">
+                  The TYPE of offer, not its name — it sets the friction, the proof burden and the
+                  CTA frame the concepts are written to.
+                </p>
+                <StrategicSelect field={form.offerField} />
               </div>
 
               <div>
@@ -788,7 +816,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                 <textarea
                   value={form.brief}
                   onChange={(e) => form.setBrief(e.target.value)}
-                  placeholder={`e.g. "Targeting operators $1.5M–$3M still on the tools. Lead with Jason — 14 months, off tools, margin up. Want identity shift, not another hustle ad."`}
+                  placeholder={`e.g. "Cold traffic. Owner-led businesses doing $1M–$5M who are still doing the work manually. Lead with a named client result and the time it took. Sell the shift in how they operate, not the tool. No hype, no countdown timers."`}
                   className="launch-input h-28 resize-none px-4 py-3.5 text-[15px] leading-relaxed"
                 />
               </div>
@@ -980,12 +1008,17 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                     )
                   })}
 
-                  {/* How many distinct versions of every creative the reactor makes */}
+                  {/* One control, deliberately shown once and last. Variations
+                      is a single global multiplier, not a per-format setting —
+                      repeating the card under every size section would imply
+                      each format could carry its own count. So it stays a
+                      summary line at the end, and states the total it produces
+                      so the multiplier's effect is visible where it is set. */}
                   <div className="border-t border-white/10 pt-4">
                     <SectionLabel>Variations per creative</SectionLabel>
                     <p className="-mt-1 mb-3 text-sm text-white/60">
-                      The reactor creates this many distinct versions of every image and video
-                      creative — different hook, pattern, and proof on each.
+                      Applies to every creative above. The reactor makes this many distinct versions
+                      of each one — different hook, pattern, and proof on each.
                     </p>
                     <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
                       {[1, 2, 3, 4].map((n) => {
@@ -1011,6 +1044,14 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                         )
                       })}
                     </div>
+                    <p className="mt-3 text-xs text-white/55">
+                      {creativeCount} creative{creativeCount === 1 ? '' : 's'} × {form.variations}{' '}
+                      version{form.variations === 1 ? '' : 's'} ={' '}
+                      <span className="font-semibold text-white/80">
+                        {creativeCount * form.variations} ad{creativeCount * form.variations === 1 ? '' : 's'}
+                      </span>{' '}
+                      this run.
+                    </p>
                   </div>
 
                   {form.outputs.some((o) => /ugc/i.test(o)) && (
@@ -1282,7 +1323,7 @@ function QuickLaunch({
             <textarea
               value={form.brief}
               onChange={(e) => form.setBrief(e.target.value)}
-              placeholder={`e.g. "A founder video for builders doing $2M–$3M who are still on the tools. Lead with a member who got off the tools in 14 months. Drive strategy-call applications."`}
+              placeholder={`e.g. "A founder video for owner-led businesses doing $1M–$5M who are still doing the work manually. Lead with a named client who got 15 hours a week back. Drive masterclass registrations."`}
               className="launch-input h-32 resize-none px-4 py-3.5 text-[15px] leading-relaxed"
             />
           </div>

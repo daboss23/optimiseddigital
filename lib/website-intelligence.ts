@@ -1630,6 +1630,10 @@ export async function analyzeWebsite(
   // agent prompts stop describing whoever was connected before.
   invalidateTenant()
 
+  // Nothing was written to the Vault, so hold the scan in memory — otherwise
+  // the derived offers and the brand profile are gone by the next request.
+  lastUnpersistedScan = stored ? null : summary
+
   emit({ type: 'progress', message: 'Website Intelligence ready.' })
   emit({ type: 'complete', summary })
   return summary
@@ -1644,9 +1648,26 @@ interface WebsiteRow {
   metadata: Record<string, unknown> | null
 }
 
+/**
+ * The last scan, held in memory for deployments with no Supabase configured.
+ *
+ * Everything downstream of a scan — the Brand panel, and the brief's derived
+ * angle/offer menus — reads the connected site back through
+ * `getConnectedWebsite()`, which reconstructs it from stored chunks. With no
+ * vector store there are no chunks, so a scan that ran perfectly well returned
+ * null on the very next request and the brief showed seed offers only, as
+ * though ATLAS had found nothing.
+ *
+ * This is best-effort by nature: it lives in one server instance's memory, so
+ * it does not survive a cold start and is not shared across instances. That is
+ * strictly better than discarding the scan outright, and it is never consulted
+ * when persistence IS configured — the Vault stays the source of truth.
+ */
+let lastUnpersistedScan: WebsiteSummary | null = null
+
 /** Reconstruct the connected-website summary from stored chunks (panel state). */
 export async function getConnectedWebsite(): Promise<WebsiteSummary | null> {
-  if (!persistConfigured()) return null
+  if (!persistConfigured()) return lastUnpersistedScan
   const { data, error } = await getSupabaseAdmin()
     .from('knowledge_chunks')
     .select('category, title, created_at, metadata')
@@ -1749,7 +1770,10 @@ export async function getConnectedWebsite(): Promise<WebsiteSummary | null> {
 
 /** Disconnect a website — remove all of its stored chunks from the Vault. */
 export async function disconnectWebsite(domain: string): Promise<void> {
-  if (!persistConfigured()) throw new Error('Vector store not configured')
+  if (!persistConfigured()) {
+    lastUnpersistedScan = null
+    return
+  }
   const root = rootDomain(domain)
   const { error } = await getSupabaseAdmin()
     .from('knowledge_chunks')
