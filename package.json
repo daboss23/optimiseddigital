@@ -11,7 +11,8 @@
     "selftest:render": "tsx scripts/render-prompt-selftest.ts",
     "muapi:slugs": "tsx scripts/muapi-slugs.ts",
     "verify": "./scripts/verify-reactor.sh",
-    "vault:copy": "tsx scripts/vault-copy.ts"
+    "vault:copy": "tsx scripts/vault-copy.ts",
+    "selftest:operator": "tsx scripts/operator-selftest.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.103.0",

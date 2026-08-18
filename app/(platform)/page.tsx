@@ -11,7 +11,6 @@ import {
   Clapperboard,
   Layers,
   Network,
-  Rocket,
   Sparkles,
   Target,
   Trophy,
@@ -37,8 +36,13 @@ import {
   InfoTip,
 } from '@/components/reactor/Explain'
 import { CreativeLeaderboard } from '@/components/reactor/CreativeLeaderboard'
-import { NextMoves } from '@/components/reactor/NextMoves'
-import { recommendations } from '@/lib/reactor-data'
+import {
+  ActionsRequiredTile,
+  MikeQueue,
+  OperatorProvider,
+  OperatorToast,
+  OPERATOR_QUEUE_ANCHOR,
+} from '@/components/reactor/operator'
 import { getDashboardData } from '@/lib/dashboard-data'
 import { demoDataEnabled } from '@/lib/demo-mode'
 import { buildCreativeOps, type PulseCard, type WinIndexEntry } from '@/lib/creative-ops'
@@ -239,7 +243,6 @@ export default async function ReactorDashboard({
   const ops = buildCreativeOps({
     meta,
     conceptsReady: pendingConcepts || (demoDataEnabled() ? 24 : 0),
-    actionsRequired: demoDataEnabled() ? recommendations.length : 0,
     inProduction: rendersThisWeek || (demoDataEnabled() ? 6 : 0),
     vault: {
       assets: data.total,
@@ -250,7 +253,7 @@ export default async function ReactorDashboard({
   })
 
   return (
-    <>
+    <OperatorProvider>
       {/* Command hero — intelligence command-center header */}
       <div className="command-hero flex flex-wrap items-end justify-between gap-5">
         <div className="animate-fade-up">
@@ -291,22 +294,21 @@ export default async function ReactorDashboard({
           {ops.pulse.map((card, i) => (
             <PulseTile key={card.key} card={card} index={i} />
           ))}
+          {/* Actions Required reads the operator's own selector — the same one
+              behind the status line and the visible cards, so the three can
+              never drift apart. */}
+          <ActionsRequiredTile />
         </section>
 
-        {/* ── 2 · Your Next Moves ────────────────────────────────────────── */}
-        <SectionLabel hint="Exactly three ranked actions. Each carries its evidence, a confidence level and one primary action.">
+        {/* ── 2 · Mike's decision queue ──────────────────────────────────── */}
+        <SectionLabel hint="The decisions that deserve attention now, ordered by urgency. Mike does the full analysis behind the scenes; the evidence behind any row is one click away.">
           Your Next Moves
         </SectionLabel>
-        <Panel>
-          <PanelHeader
-            icon={<Rocket size={16} />}
-            accent="emerald"
-            title="Your Next Moves"
-            subtitle="The three highest-priority creative decisions, ranked by evidence"
-            accessory={<Pill tone="primary">{ops.nextMoves.length} ranked</Pill>}
-          />
-          <NextMoves moves={ops.nextMoves} />
-        </Panel>
+        <div id={OPERATOR_QUEUE_ANCHOR} className="scroll-mt-24">
+          <Panel>
+            <MikeQueue />
+          </Panel>
+        </div>
 
         {/* ── 3 · Creative leaderboard ───────────────────────────────────── */}
         <Panel>
@@ -600,6 +602,8 @@ export default async function ReactorDashboard({
           </Link>
         </div>
       </div>
-    </>
+
+      <OperatorToast />
+    </OperatorProvider>
   )
 }
