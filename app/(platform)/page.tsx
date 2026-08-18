@@ -44,7 +44,7 @@ import { demoDataEnabled } from '@/lib/demo-mode'
 import { buildCreativeOps, type PulseCard, type WinIndexEntry } from '@/lib/creative-ops'
 import { resolveMetaDashboard } from '@/lib/meta-graph'
 import { money } from '@/lib/meta-data'
-import { listOutcomes, patternConfidence } from '@/lib/outcomes'
+import { listOutcomes } from '@/lib/outcomes'
 import { rangeLabel, rangeQuery, resolveRange } from '@/lib/date-range'
 import { cn } from '@/lib/utils'
 import { MetaSyncButton } from './MetaSyncButton'
@@ -217,10 +217,9 @@ export default async function ReactorDashboard({
     tz: first(params.tz),
   })
 
-  const [data, meta, memory, outcomes] = await Promise.all([
+  const [data, meta, outcomes] = await Promise.all([
     getDashboardData(),
     resolveMetaDashboard(range),
-    patternConfidence(),
     listOutcomes(12),
   ])
 
@@ -376,34 +375,6 @@ export default async function ReactorDashboard({
           />
         </div>
 
-        {memory.length > 0 && (
-          <Panel>
-            <PanelHeader
-              icon={<Brain size={16} />}
-              accent="pink"
-              title="Strategic Memory"
-              subtitle="Pattern confidence learned from graded outcomes — rises as proof accumulates"
-              accessory={<Pill tone="primary">{memory.length} patterns</Pill>}
-            />
-            <div className="grid grid-cols-1 gap-3 p-5 lg:grid-cols-2">
-              {memory.map((m) => (
-                <div key={m.pattern} className="rounded-lg border border-border bg-surface/40 p-3">
-                  <div className="mb-1.5 flex items-center justify-between gap-3">
-                    <span className="flex items-center gap-2 text-[14.5px] font-semibold text-white">
-                      <Sparkles size={13} className="text-glow" />
-                      {m.pattern}
-                    </span>
-                    <span className="text-[12.5px] text-white/60">
-                      {m.wins}/{m.total} wins ·{' '}
-                      <span className="font-semibold text-success">{m.confidence}% confidence</span>
-                    </span>
-                  </div>
-                  <ProgressBar value={m.confidence} />
-                </div>
-              ))}
-            </div>
-          </Panel>
-        )}
 
         {/* ── 5 · Creative lifecycle ─────────────────────────────────────── */}
         <Panel>

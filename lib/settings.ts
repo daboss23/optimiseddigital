@@ -11,6 +11,12 @@ import { getSupabaseAdmin, supabaseUrl } from '@/lib/supabase'
 
 export const SETTING_BRAND_LOGO = 'brand.logo'
 export const SETTING_RESEARCH_SOURCES = 'research.sources'
+/**
+ * What the platform's assistant is called in the dashboard headline, e.g.
+ * "Mike found 3 actions worth taking today." Unset on a fresh deployment, so
+ * the headline reads without a name rather than introducing a stranger.
+ */
+export const SETTING_ASSISTANT_NAME = 'assistant.name'
 
 function configured(): boolean {
   return (

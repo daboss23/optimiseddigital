@@ -443,7 +443,10 @@ export function buildCreativeOps(input: {
   return {
     pulse,
     nextMoves: nextMoves.slice(0, 3),
-    leaderboard: ads.slice(0, 5),
+    // Top 10 by spend, each with its real creative thumbnail. No evaluation
+    // gate on the LISTING — the ads are simply what is running, and hiding them
+    // until they qualify makes a connected account look empty.
+    leaderboard: ads.slice(0, 10),
     winning,
     lifecycle,
     learnings,

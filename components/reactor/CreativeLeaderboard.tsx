@@ -76,11 +76,14 @@ export function CreativeLeaderboard({
   interactiveStatus?: boolean
 }) {
   if (ads.length === 0) {
+    // Nothing here means nothing is running (or Meta is not connected) — not
+    // that ads were withheld for a weak sample. The thresholds still govern the
+    // VERDICT on each row; they never govern whether the row appears.
     return (
       <div className="grid place-items-center px-6 py-12 text-center">
         <p className="max-w-sm text-[14px] text-white/55">
-          No creatives have cleared the minimum evaluation window yet ({thresholdSummary(thresholds)}
-          ). Nothing is ranked from a weak sample.
+          No creatives to show yet. Connect your Meta ad account and your live ads appear here
+          automatically, ranked by spend.
         </p>
       </div>
     )

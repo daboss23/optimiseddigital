@@ -554,7 +554,7 @@ export async function resolveMetaDashboard(
       Promise.all(accountIds.map((id) => trendSeries(id, range).catch(() => []))),
     ])
 
-    const allAds = adRows.flat().sort((a, b) => num(b.spend) - num(a.spend)).slice(0, 6)
+    const allAds = adRows.flat().sort((a, b) => num(b.spend) - num(a.spend)).slice(0, 10)
     const priorById: Record<string, { costPerResult: number; ctr: number }> = {}
     for (const r of priorAdRows.flat()) {
       const results = resultMix(r).reduce((s, x) => s + x.count, 0)
