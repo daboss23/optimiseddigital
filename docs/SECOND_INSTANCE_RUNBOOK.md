@@ -52,6 +52,21 @@ Then collect: project URL, anon key, service role key.
 
 ---
 
+## Live test instance
+
+| | |
+|---|---|
+| Vercel project | `optimiseddigital` |
+| URL | https://optimiseddigital.vercel.app |
+| Branch | `claude/friend-test-deployment-am9gpk` |
+| Supabase | its own project, schema applied |
+
+Meta credentials are deliberately unset on this project. Connecting Meta means
+generating a System User token on HER OWN Business Manager — never reusing
+TPB's, which carries `ads_management` write access to TPB's ad account.
+
+---
+
 ## 2. New Vercel project
 
 - Import the same GitHub repo.
@@ -60,6 +75,10 @@ Then collect: project URL, anon key, service role key.
   deploy. Her production URL then builds from that branch.
 - Framework preset: Next.js. No build command overrides.
 - Her URL: `<project-name>.vercel.app`, or attach a subdomain you own.
+- The production-branch setting lives under **Settings → Build and Deployment →
+  Branch Tracking**, not on the Git page.
+- A branch Vercel has never built has nothing to "Redeploy" from — the first
+  build on it comes from a push to that branch, or from Create Deployment.
 
 ---
 
