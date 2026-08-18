@@ -135,20 +135,26 @@ export async function searchKnowledge(
         filter_builder: opts.builderId ?? null,
       })
       if (error) throw error
-      if (data && data.length) {
-        return (data as KnowledgeHit[]).map((d) => ({
-          system: d.system,
-          category: d.category ?? null,
-          title: d.title,
-          content: d.content,
-          similarity: d.similarity,
-        }))
-      }
+      // A successful search that matched nothing is an ANSWER, not a failure.
+      // Falling through to the demo corpus here would hand every tenant with an
+      // empty vault the curated stand-in knowledge of whoever seeded it — the
+      // agents would then ground a campaign in another company's frameworks and
+      // report it as retrieved evidence. An empty vault must retrieve nothing.
+      return (data ?? []).map((d: KnowledgeHit) => ({
+        system: d.system,
+        category: d.category ?? null,
+        title: d.title,
+        content: d.content,
+        similarity: d.similarity,
+      }))
     } catch (err) {
       console.error('Vector search failed, using demo knowledge:', err)
     }
   }
 
+  // Reached only when the knowledge layer is unconfigured (no Supabase/Voyage)
+  // or the query itself errored — i.e. demo mode, where the curated corpus is
+  // the intended experience.
   return demoSearch(query, k, opts.system)
 }
 

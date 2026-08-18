@@ -15,10 +15,17 @@ import { ingestKnowledge } from '@/lib/knowledge'
 import { getSupabaseAdmin, supabaseUrl } from '@/lib/supabase'
 import { parseModelJson } from '@/lib/parse'
 import { INTELLIGENCE_MODEL, ORCHESTRATOR_FALLBACK_MODEL } from '@/lib/models'
+import { angleOptions, offerOptions, NO_PREFERENCE } from '@/lib/reactor-inputs'
+import {
+  deriveStrategyOptions,
+  EMPTY_DERIVED,
+  type DerivedStrategyOptions,
+} from '@/lib/strategy-derive'
+import { invalidateTenant } from '@/lib/tenant'
 
 // ATLAS synthesises profiles with the bulk model (single-shot, cost-aware).
 const MODEL = INTELLIGENCE_MODEL
-const UA = 'Mozilla/5.0 (compatible; TPB-ATLAS/1.0; +https://theprobuilder.com)'
+const UA = 'Mozilla/5.0 (compatible; Reactor-ATLAS/1.0)'
 const FETCH_TIMEOUT = 12_000
 const MAX_REDIRECTS = 4
 const MAX_PAGES = 16
@@ -172,6 +179,12 @@ export interface WebsiteSummary {
   pages: WebsitePageInfo[]
   /** Logo + colours read from the homepage. Absent on sites scanned before this existed. */
   brandAssets?: BrandAssets
+  /**
+   * Campaign angles + offer types ATLAS derived for this business — appended to
+   * the seed menus in the brief, never replacing them. Absent on sites scanned
+   * before this existed.
+   */
+  strategyOptions?: DerivedStrategyOptions
   failedPages: { url: string; reason: string }[]
   /**
    * Profiles whose extraction failed outright, e.g. ["Offer", "Proof"]. Empty
@@ -1443,6 +1456,22 @@ export async function analyzeWebsite(
     })
   }
 
+  // Derive this business's own campaign angles + offer types from what was just
+  // extracted. Additive to the seed menus, and non-fatal: a failure here leaves
+  // the brief exactly as it was before.
+  emit({ type: 'progress', message: 'Deriving campaign angles and offers for this business…' })
+  const seedAngleLabels = angleOptions.filter((a) => a !== NO_PREFERENCE)
+  const seedOfferLabels = offerOptions.map((o) => o.label).filter((l) => l !== NO_PREFERENCE)
+  const strategyOptions = extraction.skipped
+    ? EMPTY_DERIVED
+    : await deriveStrategyOptions(profiles, domain, seedAngleLabels, seedOfferLabels)
+  if (strategyOptions.angles.length || strategyOptions.offers.length) {
+    emit({
+      type: 'progress',
+      message: `Added ${strategyOptions.angles.length} angle(s) and ${strategyOptions.offers.length} offer(s) for ${strategyOptions.businessCategory || domain}.`,
+    })
+  }
+
   emit({ type: 'progress', message: 'Embedding website knowledge…' })
 
   const now = new Date().toISOString()
@@ -1513,7 +1542,9 @@ export async function analyzeWebsite(
           preserved_profiles: preservedProfiles,
           // The brand's visual assets ride on the brand profile chunk, so
           // getConnectedWebsite can read them back without a dedicated row.
-          ...(meta.key === 'brand' ? { brand_assets: brandAssets } : {}),
+          ...(meta.key === 'brand'
+            ? { brand_assets: brandAssets, strategy_options: strategyOptions }
+            : {}),
         },
       })
       if (result.stored) stored = true
@@ -1535,6 +1566,7 @@ export async function analyzeWebsite(
     profiles,
     pages: scanned.map((p) => ({ url: p.url, title: p.title, pageType: p.pageType })),
     brandAssets,
+    strategyOptions,
     failedPages,
     extractionFailed: extraction.failed,
     extractionSkipped: extraction.skipped,
@@ -1542,6 +1574,10 @@ export async function analyzeWebsite(
     extractionBlocked: extraction.accountBlocked === true,
     preservedProfiles,
   }
+
+  // A new site means a new business identity — drop the cached tenant so the
+  // agent prompts stop describing whoever was connected before.
+  invalidateTenant()
 
   emit({ type: 'progress', message: 'Website Intelligence ready.' })
   emit({ type: 'complete', summary })
@@ -1580,6 +1616,7 @@ export async function getConnectedWebsite(): Promise<WebsiteSummary | null> {
 
   const profiles = emptyProfiles(domain, domain)
   let brandAssets: BrandAssets | undefined
+  let strategyOptions: DerivedStrategyOptions | undefined
   let extractionFailed: string[] = []
   let extractionSkipped = false
   let extractionError: string | undefined
@@ -1594,6 +1631,10 @@ export async function getConnectedWebsite(): Promise<WebsiteSummary | null> {
     const assets = row?.metadata?.brand_assets
     if (meta.key === 'brand' && assets && typeof assets === 'object') {
       brandAssets = assets as BrandAssets
+    }
+    const derived = row?.metadata?.strategy_options
+    if (meta.key === 'brand' && derived && typeof derived === 'object') {
+      strategyOptions = derived as DerivedStrategyOptions
     }
     // Extraction health was written onto every derived chunk by the scan that
     // produced it — read it off whichever profile row we have.
@@ -1645,6 +1686,7 @@ export async function getConnectedWebsite(): Promise<WebsiteSummary | null> {
     profiles,
     pages,
     brandAssets,
+    strategyOptions,
     failedPages: [],
     extractionFailed,
     extractionSkipped,

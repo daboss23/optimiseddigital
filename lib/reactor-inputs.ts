@@ -124,6 +124,12 @@ export interface ReactorInputs {
   brief: string
   angle: string
   angleIsAgentDecided: boolean
+  /**
+   * Strategic directive for the chosen angle. Only present when the angle came
+   * from ATLAS's read of the connected website — the seed angles are named
+   * categories that carry no directive of their own.
+   */
+  angleDirective?: string
   outputTypes: string[]
   outputTypesAgentDecided: boolean
   /** Selected aspect ratios per deliverable, e.g. { 'Video Creative': ['9:16'] }. */
@@ -222,7 +228,7 @@ export function customDirective(field: 'angle' | 'audience' | 'offer', value: st
 
 export const defaultBrandSettings: BrandSettings = {
   voiceGuidelines:
-    'Voice: confident, specific, builder-native — operator to operator. Speak the language of trades business owners. Lead with concrete numbers and named proof over adjectives. No hype, no fluff, no guru clichés.',
+    'Voice: confident, specific, and native to the brand’s own market — peer to peer. Speak the audience’s language as the connected website evidences it. Lead with concrete numbers and named proof over adjectives. No hype, no fluff, no guru clichés.',
   toneRules:
     'Tone: direct, grounded, respectful of the reader’s intelligence. Short sentences. Identity-led, not hustle-led. Every claim is earned with evidence. Engineered for performance.',
 }
@@ -356,9 +362,9 @@ export const awarenessOptions: DirectiveOption[] = [
   {
     label: 'Product-Aware',
     description:
-      'They know TPB and haven’t committed. Lead with proof, risk reversal and a reason to act now.',
+      'They know the brand and haven’t committed. Lead with proof, risk reversal and a reason to act now.',
     directive:
-      'The audience knows TPB and has considered it but hasn’t committed. Lead with proof — named member results, specific figures. Add risk reversal and a clear reason to act now. Minimise problem education.',
+      'The audience knows the brand and has considered it but hasn’t committed. Lead with proof — named customer results, specific figures. Add risk reversal and a clear reason to act now. Minimise problem education.',
   },
   {
     label: 'Most-Aware',
@@ -381,7 +387,7 @@ export const sophisticationOptions: DirectiveOption[] = [
     description:
       'The system reads the brief and market context and picks the sophistication stage for you.',
     directive:
-      'The user has no market-sophistication preference — infer the stage from the brief, the competitive context, and vault research. For coaching offers to trades business owners (a heavily pitched market), default to Stage 4–5: mechanism-led differentiation with identity-level identification.',
+      'The user has no market-sophistication preference — infer the stage from the brief, the competitive context, and vault research. In a heavily pitched market where the audience has seen many similar claims, default to Stage 4–5: mechanism-led differentiation with identity-level identification.',
   },
   {
     label: 'Stage 1 — First Claim',
@@ -429,12 +435,12 @@ export const audienceOptions: DirectiveOption[] = [
   {
     label: 'Cold — new audience',
     directive:
-      'Cold traffic with no prior exposure to TPB. The ad must earn attention from scratch, frame the problem, and build enough credibility to warrant the next step. Do not assume any familiarity with TPB or its methods.',
+      'Cold traffic with no prior exposure to the brand. The ad must earn attention from scratch, frame the problem, and build enough credibility to warrant the next step. Do not assume any familiarity with the brand or its methods.',
   },
   {
     label: 'Warm — saw content, didn’t convert',
     directive:
-      'Warm audience. Has seen TPB content or ads but hasn’t taken action. Has some familiarity. Lead with proof, deepen the mechanism, and address the most likely objection holding them back from acting.',
+      'Warm audience. Has seen the brand’s content or ads but hasn’t taken action. Has some familiarity. Lead with proof, deepen the mechanism, and address the most likely objection holding them back from acting.',
   },
   {
     label: 'Retargeting — visited sales page',
@@ -454,7 +460,7 @@ export const audienceOptions: DirectiveOption[] = [
   {
     label: 'Re-engagement — past member',
     directive:
-      'Former members or alumni who know TPB well. Lead with transformation, what’s new in the program, and what peers have achieved since they left. Nostalgia + social proof + FOMO.',
+      'Former customers or alumni who know the brand well. Lead with transformation, what’s new in the offer, and what peers have achieved since they left. Nostalgia + social proof + FOMO.',
   },
 ]
 

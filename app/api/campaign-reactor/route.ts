@@ -705,6 +705,13 @@ function buildInputBlocks(inputs: ReactorInputs | undefined): string {
       }`,
     )
 
+    // An ATLAS-derived angle carries its own strategic directive — the seed
+    // angles are bare category names, so this is only present when the angle
+    // was derived from the connected website.
+    if (inputs.angleDirective?.trim()) {
+      parts.push(`ANGLE DIRECTIVE: ${inputs.angleDirective.trim()}`)
+    }
+
     // Block 3 — Awareness Stage
     if (inputs.awarenessDirective) parts.push(`AWARENESS STAGE: ${inputs.awarenessDirective}`)
 

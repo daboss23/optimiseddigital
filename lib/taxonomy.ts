@@ -12,11 +12,12 @@
 // HOOK_STYLES / VISUAL_FORMATS / ASSET_TYPES are FORMAT-level — they describe how
 // a creative is built, not who it is for — so they are brand-agnostic and carry
 // over from proven ad-analytics taxonomies unchanged. PERSONA_SEEDS and
-// PAIN_POINT_SEEDS are TPB-SPECIFIC (trades/construction business owners being
-// coached, per lib/reactor-inputs.ts + lib/spark.ts CREATIVE_PATTERNS), and are
-// SEED lists — the configurator allows "+ add new" so they grow from real runs
-// rather than staying static. Derive new ones from campaign_outcomes, never the
-// demo brand's end-customer (Summit Build Co's home-buyers are the wrong layer).
+// PAIN_POINT_SEEDS are AUDIENCE-level, so they are business-specific by nature.
+// The lists below are only the FLOOR: `getTaxonomyLocks` puts the personas and
+// pains ATLAS derived from the connected website ahead of them, and real runs
+// grow the list further via campaign_outcomes and the configurator's "+ add
+// new". Always derive from the buyer the business actually sells to — never
+// that buyer's own end-customer, which is a layer down and the wrong audience.
 //
 // This module is PURE (data + types + string helpers) so it is safe to import
 // from client components (the isolation-mode configurator needs AXIS_META and the
@@ -79,10 +80,10 @@ export const ASSET_TYPES = [
 export type AssetType = (typeof ASSET_TYPES)[number]
 
 /**
- * Seed personas — TPB's trades/construction business-OWNER segments (the people
- * the coaching creative targets), NOT the demo brand's home-buyers. Extensible:
- * the configurator offers "+ add new" and real runs grow the list. Kept as a
- * plain string[] (not a locked union) precisely because it is meant to grow.
+ * Fallback personas, used until a website is connected. Business-OWNER segments
+ * for a coaching/services buyer — deliberately generic rather than tied to one
+ * vertical. Once ATLAS reads a site, its derived personas lead this list.
+ * Kept as a plain string[] (not a locked union) precisely because it grows.
  */
 export const PERSONA_SEEDS: readonly string[] = [
   'Solo Operator',
@@ -94,9 +95,10 @@ export const PERSONA_SEEDS: readonly string[] = [
 ]
 
 /**
- * Seed pain points — the coaching pains TPB's creative speaks to, mapped to the
- * angle/pattern vocabulary already in the app (Profit / Time Freedom / Systems /
- * Owner Identity → Profit Leak / No Time / Chaos / Stuck as Operator). Extensible.
+ * Fallback pain points, used until a website is connected — mapped to the seed
+ * angle vocabulary (Profit / Time Freedom / Systems / Owner Identity → Profit
+ * Leak / No Time / Chaos / Stuck as Operator). ATLAS-derived pains lead these
+ * once a site is read. Extensible.
  */
 export const PAIN_POINT_SEEDS: readonly string[] = [
   'Profit Leak',
@@ -407,7 +409,7 @@ export function visualDirectionBlock(visual: VisualDNA): string {
     for (const el of visual.elements) {
       lines.push(
         `    · ${el.element} — sits ${el.position} (${el.zone} zone); ${el.treatment}${
-          el.text ? `. Reference wording: "${el.text}" — match the ROLE and LENGTH, write fresh TPB copy.` : ''
+          el.text ? `. Reference wording: "${el.text}" — match the ROLE and LENGTH, write fresh on-brand copy.` : ''
         }`,
       )
     }
@@ -425,7 +427,7 @@ export function visualDirectionBlock(visual: VisualDNA): string {
   if (visual.designPrinciples.length) {
     lines.push(`- Design principles to preserve: ${visual.designPrinciples.join(' | ')}`)
   }
-  lines.push(`- Rebuilding it for TPB: ${visual.replicationNotes}`)
+  lines.push(`- Rebuilding it for this brand: ${visual.replicationNotes}`)
 
   lines.push(
     'HOW TO USE THIS:',
@@ -465,7 +467,7 @@ export function cloneBlock(reference: {
   }
 
   const lines = [
-    'CLONE REFERENCE — match this proven structure. Reproduce the STRUCTURE and ENERGY, never the exact words; write fresh TPB copy that follows the same beats.',
+    'CLONE REFERENCE — match this proven structure. Reproduce the STRUCTURE and ENERGY, never the exact words; write fresh on-brand copy that follows the same beats.',
   ]
   if (reference.summary) lines.push(`- What it is: ${reference.summary}`)
   if (reference.hook) lines.push(`- Hook approach: ${reference.hook}`)

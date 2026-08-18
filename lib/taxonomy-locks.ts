@@ -3,8 +3,9 @@
 // only the one under test. Reads tagged outcomes from ORACLE memory, weighting
 // by verdict + winner score; falls back to canonical defaults (demo / cold
 // start) so the configurator always has sensible locks. Also surfaces the
-// real persona/pain values discovered in history so the extensible axes offer
-// what TPB actually runs, not just the seed list. Never throws.
+// real persona/pain values discovered in history — together with the personas
+// and pains ATLAS derived from the connected website — so the extensible axes
+// offer what THIS business actually runs, not just the seed list. Never throws.
 
 import { getSupabaseAdmin } from '@/lib/supabase'
 import {
@@ -15,6 +16,7 @@ import {
   defaultLockedTaxonomy,
   type CreativeTaxonomy,
 } from '@/lib/taxonomy'
+import { getConnectedWebsite } from '@/lib/website-intelligence'
 
 const WIN = new Set(['winner', 'high_performer'])
 
@@ -47,12 +49,31 @@ function uniq(seed: readonly string[], discovered: string[]): string[] {
   return out
 }
 
+/**
+ * Personas / pains ATLAS derived from the connected website. These lead the
+ * menu because they describe THIS business's market; the built-in seeds stay
+ * behind them so the axis is never empty and nothing a user already picked
+ * disappears. Never throws — no site connected simply means no derived values.
+ */
+async function derivedAudienceAxes(): Promise<{ personas: string[]; pains: string[] }> {
+  try {
+    const site = await getConnectedWebsite()
+    return {
+      personas: site?.strategyOptions?.personas ?? [],
+      pains: site?.strategyOptions?.painPoints ?? [],
+    }
+  } catch {
+    return { personas: [], pains: [] }
+  }
+}
+
 export async function getTaxonomyLocks(): Promise<TaxonomyLocks> {
+  const derived = await derivedAudienceAxes()
   const base: TaxonomyLocks = {
     configured: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL),
     locks: defaultLockedTaxonomy(),
-    personaOptions: [...PERSONA_SEEDS],
-    painOptions: [...PAIN_POINT_SEEDS],
+    personaOptions: uniq(derived.personas, [...PERSONA_SEEDS]),
+    painOptions: uniq(derived.pains, [...PAIN_POINT_SEEDS]),
   }
   if (!base.configured) return base
 
@@ -106,8 +127,8 @@ export async function getTaxonomyLocks(): Promise<TaxonomyLocks> {
     return {
       configured: true,
       locks,
-      personaOptions: uniq(PERSONA_SEEDS, Array.from(personas)),
-      painOptions: uniq(PAIN_POINT_SEEDS, Array.from(pains)),
+      personaOptions: uniq(derived.personas, [...PERSONA_SEEDS, ...Array.from(personas)]),
+      painOptions: uniq(derived.pains, [...PAIN_POINT_SEEDS, ...Array.from(pains)]),
     }
   } catch (err) {
     console.error('getTaxonomyLocks failed:', err)
