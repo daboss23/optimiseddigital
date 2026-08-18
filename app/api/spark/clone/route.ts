@@ -24,6 +24,7 @@ import { INTELLIGENCE_MODEL } from '@/lib/models'
 import { parseModelJson } from '@/lib/parse'
 import { visualDirectionBlock } from '@/lib/taxonomy'
 import type { CreativeDNA, VisualDNA } from '@/lib/spark'
+import { getTenant, tenantDescriptor, tenantShortName } from '@/lib/tenant'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120
@@ -141,7 +142,7 @@ async function writeClone(
 
   const brand = getBrandMemory()
 
-  const system = `You are SPARK's clone designer for The Professional Builder. You are handed the DESIGN of an ad that has already won, and you rebuild it for a different business and offer.
+  const system = `You are SPARK's clone designer for ${tenantDescriptor(await getTenant())}. You are handed the DESIGN of an ad that has already won, and you rebuild it for a different business and offer.
 
 RULES:
 - Reproduce the STRUCTURE — zones, placement, palette roles, contrast device, eye flow. Never reproduce the reference's words, brand, product or logo.
@@ -236,9 +237,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // With no goal given, aim the clone at whoever this deployment is for —
+    // never at the business the platform was originally built for.
+    const tenant = await getTenant()
     const goal =
       body.goal?.trim() ||
-      'The Professional Builder — coaching that helps trades and construction business owners fix their margin and get their time back.'
+      [tenantShortName(tenant), tenant.positioning].filter(Boolean).join(' — ') ||
+      'the connected brand and its primary offer'
 
     const ratio = toRenderRatio(body.aspectRatio || visual.aspectRatio)
     const { copy, prompt, rationale } = await writeClone(visual, body.dna, goal)

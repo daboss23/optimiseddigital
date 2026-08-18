@@ -790,7 +790,7 @@ function FlowInner({ offerName, angle }: { offerName?: string; angle?: string })
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              prompt: `${prompt}\n\nRender as a premium Meta ad creative for The Professional Builder — photographic, high contrast, leave room for text overlay.`,
+              prompt: `${prompt}\n\nRender as a premium Meta ad creative — photographic, high contrast, leave room for text overlay.`,
               aspectRatio: ctrl.aspect,
               model,
             }),

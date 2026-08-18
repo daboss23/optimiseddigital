@@ -180,7 +180,7 @@ export async function structureTranscriptForVault(
       model: INTELLIGENCE_MODEL,
       max_tokens: 2000,
       system:
-        'You structure a raw YouTube caption transcript into clean, retrievable knowledge for a marketing/coaching knowledge base (The Professional Builder — coaching for trades/construction business owners). ' +
+        'You structure a raw YouTube caption transcript into clean, retrievable knowledge for a marketing knowledge base. ' +
         'Read the transcript as what was said, then read across it for structure: how it opens, how it holds attention, where it turns, how it closes. ' +
         'Output well-organized Markdown: a one-line summary, then the core ideas / frameworks / steps as tight bullet points, then any notable claims, numbers, or hooks worth reusing. ' +
         'Report only what the transcript actually states — never invent detail. Mark anything you infer as an inference. Do not add preamble; output only the structured notes.',

@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { accentClass, Pill } from '@/components/reactor/ui'
+import { useBrandIdentity } from '@/components/reactor/BrandMark'
 import { NEURO_AXES, NEURO_PASS_MARK, type NeuroScore } from '@/lib/reactor-inputs'
 import { useReactorRun, type Concept } from '@/components/campaign-reactor/ReactorRunContext'
 import {
@@ -257,17 +258,20 @@ function FacebookAdPreview({
 
   const above = primaryText.slice(0, fold)
   const below = primaryText.slice(fold)
+  // Advertiser identity comes from the connected website, so a fresh
+  // deployment previews as the customer's own brand rather than TPB's.
+  const identity = useBrandIdentity()
 
   return (
     <div className="overflow-hidden rounded-xl border border-white/10 bg-white shadow-[0_18px_44px_-22px_rgba(0,0,0,0.9)]">
       {/* Page header */}
       <div className="flex items-center gap-2.5 px-3.5 pb-2 pt-3">
         <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gradient-to-br from-primary to-cyan text-[11px] font-bold text-white">
-          TPB
+          {identity.initials}
         </span>
         <span className="min-w-0">
           <span className="block truncate text-[14px] font-semibold leading-tight text-[#050505]">
-            The Professional Builder
+            {identity.branded ? identity.name : 'Your brand'}
           </span>
           <span className="flex items-center gap-1 text-[12px] leading-tight text-[#65676B]">
             Sponsored · <Globe size={11} />

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { assertSafeUrl, fetchReadablePage } from '@/lib/website-intelligence'
 import { INTELLIGENCE_MODEL } from '@/lib/models'
+import { getTenant, tenantDescriptor } from '@/lib/tenant'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
       model: INTELLIGENCE_MODEL,
       max_tokens: 400,
       system:
-        "You are ATLAS, extracting campaign intelligence from a business website for The Professional Builder's creative reactor. Read the page and distil ONLY what a strategist needs to brief a paid-ads campaign. Be concrete and specific to THIS business. No preamble, no markdown headers.",
+        `You are ATLAS, extracting campaign intelligence from a business website for ${tenantDescriptor(await getTenant())}'s creative reactor. Read the page and distil ONLY what a strategist needs to brief a paid-ads campaign. Be concrete and specific to THIS business. No preamble, no markdown headers.`,
       messages: [
         {
           role: 'user',

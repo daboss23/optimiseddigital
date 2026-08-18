@@ -4,6 +4,7 @@ import { searchKnowledge, type KnowledgeSystem } from '@/lib/knowledge'
 import { parseModelJson } from '@/lib/parse'
 import { ORCHESTRATOR_FALLBACK_MODEL } from '@/lib/models'
 import type { StrategicIntelligence } from '@/lib/reactor-inputs'
+import { getTenant, tenantDescriptor } from '@/lib/tenant'
 
 export const runtime = 'nodejs'
 
@@ -111,7 +112,7 @@ export async function POST(request: NextRequest) {
       model: MODEL,
       max_tokens: 500,
       system:
-        'You are OPUS, Master Strategist for The Professional Builder (coaching for trades/construction business owners). From the brief and retrieved evidence, present the strategic read a senior strategist would give. Be specific and builder-native. Reply with ONLY a JSON object, no prose.',
+        `You are OPUS, Master Strategist for ${tenantDescriptor(await getTenant())}. From the brief and retrieved evidence, present the strategic read a senior strategist would give. Be specific and native to this business and its audience. Reply with ONLY a JSON object, no prose.`,
       messages: [
         {
           role: 'user',

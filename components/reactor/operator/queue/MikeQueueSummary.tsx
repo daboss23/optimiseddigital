@@ -64,7 +64,7 @@ export function MikeQueueSummary() {
       )}
     >
       <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
-        <div className="min-w-0 max-w-2xl">
+        <div className="min-w-0 max-w-3xl">
           <p className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.28em] text-glow/70">
             <span
               className={cn(
@@ -77,7 +77,7 @@ export function MikeQueueSummary() {
             {paused && <span className="text-white/40">· off the clock</span>}
           </p>
 
-          <h2 className="mt-2.5 font-display text-[26px] font-bold leading-[1.12] tracking-tight text-white sm:text-[30px] md:text-[34px]">
+          <h2 className="mt-2.5 font-display text-[21px] font-bold leading-[1.15] tracking-tight text-white sm:text-[24px] md:text-[27px]">
             {ready ? summary.headline : 'Reading the account…'}
           </h2>
           <p className="mt-2 text-[15px] leading-relaxed text-white/70">

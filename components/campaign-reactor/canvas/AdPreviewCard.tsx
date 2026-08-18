@@ -3,6 +3,7 @@
 import { Globe, ImageIcon, Loader2, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ComposedAd } from '@/lib/campaign-reactor/canvas'
+import { useBrandIdentity } from '@/components/reactor/BrandMark'
 
 /**
  * The live ad preview — a Meta-style ad assembled from the canvas selection and
@@ -29,6 +30,11 @@ export function AdPreviewCard({
   onGenerateImage?: () => void
 }) {
   const { theme } = ad
+  // The preview wears the connected brand, never the deployment's original
+  // customer — a fresh instance shows neutral placeholders until a site is read.
+  const identity = useBrandIdentity()
+  const advertiser = identity.branded ? identity.name : 'Your brand'
+  const advertiserDomain = identity.domain ?? 'yourdomain.com'
 
   return (
     <div className={cn('overflow-hidden rounded-xl border', theme.surface, theme.ring)}>
@@ -41,10 +47,10 @@ export function AdPreviewCard({
             theme.swatchTo,
           )}
         >
-          TPB
+          {identity.initials}
         </span>
         <div className="min-w-0">
-          <p className="truncate text-[12px] font-semibold text-white">The Professional Builder</p>
+          <p className="truncate text-[12px] font-semibold text-white">{advertiser}</p>
           <p className="flex items-center gap-1 text-[10px] text-white/45">
             Sponsored <span aria-hidden>·</span> <Globe size={9} />
           </p>
@@ -110,7 +116,7 @@ export function AdPreviewCard({
       {/* Link card footer — domain, headline, CTA */}
       <div className="flex items-center justify-between gap-3 px-3 py-3">
         <div className="min-w-0">
-          <p className="text-[9px] uppercase tracking-wider text-white/35">theprofessionalbuilder.com</p>
+          <p className="truncate text-[9px] uppercase tracking-wider text-white/35">{advertiserDomain}</p>
           {ad.headline ? (
             <p className={cn('line-clamp-2 text-[13px] font-bold leading-tight', theme.headline)}>
               {ad.headline.text}

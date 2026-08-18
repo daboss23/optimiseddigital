@@ -20,6 +20,8 @@ export interface BrandIdentity {
   name: string
   /** Absolute URL of the business's logo, when one was found. */
   logoUrl: string | null
+  /** Bare domain of the connected website, e.g. "acme.com". */
+  domain: string | null
   /** 2-3 letter monogram for the avatar chip. */
   initials: string
   /** True once a real business has been connected — the shell is white-labelled. */
@@ -34,6 +36,7 @@ export interface BrandIdentity {
 export const DEFAULT_IDENTITY: BrandIdentity = {
   name: 'Creative Reactor',
   logoUrl: null,
+  domain: null,
   initials: 'CR',
   branded: false,
   logoUploaded: false,

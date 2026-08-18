@@ -1134,7 +1134,7 @@ function describeError(err: unknown): string {
  * calls so it sits inside the cached prefix — any per-profile wording in here
  * would break the prefix match and cost five full-price reads of the corpus.
  */
-const ATLAS_EXTRACTION_RULES = `You are ATLAS, the Website Intelligence layer for The Professional Builder. You analyse a company's OWN public website and build structured intelligence profiles from it. CRITICAL: do not invent details — only include what the website actually states. Use [] for any list with no evidence and "Not confidently identified" for any unknown scalar. Treat audiences as company-stated (not verified research) and proof as company-provided claims. Be thorough: extract every distinct item the site supports, as short strings. Reply with ONLY a JSON object, no prose, no markdown fences.`
+const ATLAS_EXTRACTION_RULES = `You are ATLAS, the Website Intelligence layer. You analyse a company's OWN public website and build structured intelligence profiles from it. CRITICAL: do not invent details — only include what the website actually states. Use [] for any list with no evidence and "Not confidently identified" for any unknown scalar. Treat audiences as company-stated (not verified research) and proof as company-provided claims. Be thorough: extract every distinct item the site supports, as short strings. Reply with ONLY a JSON object, no prose, no markdown fences.`
 
 async function extractProfile(
   anthropic: Anthropic,

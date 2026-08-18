@@ -49,6 +49,7 @@ import {
 import { bestVisualReferenceFor } from '@/lib/visual-library'
 import { getConnectedWebsite } from '@/lib/website-intelligence'
 import { websiteBrandBrief } from '@/lib/brand-context'
+import { getTenant, tenantDescriptor } from '@/lib/tenant'
 
 // ORACLE strategic memory injected into OPUS at fire time — past winning
 // configurations matching the brief, so generation reuses what worked.
@@ -615,6 +616,8 @@ function coordinatorPrompt(
     preferredVideoModel?: string | null
     preferredImageModel?: string | null
   },
+  /** Who this deployment is for — resolved from the connected website. */
+  tenant: string,
 ): string {
   const metaAdsLine = caps.metaAds
     ? '\n- You also have live Meta Ads tools (meta_ads). Use them to ground concepts in what is actually performing — pull recent campaign/ad performance, top creatives, and spend before drafting.'
@@ -636,7 +639,7 @@ function coordinatorPrompt(
     ? `\n- For video output types (Video Concept, Founder Concept, Testimonial Concept): FIRST write a frame-by-frame production brief, THEN build the generate_video prompt FROM that brief, and attach the productionBrief to the submitted concept. Available models: ${caps.videoModels.join(', ')} — the generate_video tool description says what each one is for. Use text-to-video to direct a full scene (e.g. a real builder on-site, a member speaking to camera — whenever someone SPEAKS, pick a model with native audio or the ad ships silent; pick a cinematic-realism model for action and B-roll). Use image-to-video to animate a still from generate_image. Match conceptType to the concept you submit.${preferredLine}`
     : ''
 
-  return `You are OPUS — the Master Strategist of The Professional Builder's Creative Intelligence Command Center. You direct an intelligence network and synthesize it into launch-ready creative.
+  return `You are OPUS — the Master Strategist of ${tenant}'s Creative Intelligence Command Center. You direct an intelligence network and synthesize it into launch-ready creative.
 
 Your intelligence network:
 - ATLAS — Knowledge Intelligence: frameworks, SOPs, calls, and uploaded assets.
@@ -883,14 +886,16 @@ async function runIntelligence(
 
   const evidence = hits.length
     ? hits.map((h) => `[${h.system}] ${h.title}: ${h.content}`).join('\n\n')
-    : 'No stored knowledge yet — reason from builder-industry first principles.'
+    : 'No stored knowledge yet — reason from first principles about this business and its market.'
+
+  const tenantName = tenantDescriptor(await getTenant())
 
   const response = await withRetry(
     () =>
       anthropic.messages.create({
         model: INTELLIGENCE_MODEL,
         max_tokens: 700,
-        system: `You are ${agent.codename}, the ${agent.role} layer for The Professional Builder. Your mission: ${agent.mission} Given retrieved evidence, return 3-5 tight, specific bullet findings OPUS can build a campaign on. Cite the asset/pattern names. No preamble.`,
+        system: `You are ${agent.codename}, the ${agent.role} layer for ${tenantName}. Your mission: ${agent.mission} Given retrieved evidence, return 3-5 tight, specific bullet findings OPUS can build a campaign on. Cite the asset/pattern names. No preamble.`,
         messages: [
           { role: 'user', content: `Question: ${question}\n\nRetrieved evidence:\n${evidence}` },
         ],
@@ -1579,7 +1584,7 @@ export async function POST(request: NextRequest) {
             imageModels: availableImageModels,
             preferredVideoModel: body.videoModel ?? null,
             preferredImageModel: body.imageModel ?? null,
-          }) + inputBlocks + brandBlock + oracleMemory + cloneClause + isolationClause
+          }, tenantDescriptor(await getTenant())) + inputBlocks + brandBlock + oracleMemory + cloneClause + isolationClause
 
         // One test ID per isolation run — stamped onto every submitted concept so
         // outcomes attribute back to which single variable was under test.

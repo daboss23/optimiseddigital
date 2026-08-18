@@ -33,6 +33,7 @@ export async function getBrandIdentity(): Promise<BrandIdentity> {
         ? {
             ...DEFAULT_IDENTITY,
             logoUrl: uploaded.dataUrl,
+            domain: site?.domain ?? null,
             branded: true,
             logoUploaded: true,
             canUploadLogo,
@@ -43,6 +44,7 @@ export async function getBrandIdentity(): Promise<BrandIdentity> {
     return {
       name,
       logoUrl: uploaded?.dataUrl ?? site?.brandAssets?.logoUrl ?? null,
+      domain: site?.domain ?? null,
       initials: initialsFor(name),
       branded: true,
       logoUploaded: Boolean(uploaded?.dataUrl),
