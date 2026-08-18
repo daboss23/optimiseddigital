@@ -1513,9 +1513,26 @@ export async function analyzeWebsite(
   emit({ type: 'progress', message: 'Deriving campaign angles and offers for this business…' })
   const seedAngleLabels = angleOptions.filter((a) => a !== NO_PREFERENCE)
   const seedOfferLabels = offerOptions.map((o) => o.label).filter((l) => l !== NO_PREFERENCE)
-  const strategyOptions = extraction.skipped
+  let strategyOptions = extraction.skipped
     ? EMPTY_DERIVED
     : await deriveStrategyOptions(profiles, domain, seedAngleLabels, seedOfferLabels)
+  // Same rule the profiles follow: a run that derived nothing must not erase a
+  // run that did. A scan with no model key configured banks EMPTY_DERIVED, and
+  // that empty set then outlived the key being added — the brief kept showing
+  // seed offers only until something happened to re-derive them.
+  if (
+    !strategyOptions.angles.length &&
+    !strategyOptions.offers.length &&
+    previous?.domain === domain &&
+    previous.strategyOptions &&
+    (previous.strategyOptions.angles.length || previous.strategyOptions.offers.length)
+  ) {
+    strategyOptions = previous.strategyOptions
+    emit({
+      type: 'progress',
+      message: 'Kept the campaign angles and offers derived by the last scan — this run derived none.',
+    })
+  }
   if (strategyOptions.angles.length || strategyOptions.offers.length) {
     emit({
       type: 'progress',
