@@ -76,6 +76,7 @@ import {
   type CanvasNodeData,
   type CanvasNodeKind,
 } from '@/lib/creative-canvas/graph'
+import { useBrandIdentity } from '@/components/reactor/BrandMark'
 
 /* -------------------------------------------------------------------------- */
 /*  Props + shared context                                                    */
@@ -516,6 +517,7 @@ interface CanvasInnerProps {
 }
 
 function CanvasInner({ mode, concepts, active, strategy, imageModel, videoModel, onSendToStudio, onExit }: CanvasInnerProps) {
+  const identity = useBrandIdentity()
   const { imageFor, videoFor, creativeStateFor } = useReactorRun()
 
   const [nodes, setNodes, onNodesChange] = useNodesState<CanvasRFNode>([])
@@ -919,7 +921,12 @@ function CanvasInner({ mode, concepts, active, strategy, imageModel, videoModel,
       manualMediaRef.current.add(id)
       setMedia((m) => ({ ...m, [id]: { status: 'rendering', source: 'canvas' } }))
       try {
-        const prompt = `${node.data.prompt ?? node.data.text}\n\nRender as a premium Meta ad creative for The Professional Builder — photographic, on-site builder context, high contrast, room for text overlay.${strategy.angle ? ` Campaign angle: ${strategy.angle}.` : ''}`
+        // Industry-neutral on purpose: naming a company and an "on-site
+        // builder context" here composed every canvas render for one business,
+        // whatever the ad was actually for. The brand arrives via the node's
+        // own prompt and the ON BRAND block.
+        const brand = identity.branded ? ` for ${identity.name}` : ''
+        const prompt = `${node.data.prompt ?? node.data.text}\n\nRender as a premium Meta ad creative${brand} — photographic, true to the scene described, high contrast, room for text overlay.${strategy.angle ? ` Campaign angle: ${strategy.angle}.` : ''}`
         const res = await fetch('/api/generate-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -940,7 +947,7 @@ function CanvasInner({ mode, concepts, active, strategy, imageModel, videoModel,
         setMedia((m) => ({ ...m, [id]: { status: 'error', error: 'Render failed' } }))
       }
     },
-    [nodes, aspectRatio, imageModel, strategy.angle],
+    [nodes, aspectRatio, imageModel, strategy.angle, identity.branded, identity.name],
   )
 
   const pollVideo = useCallback(async (id: string, requestId: string, model?: string, responseUrl?: string) => {
@@ -1021,13 +1028,13 @@ function CanvasInner({ mode, concepts, active, strategy, imageModel, videoModel,
       const primaryText = [hook, message].filter(Boolean).join('\n\n') || src.text
       const pkg: MetaAdPackage = {
         primaryText,
-        headline: headline || src.adPackage?.headline || 'The Professional Builder',
+        headline: headline || src.adPackage?.headline || identity.name,
         description: src.adPackage?.description,
         cta: (src.adPackage?.cta ?? 'LEARN_MORE') as MetaCta,
       }
       onSendToStudio({ ...src, text: primaryText, adPackage: pkg })
     },
-    [laneConcepts, activeText, onSendToStudio],
+    [laneConcepts, activeText, onSendToStudio, identity.name],
   )
 
   /* ------------------------------ Keyboard shortcuts ------------------------ *

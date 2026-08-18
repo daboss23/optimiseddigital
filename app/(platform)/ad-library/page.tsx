@@ -18,7 +18,7 @@ export default async function AdLibraryPage() {
       <PageHeader
         system="06"
         title="Ad Library"
-        subtitle="Clone what works. Pull a proven winner from ORACLE or bring in an outside ad, edit its Creative DNA, and regenerate new TPB creative locked to that structure — then iterate one thing to find the next winner."
+        subtitle="Clone what works. Pull a proven winner from ORACLE or bring in an outside ad, edit its Creative DNA, and regenerate new on-brand creative locked to that structure — then iterate one thing to find the next winner."
         tagline="Engineered For Performance"
       />
       <AdLibrary initialWinners={winners} winnersLive={configured} />

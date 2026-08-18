@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ChevronRight } from 'lucide-react'
 import { navItems } from '@/lib/nav'
-import { ReactorLogo } from '@/components/reactor/ReactorLogo'
+import { BrandMark } from '@/components/reactor/BrandMark'
 import { cn } from '@/lib/utils'
 
 export function Sidebar() {
@@ -18,8 +18,8 @@ export function Sidebar() {
   return (
     <aside className="reactor-sidebar hidden w-[268px] shrink-0 flex-col lg:flex">
       <div className="reactor-brand px-5 py-5">
-        <Link href="/" className="block" aria-label="TPB Creative Reactor — Dashboard">
-          <ReactorLogo />
+        <Link href="/" className="block" aria-label="Dashboard">
+          <BrandMark />
         </Link>
       </div>
 

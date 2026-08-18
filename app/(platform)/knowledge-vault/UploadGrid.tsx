@@ -92,7 +92,7 @@ function UploadTile({ title, accept, icon }: { title: string; accept: string; ic
         // Image / video / other: ingest retrievable metadata (filename + context).
         // Pixel content isn't embedded by the text model — this makes the asset
         // findable by name, category, and angle.
-        content = `${route.category}: ${file.name}. Asset type: ${accept}. Filed under ${route.system} intelligence for The Professional Builder.`
+        content = `${route.category}: ${file.name}. Asset type: ${accept}. Filed under ${route.system} intelligence.`
       }
 
       const res = await fetch('/api/vault/ingest', {

@@ -45,7 +45,7 @@ export default function PlaybookPage() {
       <PageHeader
         system="04"
         title="Playbook"
-        subtitle="Everything that has already worked, decoded. The winning copy TPB has run — hook, headline, offer — and the reusable strategic patterns behind it. This is the proven material the reactor draws on."
+        subtitle="Everything that has already worked, decoded. The winning copy this business has run — hook, headline, offer — and the reusable strategic patterns behind it. This is the proven material the reactor draws on."
         tagline="Engineered For Performance."
       />
 

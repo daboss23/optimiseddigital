@@ -8,7 +8,7 @@ export default function RecommendationsPage() {
       <PageHeader
         system="07"
         title="Strategic Recommendations"
-        subtitle="The one question the platform answers: what should TPB create next? Each recommendation is engineered from everything that has already worked."
+        subtitle="The one question the platform answers: what should this business create next? Each recommendation is engineered from everything that has already worked."
         tagline="Engineered For Performance."
       />
 

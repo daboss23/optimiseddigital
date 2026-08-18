@@ -376,13 +376,64 @@ function extractBrandAssets(html: string, base: URL): BrandAssets {
   }
 
   // ---- Logo ----
+  // Order matters, and the old order was wrong: og:image came first, but that
+  // is a social SHARE CARD — a full-bleed rectangle with a headline baked in,
+  // never a logo. Dropped into a sidebar it renders as a random photo.
+  //
+  // Look for the real thing instead: the <img> a site puts in its header or
+  // nav, identified by "logo" appearing in its src, alt, class or id. Prefer
+  // SVG (always transparent, scales cleanly), then PNG (usually transparent),
+  // then everything else. og:image survives only as a late fallback, and the
+  // favicon last — small and square, but at least it is the brand's mark.
   let logoUrl: string | null = null
+  const imgTags = html.match(/<img[^>]*>/gi) ?? []
+  const logoImgs = imgTags.filter((t) => {
+    const haystack = [
+      attr(t, 'src') ?? '',
+      attr(t, 'alt') ?? '',
+      attr(t, 'class') ?? '',
+      attr(t, 'id') ?? '',
+    ]
+      .join(' ')
+      .toLowerCase()
+    // "logout" and "logo-slider" (client logo carousels) are not the brand mark.
+    if (/logout|logo[-_]?(slider|carousel|cloud|wall|strip)|client[-_]?logo|partner/.test(haystack)) {
+      return false
+    }
+    return /\blogo\b|logo[-_]/.test(haystack)
+  })
+
+  const srcOf = (tag: string): string | null => {
+    // Lazy-loaded marks keep the real file in data-src / srcset.
+    const raw = attr(tag, 'src') || attr(tag, 'data-src') || attr(tag, 'data-lazy-src')
+    if (raw && !raw.startsWith('data:')) return raw
+    const srcset = attr(tag, 'srcset') || attr(tag, 'data-srcset')
+    const first = srcset?.split(',')[0]?.trim().split(/\s+/)[0]
+    return first && !first.startsWith('data:') ? first : null
+  }
+
+  const byExtension = (ext: RegExp): string | null => {
+    for (const tag of logoImgs) {
+      const src = srcOf(tag)
+      if (src && ext.test(src.split('?')[0])) return src
+    }
+    return null
+  }
+
   const metaOg = html.match(/<meta[^>]+(?:property|name)\s*=\s*["']og:image["'][^>]*>/i)?.[0]
   const ogContent = metaOg ? attr(metaOg, 'content') : null
   const iconTags = html.match(/<link[^>]+rel\s*=\s*["'][^"']*icon[^"']*["'][^>]*>/gi) ?? []
   const apple = iconTags.find((t) => /apple-touch-icon/i.test(t))
   const anyIcon = iconTags[0]
-  const pick = ogContent || (apple && attr(apple, 'href')) || (anyIcon && attr(anyIcon, 'href')) || null
+
+  const pick =
+    byExtension(/\.svg$/i) ||
+    byExtension(/\.png$/i) ||
+    (logoImgs.length ? srcOf(logoImgs[0]) : null) ||
+    (apple && attr(apple, 'href')) ||
+    ogContent ||
+    (anyIcon && attr(anyIcon, 'href')) ||
+    null
   logoUrl = pick ? abs(pick) : `${base.origin}/favicon.ico`
 
   // ---- Colours ----

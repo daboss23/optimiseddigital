@@ -16,7 +16,7 @@ export default async function KnowledgeVaultPage() {
         <PageHeader
           system="01"
           title="Knowledge Vault"
-          subtitle="The heart of the platform. Ingest and store 20+ years of TPB's creative knowledge, frameworks, SOPs, and member wins."
+          subtitle="The heart of the platform. Ingest and store your creative knowledge, frameworks, SOPs, and client wins."
         />
         <Pill tone={stats.live ? 'success' : 'primary'}>
           <Database size={12} /> {stats.total.toLocaleString()}{' '}

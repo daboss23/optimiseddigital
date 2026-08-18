@@ -166,7 +166,7 @@ export default async function ResearchPage() {
             icon={<Building2 size={16} />}
             accent="emerald"
             title="Internal Sources"
-            subtitle="First-party signal from inside TPB — illustrative targets, not yet wired to live data"
+            subtitle="First-party signal from inside the business — illustrative targets, not yet wired to live data"
             accessory={<Pill tone="warning">Sample</Pill>}
           />
           <SourceList data={internalSources} />

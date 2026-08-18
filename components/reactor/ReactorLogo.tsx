@@ -2,7 +2,8 @@ import Image from 'next/image'
 import { cn } from '@/lib/utils'
 
 /* ----------------------------------------------------------------------------
-   ReactorLogo — the official TPB Creative Reactor lockup.
+   ReactorLogo — the product lockup, shown until a website is connected.
+   Once ATLAS reads a site, BrandMark renders that business's own logo instead.
    The artwork itself stays still; two glow layers sit exactly over the
    engine core (82.3% / 31% of the canvas) and breathe on a slow 3.6s loop —
    a soft orange-red halo plus a white-hot center, blended with `screen`

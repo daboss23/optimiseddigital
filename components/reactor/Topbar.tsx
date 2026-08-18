@@ -6,10 +6,11 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { Menu, X, Search, Bell, Atom, ChevronRight } from 'lucide-react'
 import { navItems } from '@/lib/nav'
-import { ReactorLogo } from '@/components/reactor/ReactorLogo'
+import { BrandMark, useBrandIdentity } from '@/components/reactor/BrandMark'
 import { cn } from '@/lib/utils'
 
 export function Topbar() {
+  const identity = useBrandIdentity()
   const pathname = usePathname()
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -71,8 +72,8 @@ export function Topbar() {
           {open ? <X size={18} /> : <Menu size={18} />}
         </button>
 
-        <Link href="/" className="shrink-0 lg:hidden" aria-label="TPB Creative Reactor — Dashboard">
-          <ReactorLogo size="sm" />
+        <Link href="/" className="shrink-0 lg:hidden" aria-label={`${identity.name} — Dashboard`}>
+          <BrandMark size="sm" />
         </Link>
 
         <div className="hidden items-center gap-3 lg:flex">
@@ -114,7 +115,7 @@ export function Topbar() {
             <span className="sm:hidden">New</span>
           </button>
           <div className="topbar-avatar hidden h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-primary to-cyan text-xs font-bold text-white sm:grid">
-            TPB
+            {identity.initials}
           </div>
         </div>
       </div>
@@ -144,7 +145,7 @@ export function Topbar() {
             className="mobile-nav-panel absolute inset-y-0 left-0 flex w-[86vw] max-w-[320px] flex-col outline-none"
           >
             <div className="flex items-center justify-between px-4 pb-3 pt-[max(1rem,env(safe-area-inset-top))]">
-              <ReactorLogo size="sm" />
+              <BrandMark size="sm" />
               <button
                 type="button"
                 onClick={() => setOpen(false)}

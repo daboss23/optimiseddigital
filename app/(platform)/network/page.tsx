@@ -59,7 +59,7 @@ export default async function AgentNetworkPage() {
       <PageHeader
         system="08"
         title="Agent Network"
-        subtitle="The living intelligence architecture behind TPB Creative Reactor. OPUS directs five intelligence layers; this is visibility into the machinery — not configuration."
+        subtitle="The living intelligence architecture behind the Creative Reactor. OPUS directs five intelligence layers; this is visibility into the machinery — not configuration."
         tagline={stats.live ? 'Live knowledge layer' : 'Demo intelligence — configure Supabase + Voyage for live counts'}
       />
 
