@@ -333,6 +333,38 @@ export function RadialGauge({
 
 /* --------------------------------- Pill ----------------------------------- */
 
+/**
+ * The state a panel shows before the platform has anything real to display.
+ *
+ * Deliberately keeps the panel's own heading and subtitle above it — a card
+ * with no data still has to explain what it is for and how to fill it, or the
+ * user has no idea what they are looking at or what to do next.
+ */
+export function EmptyState({
+  icon,
+  message,
+  hint,
+  action,
+}: {
+  icon?: ReactNode
+  /** One line: what is not here yet. */
+  message: string
+  /** One line: how the user makes it appear. */
+  hint?: string
+  action?: ReactNode
+}) {
+  return (
+    <div className="flex flex-col items-center gap-2 px-5 py-10 text-center">
+      {icon ? <span className="text-white/25">{icon}</span> : null}
+      <p className="text-sm text-white/55">{message}</p>
+      {hint ? (
+        <p className="max-w-md text-[12px] leading-relaxed text-white/35">{hint}</p>
+      ) : null}
+      {action ? <div className="mt-2">{action}</div> : null}
+    </div>
+  )
+}
+
 export function Pill({
   children,
   tone = 'default',

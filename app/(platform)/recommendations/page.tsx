@@ -1,6 +1,7 @@
 import { Target, Package, ArrowUpRight } from 'lucide-react'
-import { PageHeader, Panel, Pill, ProgressBar } from '@/components/reactor/ui'
+import { PageHeader, Panel, Pill, ProgressBar, EmptyState } from '@/components/reactor/ui'
 import { recommendations } from '@/lib/reactor-data'
+import { demoDataEnabled } from '@/lib/demo-mode'
 
 export default function RecommendationsPage() {
   return (
@@ -8,12 +9,22 @@ export default function RecommendationsPage() {
       <PageHeader
         system="07"
         title="Strategic Recommendations"
-        subtitle="The one question the platform answers: what should TPB create next? Each recommendation is engineered from everything that has already worked."
+        subtitle="The one question the platform answers: what should this business create next? Each recommendation is engineered from everything that has already worked."
         tagline="Engineered For Performance."
       />
 
+      {!demoDataEnabled() && (
+        <Panel>
+          <EmptyState
+            icon={<Target size={20} />}
+            message="No recommendations yet."
+            hint="Recommendations are engineered from what has already worked. Connect your website, ingest a few winning ads, and fire a campaign — the first recommendation appears once there is evidence to reason from."
+          />
+        </Panel>
+      )}
+
       <div className="space-y-4">
-        {recommendations.map((r) => (
+        {(demoDataEnabled() ? recommendations : []).map((r) => (
           <Panel key={r.campaign} hover className="overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
               <div className="flex items-center gap-3">

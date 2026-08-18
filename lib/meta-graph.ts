@@ -17,7 +17,7 @@ import {
   type ResultSlice,
   type TrendPoint,
 } from '@/lib/meta-data'
-import { buildDemoDashboard } from '@/lib/meta-demo'
+import { buildDemoDashboard, buildEmptyDashboard } from '@/lib/meta-demo'
 import {
   RESULT_LABELS,
   costLabel,
@@ -35,6 +35,7 @@ import {
   trendBuckets,
   type DateRange,
 } from '@/lib/date-range'
+import { demoDataEnabled } from '@/lib/demo-mode'
 
 /**
  * Meta Marketing API client (direct Graph API).
@@ -515,7 +516,9 @@ function aggregate(rows: InsightRow[]): InsightRow {
 export async function resolveMetaDashboard(
   range: DateRange = rangeFromPreset(DEFAULT_PRESET),
 ): Promise<MetaDashboard> {
-  const demo = buildDemoDashboard(range)
+  // With demo data off, "not connected" must read as an empty account rather
+  // than another company's spend and campaign names.
+  const demo = demoDataEnabled() ? buildDemoDashboard(range) : buildEmptyDashboard(range)
   if (!metaApiConfigured()) return demo
 
   const comparison = previousRange(range)
@@ -551,7 +554,7 @@ export async function resolveMetaDashboard(
       Promise.all(accountIds.map((id) => trendSeries(id, range).catch(() => []))),
     ])
 
-    const allAds = adRows.flat().sort((a, b) => num(b.spend) - num(a.spend)).slice(0, 6)
+    const allAds = adRows.flat().sort((a, b) => num(b.spend) - num(a.spend)).slice(0, 10)
     const priorById: Record<string, { costPerResult: number; ctr: number }> = {}
     for (const r of priorAdRows.flat()) {
       const results = resultMix(r).reduce((s, x) => s + x.count, 0)

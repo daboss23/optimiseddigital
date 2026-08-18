@@ -47,11 +47,26 @@ import type { ImageModelAvailability } from '@/lib/image/types'
 import { useReactorRun, type Concept } from '@/components/campaign-reactor/ReactorRunContext'
 import { CreativeLedger } from '@/components/campaign-reactor/CreativeLedger'
 import { CLONE_STORAGE_KEY, type CloneReference, type IsolateConfig } from '@/lib/taxonomy'
+import { takeDraft } from '@/lib/operator/draft'
 import type { CanvasMode } from '@/lib/creative-canvas/graph'
+import type { StrategyMenu, StrategyMenuOption } from '@/lib/strategy-menu'
 
 // The native campaign-angle choices (the No Preference / Custom sentinels are
-// added by the dropdown itself).
-const ANGLE_NAMES = winningAngles.map((a) => a.name)
+// added by the dropdown itself). These are the SEED menu — the floor that is
+// always present. Once a website is connected, /api/strategy-options returns
+// these same entries plus the angles and offers ATLAS derived for that
+// business, appended after the seeds.
+const SEED_ANGLES: StrategyMenuOption[] = winningAngles.map((a) => ({
+  label: a.name,
+  directive: '',
+}))
+
+const SEED_MENU: StrategyMenu = {
+  angles: SEED_ANGLES,
+  offers: offerOptions,
+  businessCategory: '',
+  hasDerived: false,
+}
 
 // A panel-shaped placeholder while a view surface streams in — never a blank
 // box, per the platform's empty/loading rules.
@@ -113,6 +128,18 @@ export function Workbench() {
       /* nothing to clone */
     }
   }, [])
+
+  // A draft approved on Mike Delight's queue, handed over the same rail. It
+  // arrives as a filled-in brief the operator still has to read and fire —
+  // approving a recommendation creates the draft, never the campaign.
+  useEffect(() => {
+    const draft = takeDraft()
+    if (!draft) return
+    setCampaignName(draft.campaignName)
+    setBrief(draft.brief)
+    setVariations(draft.variations)
+    setModalOpen(true)
+  }, [])
   // Output surface: the autonomous reactor (default hero), the Creative Canvas
   // (structured creative direction — shape, branch, and sequence the run), or
   // the Studio (finish one ad as a real Meta unit).
@@ -153,6 +180,9 @@ export function Workbench() {
   const [sophistication, setSophistication] = useState(sophisticationOptions[0])
   const [audience, setAudience] = useState(audienceOptions[0])
   const [offer, setOffer] = useState(offerOptions[0])
+  // The strategic menus. Starts as the seed lists so the brief is never blank,
+  // then widens with whatever ATLAS derived from the connected website.
+  const [menu, setMenu] = useState<StrategyMenu>(SEED_MENU)
   const [offerName, setOfferName] = useState('')
   // Custom strategic values — advanced users can supply an angle / audience /
   // offer the menu doesn't have. The custom text becomes the live value.
@@ -383,6 +413,26 @@ export function Workbench() {
     setOffer(v)
   }
 
+  // Load the strategic menus once. Seeds render immediately; if a website is
+  // connected, the response also carries the angles and offers ATLAS derived
+  // for that specific business, appended after the seeds. A failure here is
+  // silent by design — the seed menus are a complete, working brief on their own.
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/strategy-options')
+      .then((r) => r.json())
+      .then((res: { success?: boolean; data?: StrategyMenu }) => {
+        if (cancelled || !res?.success || !res.data) return
+        if (res.data.angles?.length && res.data.offers?.length) setMenu(res.data)
+      })
+      .catch(() => {
+        /* seed menus already rendered — nothing to recover */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   // Debounced: once the brief has enough substance, ask the agent for its picks
   // and apply them to any field the user hasn't manually set.
   useEffect(() => {
@@ -410,7 +460,7 @@ export function Workbench() {
           audience: audienceOptions.some((x) => x.label === suggestion.audience)
             ? suggestion.audience
             : undefined,
-          offer: offerOptions.some((x) => x.label === suggestion.offer)
+          offer: menu.offers.some((x) => x.label === suggestion.offer)
             ? suggestion.offer
             : undefined,
         })
@@ -438,7 +488,7 @@ export function Workbench() {
           if (o) setAudience(o)
         }
         if (!touched.has('offer')) {
-          const o = offerOptions.find((x) => x.label === suggestion.offer)
+          const o = menu.offers.find((x) => x.label === suggestion.offer)
           if (o) setOffer(o)
         }
         if (!touched.has('outputs') && suggestion.deliverables?.length) {
@@ -498,6 +548,7 @@ export function Workbench() {
       dimensions,
       models: deliverableModels,
       variations,
+      angleDirective: menu.angles.find((a) => a.label === angle)?.directive || undefined,
       awarenessStage: awareness.label,
       awarenessDirective: awareness.directive,
       sophisticationStage: sophistication.label,
@@ -673,7 +724,7 @@ export function Workbench() {
 
   // The four strategic dropdowns, each recommendation-aware and override-friendly.
   const angleField: StrategicField = {
-    options: ANGLE_NAMES,
+    options: menu.angles.map((a) => a.label),
     value: angleCustom || angle === NO_PREFERENCE ? '' : angle,
     recommended: rec.angle ?? null,
     recommendation: rec.angle
@@ -783,10 +834,10 @@ export function Workbench() {
   }
 
   const offerField: StrategicField = {
-    options: offerOptions.slice(1).map((o) => o.label),
-    value: offerCustom || offer === offerOptions[0] ? '' : offer.label,
+    options: menu.offers.slice(1).map((o) => o.label),
+    value: offerCustom || offer.label === NO_PREFERENCE ? '' : offer.label,
     recommended: rec.offer ?? null,
-    noPreference: offer === offerOptions[0] && !offerCustom,
+    noPreference: offer.label === NO_PREFERENCE && !offerCustom,
     thinking: suggesting,
     custom: {
       allowed: true,
@@ -797,7 +848,7 @@ export function Workbench() {
     },
     onSelect: (label) => {
       setOfferCustom(false)
-      const o = offerOptions.find((x) => x.label === label)
+      const o = menu.offers.find((x) => x.label === label)
       if (o) setOfferUser(o)
     },
     onCustom: () => {

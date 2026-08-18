@@ -15,10 +15,17 @@ import { ingestKnowledge } from '@/lib/knowledge'
 import { getSupabaseAdmin, supabaseUrl } from '@/lib/supabase'
 import { parseModelJson } from '@/lib/parse'
 import { INTELLIGENCE_MODEL, ORCHESTRATOR_FALLBACK_MODEL } from '@/lib/models'
+import { angleOptions, offerOptions, NO_PREFERENCE } from '@/lib/reactor-inputs'
+import {
+  deriveStrategyOptions,
+  EMPTY_DERIVED,
+  type DerivedStrategyOptions,
+} from '@/lib/strategy-derive'
+import { invalidateTenant } from '@/lib/tenant'
 
 // ATLAS synthesises profiles with the bulk model (single-shot, cost-aware).
 const MODEL = INTELLIGENCE_MODEL
-const UA = 'Mozilla/5.0 (compatible; TPB-ATLAS/1.0; +https://theprobuilder.com)'
+const UA = 'Mozilla/5.0 (compatible; Reactor-ATLAS/1.0)'
 const FETCH_TIMEOUT = 12_000
 const MAX_REDIRECTS = 4
 const MAX_PAGES = 16
@@ -172,6 +179,12 @@ export interface WebsiteSummary {
   pages: WebsitePageInfo[]
   /** Logo + colours read from the homepage. Absent on sites scanned before this existed. */
   brandAssets?: BrandAssets
+  /**
+   * Campaign angles + offer types ATLAS derived for this business — appended to
+   * the seed menus in the brief, never replacing them. Absent on sites scanned
+   * before this existed.
+   */
+  strategyOptions?: DerivedStrategyOptions
   failedPages: { url: string; reason: string }[]
   /**
    * Profiles whose extraction failed outright, e.g. ["Offer", "Proof"]. Empty
@@ -363,13 +376,64 @@ function extractBrandAssets(html: string, base: URL): BrandAssets {
   }
 
   // ---- Logo ----
+  // Order matters, and the old order was wrong: og:image came first, but that
+  // is a social SHARE CARD — a full-bleed rectangle with a headline baked in,
+  // never a logo. Dropped into a sidebar it renders as a random photo.
+  //
+  // Look for the real thing instead: the <img> a site puts in its header or
+  // nav, identified by "logo" appearing in its src, alt, class or id. Prefer
+  // SVG (always transparent, scales cleanly), then PNG (usually transparent),
+  // then everything else. og:image survives only as a late fallback, and the
+  // favicon last — small and square, but at least it is the brand's mark.
   let logoUrl: string | null = null
+  const imgTags = html.match(/<img[^>]*>/gi) ?? []
+  const logoImgs = imgTags.filter((t) => {
+    const haystack = [
+      attr(t, 'src') ?? '',
+      attr(t, 'alt') ?? '',
+      attr(t, 'class') ?? '',
+      attr(t, 'id') ?? '',
+    ]
+      .join(' ')
+      .toLowerCase()
+    // "logout" and "logo-slider" (client logo carousels) are not the brand mark.
+    if (/logout|logo[-_]?(slider|carousel|cloud|wall|strip)|client[-_]?logo|partner/.test(haystack)) {
+      return false
+    }
+    return /\blogo\b|logo[-_]/.test(haystack)
+  })
+
+  const srcOf = (tag: string): string | null => {
+    // Lazy-loaded marks keep the real file in data-src / srcset.
+    const raw = attr(tag, 'src') || attr(tag, 'data-src') || attr(tag, 'data-lazy-src')
+    if (raw && !raw.startsWith('data:')) return raw
+    const srcset = attr(tag, 'srcset') || attr(tag, 'data-srcset')
+    const first = srcset?.split(',')[0]?.trim().split(/\s+/)[0]
+    return first && !first.startsWith('data:') ? first : null
+  }
+
+  const byExtension = (ext: RegExp): string | null => {
+    for (const tag of logoImgs) {
+      const src = srcOf(tag)
+      if (src && ext.test(src.split('?')[0])) return src
+    }
+    return null
+  }
+
   const metaOg = html.match(/<meta[^>]+(?:property|name)\s*=\s*["']og:image["'][^>]*>/i)?.[0]
   const ogContent = metaOg ? attr(metaOg, 'content') : null
   const iconTags = html.match(/<link[^>]+rel\s*=\s*["'][^"']*icon[^"']*["'][^>]*>/gi) ?? []
   const apple = iconTags.find((t) => /apple-touch-icon/i.test(t))
   const anyIcon = iconTags[0]
-  const pick = ogContent || (apple && attr(apple, 'href')) || (anyIcon && attr(anyIcon, 'href')) || null
+
+  const pick =
+    byExtension(/\.svg$/i) ||
+    byExtension(/\.png$/i) ||
+    (logoImgs.length ? srcOf(logoImgs[0]) : null) ||
+    (apple && attr(apple, 'href')) ||
+    ogContent ||
+    (anyIcon && attr(anyIcon, 'href')) ||
+    null
   logoUrl = pick ? abs(pick) : `${base.origin}/favicon.ico`
 
   // ---- Colours ----
@@ -1443,6 +1507,22 @@ export async function analyzeWebsite(
     })
   }
 
+  // Derive this business's own campaign angles + offer types from what was just
+  // extracted. Additive to the seed menus, and non-fatal: a failure here leaves
+  // the brief exactly as it was before.
+  emit({ type: 'progress', message: 'Deriving campaign angles and offers for this business…' })
+  const seedAngleLabels = angleOptions.filter((a) => a !== NO_PREFERENCE)
+  const seedOfferLabels = offerOptions.map((o) => o.label).filter((l) => l !== NO_PREFERENCE)
+  const strategyOptions = extraction.skipped
+    ? EMPTY_DERIVED
+    : await deriveStrategyOptions(profiles, domain, seedAngleLabels, seedOfferLabels)
+  if (strategyOptions.angles.length || strategyOptions.offers.length) {
+    emit({
+      type: 'progress',
+      message: `Added ${strategyOptions.angles.length} angle(s) and ${strategyOptions.offers.length} offer(s) for ${strategyOptions.businessCategory || domain}.`,
+    })
+  }
+
   emit({ type: 'progress', message: 'Embedding website knowledge…' })
 
   const now = new Date().toISOString()
@@ -1513,7 +1593,9 @@ export async function analyzeWebsite(
           preserved_profiles: preservedProfiles,
           // The brand's visual assets ride on the brand profile chunk, so
           // getConnectedWebsite can read them back without a dedicated row.
-          ...(meta.key === 'brand' ? { brand_assets: brandAssets } : {}),
+          ...(meta.key === 'brand'
+            ? { brand_assets: brandAssets, strategy_options: strategyOptions }
+            : {}),
         },
       })
       if (result.stored) stored = true
@@ -1535,6 +1617,7 @@ export async function analyzeWebsite(
     profiles,
     pages: scanned.map((p) => ({ url: p.url, title: p.title, pageType: p.pageType })),
     brandAssets,
+    strategyOptions,
     failedPages,
     extractionFailed: extraction.failed,
     extractionSkipped: extraction.skipped,
@@ -1542,6 +1625,10 @@ export async function analyzeWebsite(
     extractionBlocked: extraction.accountBlocked === true,
     preservedProfiles,
   }
+
+  // A new site means a new business identity — drop the cached tenant so the
+  // agent prompts stop describing whoever was connected before.
+  invalidateTenant()
 
   emit({ type: 'progress', message: 'Website Intelligence ready.' })
   emit({ type: 'complete', summary })
@@ -1580,6 +1667,7 @@ export async function getConnectedWebsite(): Promise<WebsiteSummary | null> {
 
   const profiles = emptyProfiles(domain, domain)
   let brandAssets: BrandAssets | undefined
+  let strategyOptions: DerivedStrategyOptions | undefined
   let extractionFailed: string[] = []
   let extractionSkipped = false
   let extractionError: string | undefined
@@ -1594,6 +1682,10 @@ export async function getConnectedWebsite(): Promise<WebsiteSummary | null> {
     const assets = row?.metadata?.brand_assets
     if (meta.key === 'brand' && assets && typeof assets === 'object') {
       brandAssets = assets as BrandAssets
+    }
+    const derived = row?.metadata?.strategy_options
+    if (meta.key === 'brand' && derived && typeof derived === 'object') {
+      strategyOptions = derived as DerivedStrategyOptions
     }
     // Extraction health was written onto every derived chunk by the scan that
     // produced it — read it off whichever profile row we have.
@@ -1645,6 +1737,7 @@ export async function getConnectedWebsite(): Promise<WebsiteSummary | null> {
     profiles,
     pages,
     brandAssets,
+    strategyOptions,
     failedPages: [],
     extractionFailed,
     extractionSkipped,

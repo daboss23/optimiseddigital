@@ -1,18 +1,34 @@
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import { GlossTracker } from '@/components/reactor/GlossTracker'
+import { DEFAULT_IDENTITY } from '@/lib/brand-identity'
+import { getBrandIdentity } from '@/lib/brand-identity.server'
 
-export const metadata: Metadata = {
-  title: 'TPB Creative Reactor — Engineered For Performance',
-  description:
-    'Creative Intelligence Command Center for The Professional Builder. Engineered For Performance.',
-  // Installed to a phone home screen, the command center should open chromeless
-  // and dark rather than in a white-barred browser shell.
-  appleWebApp: {
-    capable: true,
-    title: 'TPB Reactor',
-    statusBarStyle: 'black-translucent',
-  },
+/**
+ * Title and description follow the connected business, so a deployment that has
+ * connected a website presents as that company's command center — in the tab,
+ * in a bookmark, and on a phone home screen. Falls back to the product name
+ * before any site is connected. Never throws: branding must not be able to fail
+ * the root layout.
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  let name = DEFAULT_IDENTITY.name
+  try {
+    name = (await getBrandIdentity()).name
+  } catch {
+    /* keep the product default */
+  }
+  return {
+    title: `${name} — Creative Intelligence Command Center`,
+    description: `Creative Intelligence Command Center for ${name}. Engineered For Performance.`,
+    // Installed to a phone home screen, the command center should open
+    // chromeless and dark rather than in a white-barred browser shell.
+    appleWebApp: {
+      capable: true,
+      title: name,
+      statusBarStyle: 'black-translucent',
+    },
+  }
 }
 
 export const viewport: Viewport = {

@@ -405,7 +405,7 @@ const SYSTEMS: { value: KnowledgeSystem; label: string }[] = [
   { value: 'copy', label: 'Copy · Hook / Headline' },
   { value: 'creative', label: 'Creative' },
   { value: 'design', label: 'Ad Design DNA' },
-  { value: 'transformation', label: 'Member Win' },
+  { value: 'transformation', label: 'Client Win' },
   { value: 'research', label: 'Research' },
   { value: 'pattern', label: 'Pattern' },
   { value: 'learning', label: 'Learning' },
@@ -905,7 +905,7 @@ export function VaultManager({ initialStats }: { initialStats: Stats }) {
             <p className="rounded-lg border border-border bg-surface/40 px-3 py-2 text-[11px] text-white/40">
               Showing the curated demo corpus. Configure Supabase + Voyage and run
               <span className="font-mono text-white/60"> supabase/schema.reactor.sql</span> to store and
-              search TPB&apos;s real knowledge here.
+              search your real knowledge here.
             </p>
           )}
 
@@ -1023,7 +1023,7 @@ export function VaultManager({ initialStats }: { initialStats: Stats }) {
           subtitle={
             categoriesLive
               ? "Live breakdown of what's actually stored in the reactor"
-              : 'Everything TPB knows, organized for the reactor'
+              : 'Everything the business knows, organized for the reactor'
           }
           accessory={
             <Pill tone={categoriesLive ? 'success' : 'default'}>

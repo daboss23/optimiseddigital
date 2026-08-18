@@ -23,6 +23,7 @@ import { RESULT_LABELS } from '@/lib/creative-status'
 import { money, type MetaAd, type MetaDashboard } from '@/lib/meta-data'
 import { rangeLabel, rangeQuery, type DateRange } from '@/lib/date-range'
 import type { Accent } from '@/components/reactor/ui'
+import { demoDataEnabled } from '@/lib/demo-mode'
 
 /* ------------------------------ pulse cards -------------------------------- */
 
@@ -41,24 +42,19 @@ export interface PulseCard {
   href: string
 }
 
-/* ------------------------------- next moves -------------------------------- */
+/* ----------------------------------------------------------------------------
+   NOTE — "Your Next Moves" no longer lives here.
 
-export type MoveType = 'Scale' | 'Iterate' | 'Replace' | 'Explore'
+   It used to be four hand-written recommendations composed in this file, and
+   they were the same four every morning regardless of what the account did.
+   The section is now driven by the operator pipeline in `lib/operator/`, where
+   a recommendation only exists because a rule cleared against a complete
+   delivery window, carries the structured evidence that produced it, and can be
+   approved, edited, dismissed or snoozed with the decision recorded.
 
-export interface NextMove {
-  type: MoveType
-  /** The direct recommendation, written as an instruction. */
-  title: string
-  /** Why — one plain sentence. */
-  rationale: string
-  /** Comparison + sample size + window. Never a bare claim. */
-  evidence: string[]
-  confidence: Confidence
-  primaryCta: { label: string; href: string }
-  /** Deep link into Meta Intelligence with the creative filter preserved. */
-  evidenceHref: string
-  accent: Accent
-}
+   Deliberately nothing here replaces it. A hardcoded fallback sitting beside a
+   computed board is how the computed one quietly stops being trusted.
+---------------------------------------------------------------------------- */
 
 /* ---------------------------- winning intelligence -------------------------- */
 
@@ -120,7 +116,6 @@ export interface IntelligenceBase {
 
 export interface CreativeOps {
   pulse: PulseCard[]
-  nextMoves: NextMove[]
   leaderboard: MetaAd[]
   winning: WinningIntelligence
   lifecycle: LifecycleStage[]
@@ -151,199 +146,19 @@ function countBy(ads: MetaAd[], statuses: CreativeStatus[]): number {
   return ads.filter((a) => statuses.includes(a.status)).length
 }
 
-function confidenceFrom(tests: number, spend: number): Confidence {
-  if (tests >= 8 && spend >= 20000) return 'High'
-  if (tests >= 4 && spend >= 5000) return 'Medium'
-  return 'Low'
-}
-
 function resultWord(type: PrimaryResultType): string {
   return RESULT_LABELS[type].cost
 }
 
 /* ------------------------------- construction ------------------------------ */
 
-export function buildCreativeOps(input: {
-  meta: MetaDashboard
-  /** Concepts approved and waiting to be produced. */
-  conceptsReady: number
-  /** Undismissed recommendations. */
-  actionsRequired: number
-  /** Assets currently rendering / in production. */
-  inProduction: number
-  vault: { assets: number; frameworks: number; sops: number; updatedLabel: string }
-}): CreativeOps {
-  const { meta, conceptsReady, actionsRequired, inProduction, vault } = input
-  const range = meta.range
-  const window = rangeLabel(range).toLowerCase()
-  const ads = meta.topAds
-  const type = meta.primaryResultType
-  const cost = resultWord(type)
-
-  const testing = countBy(ads, ['testing', 'insufficient_data'])
-  const emerging = countBy(ads, ['emerging_winner'])
-  const confirmed = countBy(ads, ['confirmed_winner', 'scaling'])
-  const fatigue = countBy(ads, ['fatiguing'])
-
-  const pulse: PulseCard[] = [
-    {
-      key: 'testing',
-      label: 'Currently testing',
-      count: testing,
-      delta: '+2',
-      trend: 'up',
-      state: testing > 0 ? 'Gathering data' : 'Nothing in test',
-      definition: `Creatives still below the evaluation threshold (${meta.thresholds.minSpend.toLocaleString()} spend, ${meta.thresholds.minDays} days, ${meta.thresholds.minResults} results). No conclusion is drawn until all three clear.`,
-      accent: 'amber',
-      href: metaLink(range, 'testing'),
-    },
-    {
-      key: 'emerging',
-      label: 'Emerging winners',
-      count: emerging,
-      delta: '+1',
-      trend: 'up',
-      state: emerging > 0 ? 'Confidence incomplete' : 'None yet',
-      definition: `Inside the ${cost} target but without enough results to confirm. Treat as a promising signal, not a decision.`,
-      accent: 'cyan',
-      href: metaLink(range, 'emerging_winner'),
-    },
-    {
-      key: 'confirmed',
-      label: 'Confirmed winners',
-      count: confirmed,
-      delta: '+1',
-      trend: 'up',
-      state: confirmed > 0 ? 'Ready to scale' : 'None confirmed',
-      definition: `Meets the configured ${cost} target with enough spend, time and results behind it to trust.`,
-      accent: 'emerald',
-      href: metaLink(range, 'confirmed_winner'),
-    },
-    {
-      key: 'fatigue',
-      label: 'Fatigue risks',
-      count: fatigue,
-      delta: fatigue > 0 ? '+1' : '0',
-      trend: fatigue > 0 ? 'down' : 'flat',
-      state: fatigue > 0 ? 'Needs a successor' : 'Delivery healthy',
-      definition: `Cost per result rising while outbound CTR falls, with frequency at or above ${meta.thresholds.fatigueFrequency}.`,
-      accent: 'pink',
-      href: metaLink(range, 'fatiguing'),
-    },
-    {
-      key: 'concepts',
-      label: 'Concepts ready',
-      count: conceptsReady,
-      delta: '+4',
-      trend: 'up',
-      state: conceptsReady > 0 ? 'Approved, awaiting production' : 'Queue empty',
-      definition: 'Approved concepts sitting in the ledger, ready to generate or produce.',
-      accent: 'blue',
-      href: reactorLink('produce'),
-    },
-    {
-      key: 'actions',
-      label: 'Actions required',
-      count: actionsRequired,
-      delta: '0',
-      trend: 'flat',
-      state: actionsRequired > 0 ? 'Awaiting your call' : 'All clear',
-      definition: 'Recommendations that have not been approved or dismissed.',
-      accent: 'violet',
-      href: '/recommendations',
-    },
-  ]
-
-  /* ------------------------------ next moves ------------------------------ */
-
-  const best = [...ads]
-    .filter((a) => a.status === 'scaling' || a.status === 'confirmed_winner')
-    .sort((a, b) => a.costPerResult - b.costPerResult)[0]
-  const worst = [...ads].filter((a) => a.status === 'fatiguing' || a.status === 'loser')[0]
-  const rising = ads.find((a) => a.status === 'emerging_winner') ?? ads[1]
-
-  const cohortCost =
-    ads.length > 0
-      ? ads.reduce((s, a) => s + a.costPerResult, 0) / ads.length
-      : (meta.thresholds.targetCostPerResult ?? 0)
-
-  const nextMoves: NextMove[] = []
-
-  if (best) {
-    const lift = cohortCost > 0 ? Math.round(((cohortCost - best.costPerResult) / cohortCost) * 100) : 0
-    nextMoves.push({
-      type: 'Scale',
-      title: `Scale ${best.name}`,
-      rationale: `It is the cheapest confirmed source of ${RESULT_LABELS[best.resultType].many} on the account and delivery is still healthy.`,
-      evidence: [
-        `$${best.costPerResult.toFixed(0)} ${RESULT_LABELS[best.resultType].cost} vs $${cohortCost.toFixed(0)} across ${ads.length} comparable creatives (${window})`,
-        `${lift}% lower cost per result in this sample`,
-        `${best.primaryResults.toLocaleString()} results · ${money(best.spend)} spend over ${window}`,
-        `Frequency ${best.frequency.toFixed(1)} — headroom before fatigue`,
-      ],
-      confidence: confidenceFrom(ads.length, best.spend),
-      primaryCta: { label: 'Open evidence', href: metaLink(range, undefined, best.id) },
-      evidenceHref: metaLink(range, undefined, best.id),
-      accent: 'emerald',
-    })
-  }
-
-  if (rising) {
-    nextMoves.push({
-      type: 'Iterate',
-      title: `Create 3 hook variations from ${rising.name}`,
-      rationale:
-        'The pattern is working but has only been expressed one way. Controlled hook variants isolate what is doing the work.',
-      evidence: [
-        `$${rising.costPerResult.toFixed(0)} ${RESULT_LABELS[rising.resultType].cost} against a $${meta.thresholds.targetCostPerResult ?? '—'} target`,
-        `${rising.primaryResults.toLocaleString()} results · ${money(rising.spend)} spend over ${window}`,
-        `Only 1 hook tested on this angle so far`,
-      ],
-      confidence: 'Medium',
-      primaryCta: { label: 'Generate variations', href: reactorLink('variations', rising.id) },
-      evidenceHref: metaLink(range, undefined, rising.id),
-      accent: 'cyan',
-    })
-  }
-
-  if (worst) {
-    nextMoves.push({
-      type: 'Replace',
-      title: `Replace ${worst.name}`,
-      rationale: 'Efficiency is deteriorating with delivery signals confirming fatigue. A successor keeps the angle alive.',
-      evidence: [
-        worst.statusReason,
-        `${money(worst.spend)} spend · ${worst.primaryResults.toLocaleString()} results over ${window} · ${worst.daysLive} days live (lifecycle)`,
-      ],
-      confidence: 'High',
-      primaryCta: { label: 'Create successor', href: reactorLink('successor', worst.id) },
-      evidenceHref: metaLink(range, undefined, worst.id),
-      accent: 'pink',
-    })
-  }
-
-  // Explore only fills a remaining slot — proven moves always outrank a guess.
-  if (nextMoves.length < 3) {
-    nextMoves.push({
-      type: 'Explore',
-      title: 'Combine Time Freedom with member proof',
-      rationale:
-        'Time Freedom performs on cold traffic and member-proof performs on warm, but the combination has never been tested.',
-      evidence: [
-        'Time Freedom: 3 winners from 9 tests, all founder-led',
-        `Member proof: strongest hold rate of any creative structure over ${window}`,
-        '0 creatives have carried both — untested, not failed',
-      ],
-      confidence: 'Low',
-      primaryCta: { label: 'Build concept', href: reactorLink('explore') },
-      evidenceHref: metaLink(range),
-      accent: 'violet',
-    })
-  }
-
-  /* -------------------------- winning intelligence ------------------------- */
-
-  const winning: WinningIntelligence = {
+/**
+ * The seeded Winning Intelligence panel — illustrative win indexes, test counts
+ * and spend. Only reachable with NEXT_PUBLIC_REACTOR_DEMO_DATA=1; a live
+ * deployment computes these from graded outcomes or shows nothing.
+ */
+function buildDemoWinning(cost: string): WinningIntelligence {
+  return {
     angles: [
       { name: 'Profit', winIndex: 94, tests: 11, winners: 4, lift: `23% lower ${cost}`, spendAnalysed: 31400, confidence: 'High', comparedWith: 'lead campaigns, cold + lookalike audiences', accent: 'emerald' },
       { name: 'Systems', winIndex: 88, tests: 9, winners: 3, lift: `17% lower ${cost}`, spendAnalysed: 24900, confidence: 'High', comparedWith: 'lead campaigns, cold audiences', accent: 'cyan' },
@@ -367,6 +182,127 @@ export function buildCreativeOps(input: {
       { name: 'Webinar / Masterclass', winIndex: 74, tests: 5, winners: 1, lift: '$44 cost per registration', spendAnalysed: 12600, confidence: 'Low', comparedWith: 'its own target, not other offers', accent: 'amber' },
     ],
   }
+}
+
+/** The seeded learning-loop entries. Demo only, for the same reason. */
+function buildDemoLearnings(cost: string, window: string): LearningEntry[] {
+  return [
+    {
+      finding: 'Founder-led video is associated with a materially lower cost per lead than static on cold traffic.',
+      evidence: `26% lower ${cost} across 12 comparable creatives · ${money(42800)} analysed · ${window}`,
+      confidence: 'High',
+      agentResponse: 'OPUS now defaults cold-prospecting concepts to founder-led delivery unless the brief overrides it.',
+      observedResult: `4 of the 5 creatives generated under this rule are inside target ${cost}.`,
+      influencedCreatives: 5,
+    },
+    {
+      finding: 'Hooks that open with a specific dollar figure outperformed vague claims in this sample.',
+      evidence: `21% lower ${cost} across 14 comparable creatives · ${money(38600)} analysed · ${window}`,
+      confidence: 'High',
+      agentResponse: 'A real client figure is now required in the hook or headline of every Profit-angle concept.',
+      observedResult: 'Too early — 3 creatives live under 5 days.',
+      influencedCreatives: 3,
+    },
+    {
+      finding: 'Reels placement looks stronger than Feed for UGC — a promising pattern, not a conclusion.',
+      evidence: `19% lower ${cost} across 6 comparable creatives · ${money(9400)} analysed · ${window}`,
+      confidence: 'Low',
+      agentResponse: 'No rule change. Below the confidence bar required to alter agent behaviour — flagged for a controlled test.',
+      influencedCreatives: 0,
+    },
+  ]
+}
+
+export function buildCreativeOps(input: {
+  meta: MetaDashboard
+  /** Concepts approved and waiting to be produced. */
+  conceptsReady: number
+  /** Assets currently rendering / in production. */
+  inProduction: number
+  vault: { assets: number; frameworks: number; sops: number; updatedLabel: string }
+}): CreativeOps {
+  const { meta, conceptsReady, inProduction, vault } = input
+  const range = meta.range
+  const window = rangeLabel(range).toLowerCase()
+  const ads = meta.topAds
+  const type = meta.primaryResultType
+  const cost = resultWord(type)
+
+  const testing = countBy(ads, ['testing', 'insufficient_data'])
+  const emerging = countBy(ads, ['emerging_winner'])
+  const confirmed = countBy(ads, ['confirmed_winner', 'scaling'])
+  const fatigue = countBy(ads, ['fatiguing'])
+
+  const pulse: PulseCard[] = [
+    {
+      key: 'testing',
+      label: 'Currently testing',
+      count: testing,
+      delta: testing > 0 ? '+2' : '0',
+      trend: testing > 0 ? 'up' : 'flat',
+      state: testing > 0 ? 'Gathering data' : 'Nothing in test',
+      definition: `Creatives still below the evaluation threshold (${meta.thresholds.minSpend.toLocaleString()} spend, ${meta.thresholds.minDays} days, ${meta.thresholds.minResults} results). No conclusion is drawn until all three clear.`,
+      accent: 'amber',
+      href: metaLink(range, 'testing'),
+    },
+    {
+      key: 'emerging',
+      label: 'Emerging winners',
+      count: emerging,
+      delta: emerging > 0 ? '+1' : '0',
+      trend: emerging > 0 ? 'up' : 'flat',
+      state: emerging > 0 ? 'Confidence incomplete' : 'None yet',
+      definition: `Inside the ${cost} target but without enough results to confirm. Treat as a promising signal, not a decision.`,
+      accent: 'cyan',
+      href: metaLink(range, 'emerging_winner'),
+    },
+    {
+      key: 'confirmed',
+      label: 'Confirmed winners',
+      count: confirmed,
+      delta: confirmed > 0 ? '+1' : '0',
+      trend: confirmed > 0 ? 'up' : 'flat',
+      state: confirmed > 0 ? 'Ready to scale' : 'None confirmed',
+      definition: `Meets the configured ${cost} target with enough spend, time and results behind it to trust.`,
+      accent: 'emerald',
+      href: metaLink(range, 'confirmed_winner'),
+    },
+    {
+      key: 'fatigue',
+      label: 'Fatigue risks',
+      count: fatigue,
+      delta: fatigue > 0 ? '+1' : '0',
+      trend: fatigue > 0 ? 'down' : 'flat',
+      state: fatigue > 0 ? 'Needs a successor' : 'Delivery healthy',
+      definition: `Cost per result rising while outbound CTR falls, with frequency at or above ${meta.thresholds.fatigueFrequency}.`,
+      accent: 'pink',
+      href: metaLink(range, 'fatiguing'),
+    },
+    {
+      key: 'concepts',
+      label: 'Concepts ready',
+      count: conceptsReady,
+      delta: conceptsReady > 0 ? '+4' : '0',
+      trend: conceptsReady > 0 ? 'up' : 'flat',
+      state: conceptsReady > 0 ? 'Approved, awaiting production' : 'Queue empty',
+      definition: 'Approved concepts sitting in the ledger, ready to generate or produce.',
+      accent: 'blue',
+      href: reactorLink('produce'),
+    },
+  ]
+
+  /* -------------------------- winning intelligence ------------------------- */
+
+  // Every figure below is a seeded illustration — win indexes, test counts and
+  // spend for campaigns that may never have run on this account. Real ones
+  // arrive once outcomes are graded, so on a live deployment the panels render
+  // their own empty state instead.
+  const winning: WinningIntelligence = demoDataEnabled()
+    ? buildDemoWinning(cost)
+    : { angles: [], hooks: [], formats: [], offers: [] }
+
+  const learnings: LearningEntry[] = demoDataEnabled() ? buildDemoLearnings(cost, window) : []
+
 
   /* -------------------------------- lifecycle ------------------------------ */
 
@@ -380,31 +316,6 @@ export function buildCreativeOps(input: {
 
   /* ------------------------------ learning loop ---------------------------- */
 
-  const learnings: LearningEntry[] = [
-    {
-      finding: 'Founder-led video is associated with a materially lower cost per lead than static on cold traffic.',
-      evidence: `26% lower ${cost} across 12 comparable creatives · ${money(42800)} analysed · ${window}`,
-      confidence: 'High',
-      agentResponse: 'OPUS now defaults cold-prospecting concepts to founder-led delivery unless the brief overrides it.',
-      observedResult: `4 of the 5 creatives generated under this rule are inside target ${cost}.`,
-      influencedCreatives: 5,
-    },
-    {
-      finding: 'Hooks that open with a specific dollar figure outperformed vague profit claims in this sample.',
-      evidence: `21% lower ${cost} across 14 comparable creatives · ${money(38600)} analysed · ${window}`,
-      confidence: 'High',
-      agentResponse: 'A real member figure is now required in the hook or headline of every Profit-angle concept.',
-      observedResult: 'Too early — 3 creatives live under 5 days.',
-      influencedCreatives: 3,
-    },
-    {
-      finding: 'Reels placement looks stronger than Feed for UGC — a promising pattern, not a conclusion.',
-      evidence: `19% lower ${cost} across 6 comparable creatives · ${money(9400)} analysed · ${window}`,
-      confidence: 'Low',
-      agentResponse: 'No rule change. Below the confidence bar required to alter agent behaviour — flagged for a controlled test.',
-      influencedCreatives: 0,
-    },
-  ]
 
   const base: IntelligenceBase = {
     assets: vault.assets,
@@ -417,8 +328,10 @@ export function buildCreativeOps(input: {
 
   return {
     pulse,
-    nextMoves: nextMoves.slice(0, 3),
-    leaderboard: ads.slice(0, 5),
+    // Top 10 by spend, each with its real creative thumbnail. No evaluation
+    // gate on the LISTING — the ads are simply what is running, and hiding them
+    // until they qualify makes a connected account look empty.
+    leaderboard: ads.slice(0, 10),
     winning,
     lifecycle,
     learnings,

@@ -48,7 +48,7 @@ const routing: Record<string, { system: KnowledgeSystem; category: string }> = {
   'Upload Offer Framework': { system: 'vault', category: 'Offer Framework' },
   'Upload VSL Framework': { system: 'vault', category: 'VSL Framework' },
   'Upload Creative SOP': { system: 'vault', category: 'Creative SOP' },
-  'Upload Member Win': { system: 'transformation', category: 'Member Win' },
+  'Upload Client Win': { system: 'transformation', category: 'Client Win' },
   'Upload Event Content': { system: 'vault', category: 'Event Content' },
   'Upload Podcast Transcript': { system: 'vault', category: 'Podcast Transcript' },
   'Upload Webinar': { system: 'vault', category: 'Webinar' },
@@ -92,7 +92,7 @@ function UploadTile({ title, accept, icon }: { title: string; accept: string; ic
         // Image / video / other: ingest retrievable metadata (filename + context).
         // Pixel content isn't embedded by the text model — this makes the asset
         // findable by name, category, and angle.
-        content = `${route.category}: ${file.name}. Asset type: ${accept}. Filed under ${route.system} intelligence for The Professional Builder.`
+        content = `${route.category}: ${file.name}. Asset type: ${accept}. Filed under ${route.system} intelligence.`
       }
 
       const res = await fetch('/api/vault/ingest', {

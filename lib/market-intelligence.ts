@@ -21,6 +21,7 @@ import { fetchReadablePage, assertSafeUrl } from '@/lib/website-intelligence'
 import { fetchYouTubeTranscript } from '@/lib/youtube'
 import { parseModelJson } from '@/lib/parse'
 import { INTELLIGENCE_MODEL } from '@/lib/models'
+import { getTenant, tenantDescriptor, type TenantProfile } from '@/lib/tenant'
 
 // NOVA extracts with the bulk model (single-shot, cost-aware) — same tier the
 // other intelligence layers run on.
@@ -39,18 +40,6 @@ export interface NovaSubreddit {
   note: string
 }
 
-export const NOVA_SUBREDDITS: NovaSubreddit[] = [
-  { sub: 'Construction', note: 'General trade + jobsite reality' },
-  { sub: 'Contractor', note: 'Contractors on clients, pricing, stress' },
-  { sub: 'GeneralContractor', note: 'GC business operations' },
-  { sub: 'electricians', note: 'Sparkies — trade + going out on their own' },
-  { sub: 'Plumbing', note: 'Plumbers — trade + running the business' },
-  { sub: 'HVAC', note: 'HVAC techs and owners' },
-  { sub: 'Carpentry', note: 'Carpenters + finish trades' },
-  { sub: 'skilledtrades', note: 'Cross-trade money, career, pride' },
-  { sub: 'smallbusiness', note: 'Owner cashflow, hiring, burnout' },
-  { sub: 'Entrepreneur', note: 'Business-owner mindset + scaling' },
-]
 
 export interface NovaForum {
   name: string
@@ -58,10 +47,6 @@ export interface NovaForum {
   note: string
 }
 
-export const NOVA_FORUMS: NovaForum[] = [
-  { name: 'ContractorTalk', url: 'https://www.contractortalk.com/forums/', note: 'Largest pro-contractor forum' },
-  { name: 'JLC / Breaktime', url: 'https://forums.jlconline.com/', note: 'Seasoned builders — business + craft' },
-]
 
 /* -------------------------------- Types ----------------------------------- */
 
@@ -137,7 +122,7 @@ interface GatheredSource {
 // User-Agent (the default fetch UA gets rate-limited). NOVA pulls top posts and
 // their top comments: the rawest voice-of-customer signal available.
 
-const REDDIT_UA = 'TPB-NOVA/1.0 (Market Intelligence; +https://theprobuilder.com)'
+const REDDIT_UA = 'Reactor-NOVA/1.0 (Market Intelligence)'
 
 function sanitizeSubreddit(s: string): string {
   return s.replace(/^\/?(r\/)?/i, '').replace(/[^a-zA-Z0-9_]/g, '').slice(0, 50)
@@ -411,6 +396,16 @@ function heuristicProfile(text: string, meta: NovaSourceMeta): MarketIntelProfil
 }
 
 /**
+ * NOVA's system prompt, addressed to THIS deployment's business rather than a
+ * hard-coded one. Naming the wrong industry here is worse than naming none:
+ * it makes the model profile the wrong audience with full confidence.
+ */
+function novaSystemPrompt(tenant: TenantProfile): string {
+  const subject = tenantDescriptor(tenant)
+  return `You are NOVA, the Market Intelligence layer for ${subject}. You read real customer conversations and extract the psychographic profile that drives winning campaigns. CRITICAL: only extract what the source actually evidences — never invent. Preserve the customer's EXACT words wherever possible; their language is the asset. Use [] for any list with no evidence. Reply with ONLY a JSON object, no prose, no markdown fences.`
+}
+
+/**
  * Extract NOVA's psychographic profile from raw conversation text. Uses Claude
  * when configured, otherwise a heuristic read so the pipeline always returns
  * something useful. Never throws.
@@ -429,8 +424,7 @@ export async function extractMarketIntel(
     const response = await anthropic.messages.create({
       model: MODEL,
       max_tokens: 2000,
-      system:
-        "You are NOVA, the Market Intelligence layer for The Professional Builder (coaching for trades & construction business owners). You read real customer conversations and extract the psychographic profile that drives winning campaigns. CRITICAL: only extract what the source actually evidences — never invent. Preserve the customer's EXACT words wherever possible; their language is the asset. Use [] for any list with no evidence. Reply with ONLY a JSON object, no prose, no markdown fences.",
+      system: novaSystemPrompt(await getTenant()),
       messages: [
         {
           role: 'user',
@@ -643,7 +637,10 @@ function sweepSubs(): string[] {
       .map((s) => sanitizeSubreddit(s))
       .filter(Boolean)
   }
-  return NOVA_SUBREDDITS.map((s) => s.sub)
+  // No built-in list any more: a scheduled sweep with nothing configured would
+  // mine one fixed market on every deployment. Set NOVA_SWEEP_SUBS to name the
+  // communities worth sweeping for this business.
+  return []
 }
 
 export interface NovaSweepResult {

@@ -18,6 +18,7 @@ import {
   heuristicTaxonomy,
   type CreativeTaxonomy,
 } from '@/lib/taxonomy'
+import { getTenant, tenantDescriptor } from '@/lib/tenant'
 
 export interface ClassifyOptions {
   /** Extra persona labels (from real runs) the classifier may also choose from. */
@@ -46,7 +47,7 @@ export async function classifyTaxonomy(text: string, opts: ClassifyOptions = {})
     const response = await anthropic.messages.create({
       model: INTELLIGENCE_MODEL,
       max_tokens: 300,
-      system: `You are the creative taxonomy classifier for The Professional Builder (coaching for trades/construction business owners). Tag the creative below with ONE value per axis, each chosen ONLY from the allowed lists. If a persona or pain point genuinely isn't listed, you may return a short new label for those two axes only. Reply with ONLY a JSON object, no prose.
+      system: `You are the creative taxonomy classifier for ${tenantDescriptor(await getTenant())}. Tag the creative below with ONE value per axis, each chosen ONLY from the allowed lists. If a persona or pain point genuinely isn't listed, you may return a short new label for those two axes only. Reply with ONLY a JSON object, no prose.
 
 Allowed values:
 - hookStyle: ${HOOK_STYLES.join(', ')}

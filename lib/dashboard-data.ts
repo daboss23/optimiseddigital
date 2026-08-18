@@ -20,6 +20,7 @@ import {
   type PerformanceSignal,
 } from '@/lib/reactor-data'
 import { curatedVaultTotal } from '@/lib/knowledge'
+import { demoDataEnabled } from '@/lib/demo-mode'
 
 /* --------------------------------- Types ---------------------------------- */
 
@@ -529,10 +530,34 @@ export async function getDashboardData(): Promise<DashboardData> {
       const live = await buildLive()
       if (live) return live
     } catch (err) {
-      console.error('Dashboard live build failed, using demo snapshot:', err)
+      console.error('Dashboard live build failed:', err)
     }
   }
-  return demoBuild()
+  // The curated snapshot is a different business's numbers. Showing it to a
+  // customer who has stored nothing presents invented totals, growth curves and
+  // activity as their own — so it is opt-in, and the honest state is zero.
+  return demoDataEnabled() ? demoBuild() : emptyBuild()
+}
+
+/** The dashboard before anything has been stored: real zeroes, no invention. */
+function emptyBuild(): DashboardData {
+  return {
+    live: false,
+    total: 0,
+    kpis: reactorKpis.map((k) => ({
+      label: k.label,
+      value: 0,
+      delta: '0',
+      trend: 'flat' as const,
+      spark: Array.from({ length: SPARK_WEEKS }, () => 0),
+    })),
+    growth: [],
+    outcomes: { winners: 0, losers: 0, pending: 0, total: 0, winRate: 0, metrics: [] },
+    systemLoad: [],
+    activity: [],
+    heatmap: { months: [], rows: [] },
+    performanceSignals: [],
+  }
 }
 
 // Re-export the winning angles (already curated; wired through here so the page

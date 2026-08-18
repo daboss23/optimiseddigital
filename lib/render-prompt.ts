@@ -283,7 +283,7 @@ export function enforceSingleFrame(prompt: string): string {
 export function compileRenderPrompt(
   brief: ProductionBrief | undefined,
   fallback: string,
-  opts: { motion?: boolean; headline?: string } = {},
+  opts: { motion?: boolean; headline?: string; brandName?: string } = {},
 ): CompiledRenderPrompt {
   const motion = opts.motion === true
   const headlineFallback = motion ? undefined : usableHeadline(opts.headline)
@@ -380,13 +380,24 @@ export function compileRenderPrompt(
   }
 
   /* -- 3. Assemble. -------------------------------------------------------- */
-  const header = `${brief.creativeType} ad creative for The Professional Builder. Pattern: ${brief.pattern}. Audience: ${brief.audience}. Awareness: ${brief.awareness}.`
+  // The brand is named only when the caller knows it. Hard-coding one company
+  // here put that company's name into every render prompt on every deployment —
+  // the model would compose for the wrong business before reading a word of the
+  // brief. The connected brand's real identity arrives via the ON BRAND block.
+  const brandName = opts.brandName?.trim()
+  const header = `${brief.creativeType} ad creative${
+    brandName ? ` for ${brandName}` : ''
+  }. Pattern: ${brief.pattern}. Audience: ${brief.audience}. Awareness: ${brief.awareness}.`
 
   const textBlock = rendered.length ? textBlockFor(rendered) : NO_TEXT_AT_ALL_RULE
 
+  // Deliberately industry-neutral: the scene comes from the brief's own frames,
+  // which already describe the setting. Naming a fixed context here ("on-site
+  // builder") dragged every render toward a construction site regardless of
+  // what business the ad was for.
   const look = rendered.length
-    ? 'Premium, photographic, on-site builder context, high contrast behind every piece of type so it stays readable.'
-    : 'Premium, photographic, on-site builder context, high contrast, clean space reserved for the text overlay.'
+    ? 'Premium, photographic, true to the scene described above, high contrast behind every piece of type so it stays readable.'
+    : 'Premium, photographic, true to the scene described above, high contrast, clean space reserved for the text overlay.'
 
   const prompt = [header, sceneFrames.join('\n'), motion ? '' : SINGLE_FRAME_RULE, textBlock, look]
     .filter(Boolean)

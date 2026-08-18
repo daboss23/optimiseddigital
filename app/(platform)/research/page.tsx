@@ -1,9 +1,10 @@
-import { Radar, Building2, Globe, Sparkles, MessageSquare, Clock, Inbox } from 'lucide-react'
-import { PageHeader, Panel, PanelHeader, ProgressBar, Pill } from '@/components/reactor/ui'
-import { internalSources, externalSources, researchOutputs } from '@/lib/reactor-data'
-import { NOVA_SUBREDDITS, NOVA_FORUMS } from '@/lib/market-intelligence'
+import { Radar, Globe, Sparkles, MessageSquare, Clock, Inbox } from 'lucide-react'
+import { PageHeader, Panel, PanelHeader, Pill } from '@/components/reactor/ui'
+import { researchOutputs } from '@/lib/reactor-data'
+import { demoDataEnabled } from '@/lib/demo-mode'
 import { liveNovaIntel, type LiveNovaSource } from '@/lib/nova-intel'
 import { NovaResearch } from './NovaResearch'
+import { ResearchSources } from '@/components/research/ResearchSources'
 
 export const dynamic = 'force-dynamic'
 
@@ -61,28 +62,6 @@ function NovaEmptyState({ what }: { what: string }) {
   )
 }
 
-function SourceList({ data }: { data: { name: string; count: number; signal: number }[] }) {
-  return (
-    <div className="space-y-3 p-5">
-      {data.map((s) => (
-        <div key={s.name} className="flex items-center gap-4">
-          <div className="w-40 shrink-0">
-            <p className="text-sm font-medium text-white">{s.name}</p>
-            <p className="text-[11px] text-white/35">{s.count.toLocaleString()} sources</p>
-          </div>
-          <div className="flex-1">
-            <ProgressBar value={s.signal} />
-          </div>
-          <span className="w-16 text-right">
-            <span className="font-display text-sm font-bold tabular text-glow">{s.signal}</span>
-            <span className="text-[10px] text-white/30"> sig</span>
-          </span>
-        </div>
-      ))}
-    </div>
-  )
-}
-
 export default async function ResearchPage() {
   // What NOVA actually holds. Never throws — an unconfigured or empty store
   // comes back `live: false`, and the panels below render an empty state rather
@@ -95,7 +74,7 @@ export default async function ResearchPage() {
       <PageHeader
         system="02"
         title="Research Intelligence"
-        subtitle="NOVA's command center. Send her to where builders actually talk, mine the real conversations, and turn the language, beliefs, and desires into winning campaigns."
+        subtitle="NOVA's command center. Send her to where your audience actually talks, mine the real conversations, and turn the language, beliefs, and desires into winning campaigns."
         tagline={
           novaIndexed > 0
             ? `${novaIndexed.toLocaleString()} market signals in NOVA's live memory`
@@ -103,97 +82,32 @@ export default async function ResearchPage() {
         }
       />
 
-      <NovaResearch subreddits={NOVA_SUBREDDITS} forums={NOVA_FORUMS} />
+      <NovaResearch />
+
+      <ResearchSources />
 
       <Panel>
         <PanelHeader
-          icon={<MessageSquare size={16} />}
-          accent="violet"
-          title="Where NOVA mines — recommended sources"
-          subtitle="The highest-signal places a trades & construction audience talks. Deploy NOVA at any of them for a targeted dig."
+          icon={<Globe size={16} />}
+          accent="cyan"
+          title="Sources NOVA has mined"
+          subtitle="Every conversation NOVA has actually read, and what it came from"
           accessory={
-            <Pill tone="default">
-              <Clock size={12} /> Sweeps on demand
-            </Pill>
+            intel?.live && intel.sources.length > 0 ? (
+              <Pill tone="success">
+                <Radar size={12} /> {intel.sourceCount} live
+              </Pill>
+            ) : (
+              <Pill tone="default">No sources yet</Pill>
+            )
           }
         />
-        <div className="grid grid-cols-1 gap-4 p-5 md:grid-cols-2">
-          <div>
-            <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-white/45">
-              Reddit communities
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {NOVA_SUBREDDITS.map((s) => (
-                <span
-                  key={s.sub}
-                  title={s.note}
-                  className="rounded-md border border-border bg-surface/50 px-2.5 py-1 text-[12px] text-white/65"
-                >
-                  r/{s.sub}
-                </span>
-              ))}
-            </div>
-          </div>
-          <div>
-            <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-white/45">
-              Pro forums
-            </p>
-            <div className="space-y-2">
-              {NOVA_FORUMS.map((f) => (
-                <a
-                  key={f.url}
-                  href={f.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface/40 px-3 py-2 text-sm text-white/70 transition-colors hover:border-glow/40 hover:text-glow"
-                >
-                  <span className="font-medium">{f.name}</span>
-                  <span className="truncate text-[11px] text-white/35">{f.note}</span>
-                </a>
-              ))}
-              <p className="text-[11px] leading-relaxed text-white/35">
-                Plus YouTube transcripts and any review or article URL. Facebook Groups & LinkedIn are
-                login-walled — paste those conversations into the <span className="text-white/55">Paste</span> tab.
-              </p>
-            </div>
-          </div>
-        </div>
+        {intel?.live && intel.sources.length > 0 ? (
+          <LiveSourceList sources={intel.sources} />
+        ) : (
+          <NovaEmptyState what="external sources" />
+        )}
       </Panel>
-
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Panel>
-          <PanelHeader
-            icon={<Building2 size={16} />}
-            accent="emerald"
-            title="Internal Sources"
-            subtitle="First-party signal from inside TPB — illustrative targets, not yet wired to live data"
-            accessory={<Pill tone="warning">Sample</Pill>}
-          />
-          <SourceList data={internalSources} />
-        </Panel>
-        <Panel>
-          <PanelHeader
-            icon={<Globe size={16} />}
-            accent="cyan"
-            title="External Sources"
-            subtitle="What NOVA has actually mined from the wider builder world"
-            accessory={
-              intel?.live && intel.sources.length > 0 ? (
-                <Pill tone="success">
-                  <Radar size={12} /> {intel.sourceCount} live
-                </Pill>
-              ) : (
-                <Pill tone="default">No sources yet</Pill>
-              )
-            }
-          />
-          {intel?.live && intel.sources.length > 0 ? (
-            <LiveSourceList sources={intel.sources} />
-          ) : (
-            <NovaEmptyState what="external sources" />
-          )}
-        </Panel>
-      </div>
 
       <Panel>
         <PanelHeader
@@ -243,6 +157,10 @@ export default async function ResearchPage() {
         )}
       </Panel>
 
+      {/* Illustrative output. Shown only on a demo deployment — on a real one it
+          is another business's research presented as an example, which reads as
+          data the user cannot account for. */}
+      {demoDataEnabled() && (
       <Panel>
         <PanelHeader
           icon={<Sparkles size={16} />}
@@ -267,6 +185,7 @@ export default async function ResearchPage() {
           ))}
         </div>
       </Panel>
+      )}
     </>
   )
 }

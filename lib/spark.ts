@@ -22,6 +22,7 @@ import type { AdImage } from '@/lib/ad-image'
 // Type-only, so this is erased at compile time and adds no runtime cycle with
 // lib/taxonomy.ts (which imports VisualDNA from here the same way).
 import type { CreativeTaxonomy } from '@/lib/taxonomy'
+import { getTenant, tenantDescriptor, type TenantProfile } from '@/lib/tenant'
 
 const MODEL = INTELLIGENCE_MODEL
 
@@ -34,7 +35,7 @@ export const MAX_ADS_PER_READ = 12
 
 // The repeatable pattern categories SPARK classifies winning creatives into.
 export const CREATIVE_PATTERNS = [
-  'Member Win',
+  'Client Win',
   'Identity Shift',
   'Profit Leak',
   'Authority Builder',
@@ -147,7 +148,7 @@ function heuristicDNA(text: string): CreativeDNA {
         : /system|process|sop|chaos/.test(t)
           ? 'Systems Transformation'
           : /member|client|result|case study/.test(t)
-            ? 'Member Win'
+            ? 'Client Win'
             : /founder|story|journey/.test(t)
               ? 'Founder Story'
               : 'Authority Builder'
@@ -232,9 +233,22 @@ const DNA_KEYS =
 
 const VISUAL_KEYS = `{"format":"...","aspectRatio":"1:1|4:5|9:16|16:9","layout":"...","elements":[{"element":"Headline|Hook|Bullets|CTA|Logo|Subject|Badge|Proof","text":"the exact words on the ad, or empty string","position":"e.g. top third, left-aligned","zone":"top|upper-middle|middle|lower-middle|bottom|full-bleed","treatment":"weight, case, colour, any scrim behind it"}],"palette":[{"hex":"#rrggbb","role":"Background|Headline text|CTA button|Accent"}],"typography":"...","imagery":"...","focalFlow":"...","textDensity":"...","contrastDevice":"...","scrollStopReason":"...","designPrinciples":["...","..."],"replicationNotes":"..."}`
 
-const SYSTEM_BASE = `You are SPARK, the Creative Intelligence layer for The Professional Builder (coaching for trades/construction business owners). You study creatives that have ALREADY WON and extract their repeatable DNA — the structure, never the words.`
+/**
+ * SPARK's identity, addressed to whichever business this deployment serves.
+ * Built per call rather than as a constant: naming a fixed company here made
+ * SPARK read every uploaded ad as if it were for that company's market.
+ */
+function sparkSystemBase(tenant: TenantProfile): string {
+  return `You are SPARK, the Creative Intelligence layer for ${tenantDescriptor(
+    tenant,
+  )}. You study creatives that have ALREADY WON and extract their repeatable DNA — the structure, never the words.`
+}
 
-function visionSystemPrompt(count: number, hasMeasuredPalette: boolean): string {
+function visionSystemPrompt(
+  count: number,
+  hasMeasuredPalette: boolean,
+  tenant: TenantProfile,
+): string {
   // With measured colours in the prompt the palette is a LABELLING job, not a
   // sampling job — the model stops guessing hexes and starts naming what each
   // real colour does. Without them it has to estimate, and is told to say so.
@@ -246,7 +260,7 @@ function visionSystemPrompt(count: number, hasMeasuredPalette: boolean): string 
 - On a multi-ad sheet the measured list spans the whole screenshot, so assign each colour to the ad that actually uses it and leave it off the others.`
     : `PALETTE — no measured colours are available for these images, so estimate the hexes as accurately as you can and prefer naming the vivid accent colours over the neutrals.`
 
-  return `${SYSTEM_BASE}
+  return `${sparkSystemBase(tenant)}
 
 You are looking at ${count > 1 ? `${count} images` : 'an image'} of winning ad creatives. Read them the way a senior art director reverse-engineers a competitor's control ads.
 
@@ -389,7 +403,7 @@ export async function extractCreativeDNA(text: string): Promise<CreativeDNA> {
     const response = await anthropic.messages.create({
       model: MODEL,
       max_tokens: 700,
-      system: `${SYSTEM_BASE} Study the winning creative below and extract its repeatable Creative DNA — the structure, not the words. Classify patternType as ONE of: ${CREATIVE_PATTERNS.join(', ')}. Reply with ONLY a JSON object, no prose.`,
+      system: `${sparkSystemBase(await getTenant())} Study the winning creative below and extract its repeatable Creative DNA — the structure, not the words. Classify patternType as ONE of: ${CREATIVE_PATTERNS.join(', ')}. Reply with ONLY a JSON object, no prose.`,
       messages: [
         {
           role: 'user',
@@ -502,7 +516,7 @@ export async function extractVisualDNA(
       model: VISION_MODEL,
       // Scales with how many ads a sheet can hold — a 12-ad teardown is long.
       max_tokens: 8000,
-      system: visionSystemPrompt(images.length, measured.length > 0),
+      system: visionSystemPrompt(images.length, measured.length > 0, await getTenant()),
       messages: [{ role: 'user', content }],
     })
 

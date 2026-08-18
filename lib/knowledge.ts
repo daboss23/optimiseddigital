@@ -17,6 +17,7 @@ import {
   vaultCategories,
   foundationAssets,
 } from '@/lib/reactor-data'
+import { demoDataEnabled } from '@/lib/demo-mode'
 
 export type KnowledgeSystem =
   | 'vault'
@@ -135,20 +136,26 @@ export async function searchKnowledge(
         filter_builder: opts.builderId ?? null,
       })
       if (error) throw error
-      if (data && data.length) {
-        return (data as KnowledgeHit[]).map((d) => ({
-          system: d.system,
-          category: d.category ?? null,
-          title: d.title,
-          content: d.content,
-          similarity: d.similarity,
-        }))
-      }
+      // A successful search that matched nothing is an ANSWER, not a failure.
+      // Falling through to the demo corpus here would hand every tenant with an
+      // empty vault the curated stand-in knowledge of whoever seeded it — the
+      // agents would then ground a campaign in another company's frameworks and
+      // report it as retrieved evidence. An empty vault must retrieve nothing.
+      return (data ?? []).map((d: KnowledgeHit) => ({
+        system: d.system,
+        category: d.category ?? null,
+        title: d.title,
+        content: d.content,
+        similarity: d.similarity,
+      }))
     } catch (err) {
       console.error('Vector search failed, using demo knowledge:', err)
     }
   }
 
+  // Reached only when the knowledge layer is unconfigured (no Supabase/Voyage)
+  // or the query itself errored — i.e. demo mode, where the curated corpus is
+  // the intended experience.
   return demoSearch(query, k, opts.system)
 }
 
@@ -204,6 +211,10 @@ export async function vaultStats(): Promise<VaultStats> {
       console.error('Vault stats query failed, using demo counts:', err)
     }
   }
+
+  // Curated counts describe a vault that was filled elsewhere. Off by default,
+  // so an unconfigured deployment reads zero rather than someone else's totals.
+  if (!demoDataEnabled()) return { live: false, total: 0, groups: [] }
 
   const groups: VaultStatGroup[] = vaultCategories.flatMap((g) =>
     g.items.map((i) => ({ system: g.group, category: i.name, count: i.count })),
@@ -280,7 +291,10 @@ export async function browseKnowledge(
     }
   }
 
-  // Demo fallback: browse the curated corpus.
+  // Demo fallback: browse the curated corpus. Opt-in for the same reason as the
+  // counts above — an empty vault must not list another business's assets.
+  if (!demoDataEnabled()) return { live: false, items: [] }
+
   const corpus = buildDemoCorpus().filter((d) => !opts.system || d.system === opts.system)
   const filtered = q
     ? corpus.filter((d) => `${d.title} ${d.content} ${d.category}`.toLowerCase().includes(q.toLowerCase()))

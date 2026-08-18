@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   Loader2,
   Check,
@@ -28,8 +28,6 @@ import type {
   MarketIntelResult,
   NovaEvent,
   NovaSourceType,
-  NovaForum,
-  NovaSubreddit,
 } from '@/lib/market-intelligence'
 
 const inputCls =
@@ -246,18 +244,41 @@ type Phase =
   | { kind: 'complete'; result: MarketIntelResult }
   | { kind: 'error'; message: string }
 
-export function NovaResearch({
-  subreddits,
-  forums,
-}: {
-  subreddits: NovaSubreddit[]
-  forums: NovaForum[]
-}) {
+interface ResearchSource {
+  kind: 'reddit' | 'forum' | 'web'
+  label: string
+  url?: string
+  note: string
+}
+
+export function NovaResearch() {
   const [tab, setTab] = useState<NovaSourceType>('reddit')
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' })
 
+  // The places to mine come from ATLAS's read of the connected website (or
+  // whatever the user added by hand), never a built-in list — see
+  // /api/research/sources. Until one exists the subreddit field is simply an
+  // empty text box, which is honest and still fully usable.
+  const [sources, setSources] = useState<ResearchSource[]>([])
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/research/sources', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((res) => {
+        if (!cancelled) setSources(res?.data?.sources ?? [])
+      })
+      .catch(() => {
+        /* an empty picker is the correct fallback */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+  const subreddits = sources.filter((s) => s.kind === 'reddit')
+  const forums = sources.filter((s) => s.kind !== 'reddit' && s.url)
+
   // Form state
-  const [subreddit, setSubreddit] = useState(subreddits[0]?.sub ?? 'Construction')
+  const [subreddit, setSubreddit] = useState('')
   const [query, setQuery] = useState('')
   const [redditUrl, setRedditUrl] = useState('')
   const [ytUrl, setYtUrl] = useState('')
@@ -315,7 +336,7 @@ export function NovaResearch({
         icon={<Satellite size={16} />}
         accent="violet"
         title="NOVA · Deploy to the field"
-        subtitle="Point NOVA at where builders actually talk. She reads the real conversations and extracts the psychographics — then remembers them for every campaign."
+        subtitle="Point NOVA at where your audience actually talks. She reads the real conversations and extracts the psychographics — then remembers them for every campaign."
         accessory={running ? <Pill tone="primary">Researching…</Pill> : undefined}
       />
 
@@ -349,17 +370,20 @@ export function NovaResearch({
                 <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-white/40">
                   Subreddit
                 </label>
-                <select
+                <input
                   value={subreddit}
-                  onChange={(e) => setSubreddit(e.target.value)}
+                  onChange={(e) => setSubreddit(e.target.value.replace(/^r\//i, ''))}
+                  list="nova-subreddits"
+                  placeholder={subreddits[0] ? subreddits[0].label : 'e.g. marketing'}
                   className={inputCls}
-                >
+                />
+                <datalist id="nova-subreddits">
                   {subreddits.map((s) => (
-                    <option key={s.sub} value={s.sub} className="bg-card">
-                      r/{s.sub} — {s.note}
+                    <option key={s.label} value={s.label}>
+                      {s.note}
                     </option>
                   ))}
-                </select>
+                </datalist>
               </div>
               <div>
                 <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-white/40">
@@ -378,7 +402,7 @@ export function NovaResearch({
               <input
                 value={redditUrl}
                 onChange={(e) => setRedditUrl(e.target.value)}
-                placeholder="https://www.reddit.com/r/Construction/comments/…"
+                placeholder="https://www.reddit.com/r/…/comments/…"
                 className={inputCls}
               />
             </div>
@@ -418,7 +442,7 @@ export function NovaResearch({
                 <input
                   value={webUrl}
                   onChange={(e) => setWebUrl(e.target.value)}
-                  placeholder="https://www.contractortalk.com/…"
+                  placeholder="https://…"
                   className={inputCls}
                 />
               </div>
@@ -427,11 +451,11 @@ export function NovaResearch({
                   <button
                     key={f.url}
                     type="button"
-                    onClick={() => setWebUrl(f.url)}
+                    onClick={() => setWebUrl(f.url as string)}
                     title={f.note}
                     className="rounded-md border border-border bg-surface/50 px-2.5 py-1 text-[11px] text-white/55 transition-colors hover:border-glow/40 hover:text-glow"
                   >
-                    {f.name}
+                    {f.label}
                   </button>
                 ))}
               </div>
@@ -499,7 +523,7 @@ export function NovaResearch({
               <div className="max-w-sm">
                 <Satellite size={26} className="mx-auto mb-3 text-glow/50" />
                 <p className="text-sm text-white/40">
-                  NOVA’s psychographic read appears here — what keeps builders up at night, what they
+                  NOVA’s psychographic read appears here — what keeps your audience up at night, what they
                   hate, what they dream about, and the exact words they use.
                 </p>
               </div>
