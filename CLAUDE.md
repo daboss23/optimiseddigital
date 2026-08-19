@@ -1,11 +1,23 @@
-# CLAUDE.md — TPB Creative Reactor
+# CLAUDE.md — Optimised Digital (TPB Creative Reactor)
 ## Claude Code Project Rules — Read This First Every Session
+
+---
+
+> **Repository identity:** This is **Optimised Digital** — the standalone
+> repository behind `optimiseddigital.vercel.app`. It was branched from the
+> **TPB Creative Reactor** project to run as its own independent product, and
+> it deploys from this repo's `main`. The platform architecture, rules, and
+> module names below are inherited from TPB Creative Reactor and still apply
+> verbatim; "TPB Creative Reactor" throughout this document refers to that
+> shared platform. The default branch here is `main` (not a `claude/*` working
+> branch), so open PRs into `main` from your session branch.
 
 ---
 
 ## PROJECT OVERVIEW
 
-This is a Next.js app: **TPB Creative Reactor** — a premium AI-powered Creative
+This is a Next.js app: **TPB Creative Reactor** (running as **Optimised
+Digital**) — a premium AI-powered Creative
 Intelligence Command Center for The Professional Builder. It turns 20+ years of
 winning creative assets, member wins, frameworks, SOPs, research, and
 performance data into the next winning campaign, answering one question:

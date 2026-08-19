@@ -1,8 +1,9 @@
-# Summit Build Co — AI Creative System
+# Optimised Digital — AI Creative System
 
-> **Optimised Digital** — this is the standalone repository for the
-> Optimised Digital deployment (`optimiseddigital.vercel.app`), branched from
-> the TPB Creative Reactor project to run as its own independent product.
+> Standalone repository behind **`optimiseddigital.vercel.app`**, branched from
+> the TPB Creative Reactor project to run as its own independent product and
+> deployed from this repo's `main`. The system, brand memory and framework
+> content below are inherited from that platform.
 
 A brand-trained AI creative system for residential construction marketing.
 It generates Meta ad copy and image creative from a short campaign brief, then
