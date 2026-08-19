@@ -19,7 +19,10 @@ export function Topbar() {
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
   const current = navItems.find((n) => n.href === pathname)
-  const heading = pathname === '/' ? 'Reactor Dashboard' : current?.label ?? 'Reactor Dashboard'
+  // The dashboard leads with the Live Intelligence badge alone — the brand mark
+  // already names the product, so a "Reactor Dashboard" title is redundant.
+  // Other pages keep their label for wayfinding.
+  const heading = pathname === '/' ? '' : current?.label ?? ''
 
   // Route changes close the drawer — otherwise it stays over the page the user
   // just navigated to.
@@ -82,10 +85,12 @@ export function Topbar() {
               SYSTEM {current.system}
             </span>
           )}
-          <h1 className="font-display text-base font-semibold tracking-tight text-white">
-            {heading}
-          </h1>
-          <span className="live-pill ml-1">
+          {heading && (
+            <h1 className="font-display text-base font-semibold tracking-tight text-white">
+              {heading}
+            </h1>
+          )}
+          <span className="live-pill">
             <span className="live-pill__dot" />
             Live Intelligence
           </span>

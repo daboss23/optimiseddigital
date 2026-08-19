@@ -85,7 +85,10 @@ export function BrandMark({
       <span
         className={cn(
           'inline-flex items-center',
-          size === 'md' ? 'h-11 w-full' : 'h-9',
+          // md renders in the sidebar brand cell — centre it and give it a
+          // taller cap so the mark reads bigger. sm sits inline in the
+          // topbar/drawer beside other controls, so it stays left + compact.
+          size === 'md' ? 'h-14 w-full justify-center' : 'h-9',
           className,
         )}
       >
@@ -96,8 +99,8 @@ export function BrandMark({
           // Logos are wordmarks as often as they are squares, so height is
           // fixed and width is free — `contain` keeps either shape intact.
           className={cn(
-            'w-auto max-w-full object-contain object-left',
-            size === 'md' ? 'max-h-11' : 'max-h-9',
+            'w-auto max-w-full object-contain',
+            size === 'md' ? 'max-h-14 object-center' : 'max-h-9 object-left',
           )}
           // A dead or hotlink-blocked logo URL must degrade to the wordmark,
           // never to a broken-image icon in the middle of the chrome.
