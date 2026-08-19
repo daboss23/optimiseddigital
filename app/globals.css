@@ -2693,27 +2693,102 @@ body {
 }
 
 /* ── Mike's queue — the one card allowed to demand attention ────────────────
-   Everything else on the dashboard reports; this asks. When decisions are
-   waiting it carries an electric-blue edge that breathes, so the queue reads as
-   live from across the room without turning the page into a slot machine.
+   Everything else on the dashboard reports; this card asks. When Mike is
+   holding open decisions the whole cell comes alive like a reactor at idle: a
+   slow, ASYMMETRIC breath of aurora light behind the glass — a quick inhale, a
+   long exhale — with a "current" of light drifting around the rim on its own
+   slower clock. It rests completely when the queue is clear, off the clock, or
+   still loading, so the light always MEANS "there is something here to decide".
 
-   The glow is driven by a sweeping box-shadow rather than opacity on the whole
-   block: animating opacity would dim the headline text along with the halo, and
-   the text is the part that has to stay legible. */
+   Every moving part is GPU-composited (opacity + transform on a glow LAYER, and
+   a masked conic angle — never the card's own box), so the headline never dims
+   with the halo and the compositor, not the main thread, carries the motion.
+   The breath and the drift ride a WRAPPER (.mike-charge) around the panel,
+   because the panel clips its own rounded overflow and a halo can only spill
+   from outside it. --mike-load (0–1, from the number of open actions) lets
+   three pending decisions glow a touch hotter than one. */
+.mike-charge {
+  position: relative;
+  isolation: isolate;              /* own stacking context for the glow layers */
+  border-radius: 1.5rem;           /* match the panel so the rim rides its edge */
+  --mike-load: 0.75;               /* safe default; overridden inline when live */
+}
+
+/* The breath — a blurred aurora bloom one layer behind the glass. It spills
+   past the rounded rim onto the dark stage AND bleeds up through the panel's
+   backdrop-blur, so the light reads as if it were held inside the glass. */
+.mike-charge--on::before {
+  content: '';
+  position: absolute;
+  inset: -18px;
+  z-index: -1;
+  border-radius: inherit;
+  background:
+    radial-gradient(58% 78% at 20% 6%, rgb(var(--lg-cyan) / 0.55), transparent 60%),
+    radial-gradient(66% 88% at 102% 22%, rgb(var(--lg-violet) / 0.5), transparent 62%),
+    radial-gradient(120% 128% at 50% 122%, rgb(var(--lg-azure) / 0.5), transparent 64%);
+  filter: blur(26px);
+  opacity: 0;                      /* the animation owns opacity */
+  will-change: opacity, transform;
+  animation: mike-breath 5.6s cubic-bezier(0.37, 0, 0.24, 1) infinite;
+}
+
+/* The current — a thin aurora band riding the rim, its origin sweeping 360°.
+   9s vs the breath's 5.6s so the two never beat in lockstep: offset reads
+   alive, lockstep reads mechanical. A 1.5px ring masked out of a conic fill. */
+.mike-charge--on::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;                      /* rides above the glass edge */
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(
+    from var(--mike-angle, 0deg),
+    transparent 198deg,
+    rgb(var(--lg-cyan) / 0.85) 262deg,
+    rgb(var(--lg-azure) / 0.7) 300deg,
+    rgb(var(--lg-violet) / 0.28) 338deg,
+    transparent 360deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  opacity: calc(0.5 + 0.4 * var(--mike-load));
+  pointer-events: none;
+  will-change: opacity;
+  animation: mike-current 9s linear infinite;
+}
+
+@property --mike-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes mike-breath {
+  0%   { opacity: calc(0.32 + 0.10 * var(--mike-load)); transform: scale(0.984); }
+  42%  { opacity: calc(0.72 + 0.22 * var(--mike-load)); transform: scale(1.028); }
+  100% { opacity: calc(0.32 + 0.10 * var(--mike-load)); transform: scale(0.984); }
+}
+
+@keyframes mike-current {
+  to { --mike-angle: 360deg; }
+}
+
+/* The header stays the hottest zone — a static warm tint and a crisp charge
+   line under the headline. No second animation competes with the card's one
+   breath. */
 .mike-summary {
   position: relative;
   border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.08));
 }
-
 .mike-summary--live {
-  border-color: rgb(var(--lg-azure) / 0.45);
+  border-color: rgb(var(--lg-azure) / 0.4);
   background:
-    radial-gradient(120% 140% at 0% 0%, rgb(var(--lg-azure) / 0.16), transparent 58%),
-    radial-gradient(90% 120% at 100% 0%, rgb(var(--lg-cyan) / 0.09), transparent 60%);
-  animation: mike-breathe 3.2s ease-in-out infinite;
+    radial-gradient(130% 150% at 0% 0%, rgb(var(--lg-azure) / 0.16), transparent 56%),
+    radial-gradient(90% 120% at 100% 0%, rgb(var(--lg-cyan) / 0.1), transparent 60%);
 }
-
-/* The hairline along the top edge — the "charged" tell. */
 .mike-summary--live::before {
   content: '';
   position: absolute;
@@ -2722,48 +2797,29 @@ body {
   background: linear-gradient(
     90deg,
     transparent,
-    rgb(var(--lg-cyan)),
-    rgb(var(--lg-azure)),
+    rgb(var(--lg-cyan) / 0.9),
+    rgb(var(--lg-azure) / 0.9),
     transparent
   );
-  opacity: 0.9;
-  animation: mike-scan 3.2s ease-in-out infinite;
+  opacity: 0.8;
 }
 
-@keyframes mike-breathe {
-  0%,
-  100% {
-    box-shadow:
-      inset 0 1px 0 rgb(var(--lg-cyan) / 0.16),
-      0 0 24px -14px rgb(var(--lg-azure) / 0.85);
-  }
-  50% {
-    box-shadow:
-      inset 0 1px 0 rgb(var(--lg-cyan) / 0.34),
-      0 0 46px -10px rgb(var(--lg-azure) / 1);
-  }
-}
-
-@keyframes mike-scan {
-  0%,
-  100% {
-    opacity: 0.45;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
-/* A pulsing halo is decoration; anyone who asked for less motion gets the
-   colour and the edge, held still. */
+/* Reduced motion: hold the light still, keep the meaning — a rich static bloom
+   and a lit rim, no breathing, no drift. */
 @media (prefers-reduced-motion: reduce) {
-  .mike-summary--live,
-  .mike-summary--live::before {
+  .mike-charge--on::before {
     animation: none;
+    opacity: calc(0.5 + 0.12 * var(--mike-load));
+    transform: scale(1.01);
   }
-  .mike-summary--live {
-    box-shadow:
-      inset 0 1px 0 rgb(var(--lg-cyan) / 0.28),
-      0 0 34px -12px rgb(var(--lg-azure) / 0.9);
+  .mike-charge--on::after {
+    animation: none;
+    background: conic-gradient(
+      from 208deg,
+      transparent,
+      rgb(var(--lg-cyan) / 0.6) 30%,
+      rgb(var(--lg-azure) / 0.5) 52%,
+      transparent 72%
+    );
   }
 }

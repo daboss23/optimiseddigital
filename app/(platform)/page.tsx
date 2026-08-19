@@ -38,7 +38,7 @@ import {
 import { CreativeLeaderboard } from '@/components/reactor/CreativeLeaderboard'
 import {
   ActionsRequiredTile,
-  MikeQueue,
+  MikeQueuePanel,
   OperatorProvider,
   OperatorToast,
   OPERATOR_QUEUE_ANCHOR,
@@ -305,9 +305,7 @@ export default async function ReactorDashboard({
           Your Next Moves
         </SectionLabel>
         <div id={OPERATOR_QUEUE_ANCHOR} className="scroll-mt-24">
-          <Panel>
-            <MikeQueue />
-          </Panel>
+          <MikeQueuePanel />
         </div>
 
         {/* ── 3 · Creative leaderboard ───────────────────────────────────── */}
