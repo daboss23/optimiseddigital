@@ -411,12 +411,12 @@ function VariationControls({
             type="button"
             onClick={() => onCount(n)}
             aria-pressed={count === n}
-            aria-label={`${n} ${n === 1 ? 'version' : 'versions'} of ${deliverable}`}
+            aria-label={`${n} ${n === 1 ? 'creative' : 'creatives'} of ${deliverable}`}
             className={`count-card px-2 py-2 text-center ${count === n ? 'is-on' : ''}`}
           >
             <span className="block font-display text-base font-bold text-white">×{n}</span>
             <span className="block text-[10px] leading-tight text-white/60">
-              {n === 1 ? 'Single' : `${n} versions`}
+              {n === 1 ? 'Single creative' : `${n} creatives`}
             </span>
           </button>
         ))}
