@@ -40,6 +40,7 @@ export async function GET() {
     gemini: Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY),
     higgsfield: Boolean(process.env.HF_CREDENTIALS),
     fal: Boolean(process.env.FAL_KEY),
+    muapi: Boolean(process.env.MUAPIAPP_API_KEY || process.env.MUAPI_API_KEY),
     pipeboard: Boolean(process.env.PIPEBOARD_API_TOKEN),
   }
 
