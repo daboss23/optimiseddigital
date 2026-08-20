@@ -1,6 +1,6 @@
 'use client'
 
-import { Loader2, Pause, Play, RefreshCw, X } from 'lucide-react'
+import { Loader2, Pause, Play, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { DemoBadge } from '@/components/reactor/Explain'
 import { useOperator, type QueueFilter } from '@/components/reactor/operator/OperatorProvider'
@@ -40,8 +40,6 @@ export function MikeQueueSummary() {
     queue,
     summary,
     remark,
-    welcome,
-    dismissWelcome,
     filter,
     setFilter,
     lastUpdated,
@@ -65,30 +63,11 @@ export function MikeQueueSummary() {
         demanding && 'mike-summary--live',
       )}
     >
-      {/* The first meeting. Fixed copy, word for word, until it is dismissed
-          once — then it never comes back. Sits above everything else Mike has
-          to say, because on day one it IS everything he has to say. */}
-      {welcome && (
-        <div className="relative mb-4 rounded-lg border border-[color:rgb(var(--lg-cyan)/0.3)] bg-[color:rgb(var(--lg-cyan)/0.05)] px-4 py-3.5 pr-11">
-          <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-glow/60">
-            First transmission
-          </p>
-          <div className="mt-2 space-y-2.5 text-[13.5px] leading-relaxed text-white/80">
-            {welcome.split('\n\n').map((paragraph) => (
-              <p key={paragraph.slice(0, 32)}>{paragraph}</p>
-            ))}
-          </div>
-          <button
-            type="button"
-            onClick={dismissWelcome}
-            aria-label="Dismiss welcome"
-            className="absolute right-2.5 top-2.5 grid h-7 w-7 place-items-center rounded-md text-white/40 transition-colors hover:bg-white/5 hover:text-glow focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 motion-reduce:transition-none"
-          >
-            <X size={13} />
-          </button>
-        </div>
-      )}
-
+      {/* The first meeting used to sit here as a card. It is now a modal over
+          the dashboard (WelcomeModal) — an introduction that arrives BEFORE the
+          board is read, rather than one more panel inside it. Both cannot
+          exist: they read the same `welcome` value, so an inline copy here
+          would greet the operator twice. */}
       <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
         <div className="min-w-0 max-w-3xl">
           <p className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.28em] text-glow/70">

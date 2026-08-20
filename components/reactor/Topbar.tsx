@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Menu, X, Search, Bell, Atom, ChevronRight } from 'lucide-react'
+import { Menu, X, Search, Bell, Atom, ChevronRight, LogOut } from 'lucide-react'
 import { navItems } from '@/lib/nav'
 import { BrandMark, useBrandIdentity } from '@/components/reactor/BrandMark'
 import { cn } from '@/lib/utils'
@@ -48,6 +48,21 @@ export function Topbar() {
       window.removeEventListener('keydown', onKey)
     }
   }, [open])
+
+  // Sign out. The session cookies go; Mike's decision log stays, because
+  // leaving for the day is not the same as handing the account to somebody
+  // else — the login form is what clears his memory, and only when a
+  // different operator signs in.
+  const signOut = async () => {
+    setOpen(false)
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' })
+    } catch {
+      /* the redirect below still takes them to the door */
+    }
+    router.replace('/login')
+    router.refresh()
+  }
 
   // Launch a new campaign from anywhere. On the reactor page the modal is
   // already mounted, so signal it directly; elsewhere, navigate in with the
@@ -122,6 +137,15 @@ export function Topbar() {
           <div className="topbar-avatar hidden h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-primary to-cyan text-xs font-bold text-white sm:grid">
             {identity.initials}
           </div>
+          <button
+            type="button"
+            onClick={signOut}
+            className="topbar-control tap-target hidden h-10 w-10 place-items-center rounded-xl border border-border text-white/55 hover:text-white sm:grid"
+            aria-label="Sign out"
+            title="Sign out"
+          >
+            <LogOut size={16} />
+          </button>
         </div>
       </div>
 
@@ -199,6 +223,19 @@ export function Topbar() {
                 </div>
                 <ChevronRight size={14} className="shrink-0 text-emerald/60" />
               </div>
+
+              {/* The phone has no topbar avatar row, so sign-out lives here or
+                  nowhere. */}
+              <button
+                type="button"
+                onClick={signOut}
+                className="tap-target mt-2 flex w-full items-center gap-3 rounded-xl border border-border px-3 py-3 text-sm font-medium text-white/65"
+              >
+                <span className="nav-icon-chip grid h-8 w-8 shrink-0 place-items-center rounded-lg">
+                  <LogOut size={16} className="text-white/45" />
+                </span>
+                Sign out
+              </button>
             </div>
           </div>
         </div>,
