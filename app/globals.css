@@ -2240,16 +2240,18 @@ body {
   box-shadow: 0 0 12px -2px rgb(var(--lg-cyan) / 0.6);
 }
 
-/* Step headings inside the campaign brief. Sized to lead the field they sit
-   above: at 11px/600 they read as a caption and sink into the helper text
-   under them, so the eye finds no structure scanning the form. Tracking eases
-   back as the size rises — 0.16em is a lot of air on a larger glyph. */
+/* Step headings inside the campaign brief. Sized to LEAD the field they sit
+   above: the original 11px/600 read as a caption and sank into the helper text
+   under it, so the eye found no structure scanning the form. Tracking eases
+   back as the size rises — 0.16em that looked tight at 11px opens into gaps at
+   15px, which is what makes a large uppercase label read as decoration rather
+   than as a heading. */
 .sec-label {
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 700;
-  letter-spacing: 0.13em;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.92);
+  color: rgba(255, 255, 255, 0.98);
 }
 
 /* Big selectable cards — deliverables, performance feed, on-brand */

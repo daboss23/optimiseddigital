@@ -895,7 +895,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                 <div>
                   <SectionLabel>
                     <span className="inline-flex items-center gap-1.5">
-                      <Tag size={14} /> Campaign Name
+                      <Tag size={16} /> Campaign Name
                     </span>
                   </SectionLabel>
                   <input
@@ -911,7 +911,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                 <div>
                   <SectionLabel>
                     <span className="inline-flex items-center gap-1.5">
-                      <Megaphone size={14} /> Offer Name
+                      <Megaphone size={16} /> Offer Name
                     </span>
                   </SectionLabel>
                   <input
