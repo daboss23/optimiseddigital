@@ -2240,12 +2240,16 @@ body {
   box-shadow: 0 0 12px -2px rgb(var(--lg-cyan) / 0.6);
 }
 
+/* Step headings inside the campaign brief. Sized to lead the field they sit
+   above: at 11px/600 they read as a caption and sink into the helper text
+   under them, so the eye finds no structure scanning the form. Tracking eases
+   back as the size rises — 0.16em is a lot of air on a larger glyph. */
 .sec-label {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.16em;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.75);
+  color: rgba(255, 255, 255, 0.92);
 }
 
 /* Big selectable cards — deliverables, performance feed, on-brand */
