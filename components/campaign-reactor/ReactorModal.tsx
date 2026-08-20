@@ -895,7 +895,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                 <div>
                   <SectionLabel>
                     <span className="inline-flex items-center gap-1.5">
-                      <Tag size={12} /> Campaign Name
+                      <Tag size={14} /> Campaign Name
                     </span>
                   </SectionLabel>
                   <input
@@ -911,7 +911,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                 <div>
                   <SectionLabel>
                     <span className="inline-flex items-center gap-1.5">
-                      <Megaphone size={12} /> Offer Name
+                      <Megaphone size={14} /> Offer Name
                     </span>
                   </SectionLabel>
                   <input
@@ -920,9 +920,6 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                     placeholder={`e.g. "AI Automation Masterclass"`}
                     className="launch-input px-4 py-3.5 text-[15px]"
                   />
-                  <p className="mt-2 text-xs leading-relaxed text-white/55">
-                    What your audience is told they are getting. Written into the copy and the CTA.
-                  </p>
                 </div>
               </div>
 
