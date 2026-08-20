@@ -52,6 +52,7 @@ import {
   saveMemory,
   saveNarration,
 } from '@/lib/operator/persistence'
+import { welcomeCopy } from '@/lib/operator/welcome'
 import type {
   AskOutput,
   CatchupOutput,
@@ -83,6 +84,9 @@ import type {
 
 /** Past this many days away, the strip offers a catch-up instead of a remark. */
 const AWAY_THRESHOLD_DAYS = 2
+
+/** Who Mike greets by name — the deployment's setting, inlined at build time. */
+const OPERATOR_NAME = (process.env.NEXT_PUBLIC_OPERATOR_NAME ?? '').trim() || null
 
 /** Which slice of the decision log the surface is showing. */
 export type QueueFilter = 'open' | 'done' | 'dismissed'
@@ -136,6 +140,9 @@ interface OperatorContextValue {
   summary: QueueSummaryCopy
   /** Mike's contextual line, if he had one. Never a paragraph. */
   remark: string | null
+  /** The first-session greeting — fixed copy, on screen until dismissed once. */
+  welcome: string | null
+  dismissWelcome: () => void
   filter: QueueFilter
   setFilter: (f: QueueFilter) => void
   history: DecisionRecord[]
@@ -586,6 +593,22 @@ export function OperatorProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  /* -- the welcome --------------------------------------------------------- */
+
+  // The first meeting, per browser per deployment. Fixed copy — a greeting
+  // needs to be instant and exact, not generated — and it stays on screen
+  // until it is dismissed once, then it never comes back.
+  const welcome = memory && !memory.welcomedAt ? welcomeCopy(OPERATOR_NAME) : null
+
+  const dismissWelcome = useCallback(() => {
+    setMemory((current) => {
+      if (!current || current.welcomedAt) return current
+      const next = { ...current, welcomedAt: new Date().toISOString() }
+      saveMemory(next)
+      return next
+    })
+  }, [])
+
   /* -- Ask Mike ------------------------------------------------------------ */
 
   const asksRemaining = useCallback(
@@ -825,6 +848,8 @@ export function OperatorProvider({ children }: { children: ReactNode }) {
       queue,
       summary,
       remark,
+      welcome,
+      dismissWelcome,
       filter,
       setFilter,
       history,
@@ -890,6 +915,8 @@ export function OperatorProvider({ children }: { children: ReactNode }) {
       source,
       toast,
       togglePause,
+      welcome,
+      dismissWelcome,
     ],
   )
 

@@ -17,6 +17,13 @@ export const SETTING_RESEARCH_SOURCES = 'research.sources'
  * the headline reads without a name rather than introducing a stranger.
  */
 export const SETTING_ASSISTANT_NAME = 'assistant.name'
+/**
+ * The Meta connection stored from the dashboard — a System User access token
+ * plus the ad account it reads. Server-side only: the value is never
+ * serialised to a client in full (the connection route reduces the token to
+ * its last four characters before anything leaves the server).
+ */
+export const SETTING_META_CONNECTION = 'meta.connection'
 
 function configured(): boolean {
   return (

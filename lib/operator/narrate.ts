@@ -27,6 +27,7 @@ import fs from 'fs'
 import path from 'path'
 import Anthropic from '@anthropic-ai/sdk'
 import { ORCHESTRATOR_FALLBACK_MODEL } from '@/lib/models'
+import { getTenant } from '@/lib/tenant'
 import { parseModelJson } from '@/lib/parse'
 import { STRENGTH_LABELS } from '@/lib/operator/strength'
 import {
@@ -76,6 +77,23 @@ export function loadConstitution(): string {
     cachedConstitution = ''
   }
   return cachedConstitution
+}
+
+/**
+ * Who this deployment serves, resolved server-side from the connected website
+ * (then env overrides, then nobody). The constitution deliberately names no
+ * company — this block is the only place Mike learns one, and a null field
+ * means "do not invent it".
+ */
+async function clientContext() {
+  const tenant = await getTenant().catch(() => null)
+  return {
+    company: tenant?.companyName || null,
+    industry: tenant?.industry || null,
+    audience: tenant?.audienceDescriptor || null,
+    positioning: tenant?.positioning || null,
+    operatorName: (process.env.NEXT_PUBLIC_OPERATOR_NAME ?? '').trim() || null,
+  }
 }
 
 /* --------------------------------- payload --------------------------------- */
@@ -380,6 +398,7 @@ export async function narrateSession(ctx: NarrationContext): Promise<NarrationRe
     }
   }
 
+  const clientInfo = await clientContext()
   const system = `${constitution}\n\n---\n\n${CONTRACT}\n\n${SESSION_SHAPE}`
   const payload = JSON.stringify(
     {
@@ -390,6 +409,7 @@ export async function narrateSession(ctx: NarrationContext): Promise<NarrationRe
       relationship: ctx.relationship,
       mikesNotes: ctx.mikesNotes,
       recentOpenings: ctx.recentOpenings,
+      client: clientInfo,
     },
     null,
     1,
@@ -503,11 +523,13 @@ export async function askMike(ctx: AskContext): Promise<AskResult> {
 
   if (!constitution || !client()) return unavailable
 
+  const clientInfo = await clientContext()
   const system = `${constitution}\n\n---\n\n${CONTRACT}\n\n${ASK_SHAPE}`
   const payload = JSON.stringify(
     {
       proposal: proposalPayload(ctx.proposal, ctx.ranking.indexOf(ctx.proposal.id) + 1),
       question: ctx.question,
+      client: clientInfo,
       earlierInThisThread: ctx.exchanges,
       metadata: ctx.metadata,
       relationship: ctx.relationship,
@@ -620,10 +642,12 @@ export async function catchUp(ctx: CatchupContext): Promise<CatchupResult> {
     }
   }
 
+  const clientInfo = await clientContext()
   const system = `${constitution}\n\n---\n\n${CONTRACT}\n\n${CATCHUP_SHAPE}`
   const payload = JSON.stringify(
     {
       awayDays: ctx.awayDays,
+      client: clientInfo,
       lastSeenAt: ctx.lastSeenAt,
       since: {
         ...ctx.since,

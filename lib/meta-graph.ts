@@ -36,6 +36,7 @@ import {
   type DateRange,
 } from '@/lib/date-range'
 import { demoDataEnabled } from '@/lib/demo-mode'
+import { resolveMetaCredentials } from '@/lib/operator/adapters/meta-credentials'
 
 /**
  * Meta Marketing API client (direct Graph API).
@@ -50,9 +51,11 @@ import { demoDataEnabled } from '@/lib/demo-mode'
  * degrades to the curated demo set and reports the reason on `error`, which the
  * UI surfaces rather than hiding.
  *
- * Required env: META_ACCESS_TOKEN. Optional: META_APP_SECRET (adds
- * appsecret_proof), META_API_VERSION (default v19.0), META_LIVE_MIN_SPEND
- * (default 1000, in the account currency), META_TARGET_COST_PER_RESULT.
+ * Credentials come from `resolveMetaCredentials` — the connection stored from
+ * the Meta Intelligence settings screen first, the META_ACCESS_TOKEN env var
+ * as the fallback. Optional env: META_APP_SECRET (adds appsecret_proof),
+ * META_API_VERSION (default v19.0), META_LIVE_MIN_SPEND (default 1000, in the
+ * account currency), META_TARGET_COST_PER_RESULT.
  */
 
 const GRAPH_BASE = 'https://graph.facebook.com'
@@ -81,13 +84,21 @@ function appSecretProof(token: string): string | null {
 
 // Exported so the performance-ingest layer (lib/meta-ingest.ts) reuses the same
 // signed, timeout-guarded Graph plumbing instead of duplicating it.
-export async function graphGet(path: string, params: Record<string, string>): Promise<unknown> {
-  const token = process.env.META_ACCESS_TOKEN
-  if (!token) throw new Error('META_ACCESS_TOKEN not configured')
+//
+// `token` is passed explicitly wherever the credentials were resolved from the
+// stored connection; left unset it falls back to the deployment environment,
+// so every pre-existing caller keeps working unchanged.
+export async function graphGet(
+  path: string,
+  params: Record<string, string>,
+  token?: string,
+): Promise<unknown> {
+  const resolvedToken = token ?? process.env.META_ACCESS_TOKEN
+  if (!resolvedToken) throw new Error('META_ACCESS_TOKEN not configured')
 
   const url = new URL(`${GRAPH_BASE}/${apiVersion()}/${path}`)
-  url.searchParams.set('access_token', token)
-  const proof = appSecretProof(token)
+  url.searchParams.set('access_token', resolvedToken)
+  const proof = appSecretProof(resolvedToken)
   if (proof) url.searchParams.set('appsecret_proof', proof)
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
 
@@ -187,31 +198,50 @@ export function roas(row: InsightRow): number {
 
 /* ------------------------------ live pulls -------------------------------- */
 
-export async function listAccountIds(): Promise<string[]> {
-  const json = (await graphGet('me/adaccounts', { fields: 'account_id', limit: '50' })) as {
-    data?: { account_id?: string }[]
+/** The accounts a token can see, with names — the connect flow's picker data. */
+export async function listAccounts(token?: string): Promise<{ id: string; name: string }[]> {
+  const json = (await graphGet('me/adaccounts', { fields: 'account_id,name', limit: '50' }, token)) as {
+    data?: { account_id?: string; name?: string }[]
   }
-  return (json.data ?? []).map((d) => d.account_id).filter((id): id is string => Boolean(id))
+  return (json.data ?? [])
+    .filter((d): d is { account_id: string; name?: string } => Boolean(d.account_id))
+    .map((d) => ({ id: d.account_id, name: d.name || d.account_id }))
+}
+
+export async function listAccountIds(token?: string): Promise<string[]> {
+  return (await listAccounts(token)).map((a) => a.id)
 }
 
 /** Account totals for exactly the requested window. */
-async function accountInsights(accountId: string, range: DateRange): Promise<InsightRow | null> {
-  const json = (await graphGet(`act_${accountId}/insights`, {
-    fields: 'spend,impressions,clicks,ctr,cpc,cpm,reach,frequency,actions,purchase_roas',
-    time_range: graphTimeRange(range),
-  })) as { data?: InsightRow[] }
+async function accountInsights(
+  accountId: string,
+  range: DateRange,
+  token?: string,
+): Promise<InsightRow | null> {
+  const json = (await graphGet(
+    `act_${accountId}/insights`,
+    {
+      fields: 'spend,impressions,clicks,ctr,cpc,cpm,reach,frequency,actions,purchase_roas',
+      time_range: graphTimeRange(range),
+    },
+    token,
+  )) as { data?: InsightRow[] }
   return json.data?.[0] ?? null
 }
 
-async function topAds(accountId: string, range: DateRange): Promise<InsightRow[]> {
-  const json = (await graphGet(`act_${accountId}/insights`, {
-    level: 'ad',
-    fields:
-      'ad_id,ad_name,spend,ctr,impressions,frequency,actions,purchase_roas,video_3_sec_watched_actions,outbound_clicks_ctr,date_start,date_stop',
-    time_range: graphTimeRange(range),
-    sort: 'spend_descending',
-    limit: '6',
-  })) as { data?: InsightRow[] }
+async function topAds(accountId: string, range: DateRange, token?: string): Promise<InsightRow[]> {
+  const json = (await graphGet(
+    `act_${accountId}/insights`,
+    {
+      level: 'ad',
+      fields:
+        'ad_id,ad_name,spend,ctr,impressions,frequency,actions,purchase_roas,video_3_sec_watched_actions,outbound_clicks_ctr,date_start,date_stop',
+      time_range: graphTimeRange(range),
+      sort: 'spend_descending',
+      limit: '6',
+    },
+    token,
+  )) as { data?: InsightRow[] }
   return json.data ?? []
 }
 
@@ -220,11 +250,15 @@ async function topAds(accountId: string, range: DateRange): Promise<InsightRow[]
  * carries no imagery, so the ad objects are pulled separately and joined by id.
  * A miss is not an error — the table falls back to a format tile.
  */
-async function adThumbnails(accountId: string): Promise<Record<string, string>> {
-  const json = (await graphGet(`act_${accountId}/ads`, {
-    fields: 'id,creative{thumbnail_url}',
-    limit: '50',
-  })) as { data?: { id?: string; creative?: { thumbnail_url?: string } }[] }
+async function adThumbnails(accountId: string, token?: string): Promise<Record<string, string>> {
+  const json = (await graphGet(
+    `act_${accountId}/ads`,
+    {
+      fields: 'id,creative{thumbnail_url}',
+      limit: '50',
+    },
+    token,
+  )) as { data?: { id?: string; creative?: { thumbnail_url?: string } }[] }
   const map: Record<string, string> = {}
   for (const ad of json.data ?? []) {
     if (ad.id && ad.creative?.thumbnail_url) map[ad.id] = ad.creative.thumbnail_url
@@ -239,14 +273,19 @@ async function adThumbnails(accountId: string): Promise<Record<string, string>> 
 async function trendSeries(
   accountId: string,
   range: DateRange,
+  token?: string,
 ): Promise<{ date: string; spend: number; results: number; roas: number }[]> {
   const days = rangeDays(range)
   const increment = days <= 14 ? '1' : days <= 90 ? '7' : 'monthly'
-  const json = (await graphGet(`act_${accountId}/insights`, {
-    fields: 'spend,purchase_roas,actions',
-    time_range: graphTimeRange(range),
-    time_increment: increment,
-  })) as { data?: InsightRow[] }
+  const json = (await graphGet(
+    `act_${accountId}/insights`,
+    {
+      fields: 'spend,purchase_roas,actions',
+      time_range: graphTimeRange(range),
+      time_increment: increment,
+    },
+    token,
+  )) as { data?: InsightRow[] }
   return (json.data ?? []).map((r) => ({
     date: r.date_start ?? '',
     spend: num(r.spend),
@@ -519,17 +558,22 @@ export async function resolveMetaDashboard(
   // With demo data off, "not connected" must read as an empty account rather
   // than another company's spend and campaign names.
   const demo = demoDataEnabled() ? buildDemoDashboard(range) : buildEmptyDashboard(range)
-  if (!metaApiConfigured()) return demo
+  // The stored connection wins; the env token is the fallback. Neither → demo.
+  const credentials = await resolveMetaCredentials()
+  if (!credentials) return demo
+  const token = credentials.token
 
   const comparison = previousRange(range)
 
   try {
-    const accountIds = await listAccountIds()
+    const accountIds = credentials.accountId
+      ? [credentials.accountId]
+      : await listAccountIds(token)
     if (accountIds.length === 0) return demo
 
     const [current, previous] = await Promise.all([
-      Promise.all(accountIds.map((id) => accountInsights(id, range).catch(() => null))),
-      Promise.all(accountIds.map((id) => accountInsights(id, comparison).catch(() => null))),
+      Promise.all(accountIds.map((id) => accountInsights(id, range, token).catch(() => null))),
+      Promise.all(accountIds.map((id) => accountInsights(id, comparison, token).catch(() => null))),
     ])
     const present = current.filter((r): r is InsightRow => r !== null)
     if (present.length === 0) return demo
@@ -548,10 +592,10 @@ export async function resolveMetaDashboard(
     const revenueConnected = blendedRoas > 0
 
     const [adRows, priorAdRows, thumbSets, trendRows] = await Promise.all([
-      Promise.all(accountIds.map((id) => topAds(id, range).catch(() => []))),
-      Promise.all(accountIds.map((id) => topAds(id, comparison).catch(() => []))),
-      Promise.all(accountIds.map((id) => adThumbnails(id).catch(() => ({})))),
-      Promise.all(accountIds.map((id) => trendSeries(id, range).catch(() => []))),
+      Promise.all(accountIds.map((id) => topAds(id, range, token).catch(() => []))),
+      Promise.all(accountIds.map((id) => topAds(id, comparison, token).catch(() => []))),
+      Promise.all(accountIds.map((id) => adThumbnails(id, token).catch(() => ({})))),
+      Promise.all(accountIds.map((id) => trendSeries(id, range, token).catch(() => []))),
     ])
 
     const allAds = adRows.flat().sort((a, b) => num(b.spend) - num(a.spend)).slice(0, 10)
@@ -619,11 +663,14 @@ export async function metaApiStatus(): Promise<{
   liveMinSpend: number
   error?: string
 }> {
-  if (!metaApiConfigured()) {
+  const credentials = await resolveMetaCredentials()
+  if (!credentials) {
     return { configured: false, connected: false, accountCount: 0, liveMinSpend: liveMinSpend() }
   }
   try {
-    const ids = await listAccountIds()
+    const ids = credentials.accountId
+      ? [credentials.accountId]
+      : await listAccountIds(credentials.token)
     return { configured: true, connected: true, accountCount: ids.length, liveMinSpend: liveMinSpend() }
   } catch (e) {
     return {

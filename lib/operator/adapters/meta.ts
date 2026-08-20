@@ -1,66 +1,79 @@
 /**
- * The live Meta adapter — not implemented.
+ * The live Meta adapter — the client side of the seam.
  *
- * It is a stub deliberately, and it throws rather than degrading, because a
- * data source that silently returns partial figures is how an operator ends up
- * making a four-hundred-thousand-dollar decision on half an account.
+ * The operator pipeline runs in the browser, but the Meta access token never
+ * can. So this adapter is a thin HTTP shell: it fetches the shaped DataSource
+ * payload from `/api/operator/source`, where `meta-server.ts` does the Graph
+ * work server-side. Everything above `adapters/` reads the same
+ * `DataSource` interface either way and knows nothing about the transport.
  *
- * Everything above `adapters/` is agnostic to where the data came from, so
- * finishing this is a self-contained job with a hard edge: implement the three
- * methods, change the one import in `adapters/index.ts`, and nothing else in
- * the pipeline moves. The suite asserts that property.
+ * The failure philosophy is unchanged from the stub this file replaces: it
+ * THROWS rather than degrades, because a data source that silently returns
+ * partial figures is how an operator ends up making a
+ * four-hundred-thousand-dollar decision on half an account. The provider
+ * catches the throw and renders the disconnected state.
  *
- * What the Graph API has to be asked for, and why each one is not optional:
- *
- * **getCreatives()** — `/act_<id>/insights` at `level=ad` with
- * `time_increment=1` for the daily rows, requesting `spend`, `impressions`,
- * `reach`, `clicks` (outbound), `actions` and `action_values`. Results must be
- * read from the action type the campaign actually optimises for and mapped onto
- * a single `PrimaryResultType` per creative — NOT summed across action types.
- * A blended "conversions" total is the exact ambiguity this pipeline exists to
- * remove, and it cannot be un-blended downstream.
- *
- * **The ranges.** A second insights call per creative WITHOUT `time_increment`,
- * once per evaluation window (`time_range` = the 7 days to `completeThrough`,
- * and the 7 before that), reading `impressions`, `reach` and `frequency`.
- * This call is the reason the adapter is not a one-liner over the existing
- * `lib/meta-graph.ts`: that module returns range-aggregated ads without daily
- * rows, and frequency cannot be reconstructed from daily reach at any level of
- * effort, because reach deduplicates people across days.
- *
- * **getBaselines()** — cohort medians computed from the same ad-level insights,
- * grouped by result type, then offer, then audience temperature, with
- * `creativeCount` and `resultCount` recorded per cohort so the resolver can
- * reject one that is too thin. Cohort attributes come from the ad set targeting
- * and the campaign objective, not from the creative's name.
- *
- * **getMetadata()** — `accountTimezone` from `/act_<id>?fields=timezone_name`,
- * `attributionWindow` from the ad set's `attribution_spec`, `completeThrough`
- * as yesterday in the ACCOUNT's timezone, and `maturityDelayHours` from the
- * longest click window in that spec.
+ * What the server side asks the Graph API for, and why each call is not
+ * optional, is documented in `meta-server.ts` — in particular the separate
+ * range-level insights call per evaluation window, because frequency cannot
+ * be reconstructed from daily reach at any level of effort.
  */
 
 import type { DataSource } from '@/lib/operator/types'
+import type { OperatorSourcePayload } from '@/lib/operator/adapters/meta-server'
 
 export class MetaAdapterNotImplemented extends Error {
-  constructor() {
+  constructor(reason?: string) {
     super(
-      'The live Meta data source is not implemented. It needs ad-level insights at time_increment=1 for daily rows, plus a separate range-level call per evaluation window for deduplicated reach and frequency — see the notes in lib/operator/adapters/meta.ts. The operator runs on the seeded source until then.',
+      `The live Meta data source is unavailable${
+        reason ? `: ${reason}` : ''
+      }. The operator renders its disconnected state rather than a partial account.`,
     )
     this.name = 'MetaAdapterNotImplemented'
   }
 }
 
-export function createMetaSource(): DataSource {
+export interface MetaSourceOptions {
+  /** The client's today — a hint only. The server resolves the account's own. */
+  evaluationDate?: string
+}
+
+export function createMetaSource(options: MetaSourceOptions = {}): DataSource {
+  // One fetch shared by all three methods — the pipeline calls them together,
+  // and three requests would triple the Graph work for the same payload.
+  let payload: Promise<OperatorSourcePayload> | null = null
+
+  const load = (): Promise<OperatorSourcePayload> => {
+    if (!payload) {
+      const qs = options.evaluationDate
+        ? `?date=${encodeURIComponent(options.evaluationDate)}`
+        : ''
+      payload = fetch(`/api/operator/source${qs}`)
+        .then(async (res) => {
+          const body = (await res.json().catch(() => null)) as
+            | (OperatorSourcePayload & { error?: string })
+            | null
+          if (!res.ok || !body || !Array.isArray(body.creatives)) {
+            throw new MetaAdapterNotImplemented(body?.error ?? `HTTP ${res.status}`)
+          }
+          return body
+        })
+        .catch((error: unknown) => {
+          // Any failure — offline, unconfigured, Graph down — becomes the same
+          // loud, catchable error. Never a partial payload.
+          throw error instanceof MetaAdapterNotImplemented
+            ? error
+            : new MetaAdapterNotImplemented(
+                error instanceof Error ? error.message : 'request failed',
+              )
+        })
+    }
+    return payload
+  }
+
   return {
-    getCreatives: async () => {
-      throw new MetaAdapterNotImplemented()
-    },
-    getBaselines: async () => {
-      throw new MetaAdapterNotImplemented()
-    },
-    getMetadata: async () => {
-      throw new MetaAdapterNotImplemented()
-    },
+    getCreatives: async () => (await load()).creatives,
+    getBaselines: async () => (await load()).baselines,
+    getMetadata: async () => (await load()).metadata,
   }
 }

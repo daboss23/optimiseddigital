@@ -18,6 +18,7 @@ import {
   SEEDED_ACCOUNT_TIMEZONE,
   SEEDED_TARGET_COST_PER_RESULT,
 } from '@/lib/operator/adapters/seeded'
+import { createMetaSource } from '@/lib/operator/adapters/meta'
 import type { DataSource } from '@/lib/operator/types'
 
 export interface SourceOptions {
@@ -26,19 +27,33 @@ export interface SourceOptions {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   THE ONE LINE. Change `createSeededSource` to `createMetaSource` (imported
-   from './meta') when the live adapter lands. Nothing else moves.
+   THE ONE LINE — now an env flag. `NEXT_PUBLIC_OPERATOR_SOURCE=meta` reads the
+   live account through /api/operator/source; anything else keeps the seeded
+   source, so the self-test and the demo account never move. Nothing outside
+   this file knows the difference.
    ───────────────────────────────────────────────────────────────────────── */
-const createSource = createSeededSource
+const createSource =
+  process.env.NEXT_PUBLIC_OPERATOR_SOURCE === 'meta' ? createMetaSource : createSeededSource
 
 export function operatorDataSource(options: SourceOptions): DataSource {
   return createSource({ evaluationDate: options.evaluationDate })
 }
 
-/** The account's configured cost-per-result target, alongside its source. */
-export const TARGET_COST_PER_RESULT = SEEDED_TARGET_COST_PER_RESULT
+/**
+ * The account's configured cost-per-result target, alongside its source.
+ * Defaults to the seeded target — a live account sets its own via
+ * NEXT_PUBLIC_OPERATOR_TARGET_CPR.
+ */
+const targetOverride = Number(process.env.NEXT_PUBLIC_OPERATOR_TARGET_CPR)
+export const TARGET_COST_PER_RESULT =
+  Number.isFinite(targetOverride) && targetOverride > 0 ? targetOverride : SEEDED_TARGET_COST_PER_RESULT
 
-/** The ad account's timezone — needed to resolve "today" before the source exists. */
-export const ACCOUNT_TIMEZONE = SEEDED_ACCOUNT_TIMEZONE
+/**
+ * The ad account's timezone — needed to resolve "today" before the source
+ * exists. With the live source the server is authoritative (it reads
+ * `timezone_name` off the account); this only seeds the client's first guess.
+ */
+export const ACCOUNT_TIMEZONE =
+  process.env.NEXT_PUBLIC_OPERATOR_ACCOUNT_TZ || SEEDED_ACCOUNT_TIMEZONE
 
 export type { DataSource }

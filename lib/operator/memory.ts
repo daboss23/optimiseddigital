@@ -57,6 +57,12 @@ export interface OperatorMemory {
   suppressions: Record<string, { untilDate: string; note: string }>
   /** When the operator first started working with Mike. */
   startedAt: string | null
+  /**
+   * When the welcome greeting was dismissed. Null means it has never been
+   * shown away — the first session leads with it. Per-browser, per-deployment,
+   * so every new customer gets their own first meeting.
+   */
+  welcomedAt: string | null
 }
 
 export function emptyMemory(): OperatorMemory {
@@ -73,6 +79,7 @@ export function emptyMemory(): OperatorMemory {
     askLog: [],
     suppressions: {},
     startedAt: null,
+    welcomedAt: null,
   }
 }
 
