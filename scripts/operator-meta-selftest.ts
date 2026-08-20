@@ -33,6 +33,7 @@ try {
 }
 
 import { fetchOperatorSource } from '@/lib/operator/adapters/meta-server'
+import { resolveMetaCredentials } from '@/lib/operator/adapters/meta-credentials'
 import { addDays, isValidDate, todayIn } from '@/lib/operator/dates'
 
 let passed = 0
@@ -59,6 +60,16 @@ async function main() {
     console.log(red('META_ACCESS_TOKEN is not set. Add it to .env.local and re-run.'))
     process.exit(1)
   }
+
+  // 0 · Credential resolution — the stored connection wins when one exists,
+  // the environment is the fallback. Either way a usable token must resolve.
+  const credentials = await resolveMetaCredentials()
+  check(
+    'credentials resolve (stored connection wins, env is the fallback)',
+    Boolean(credentials?.token) &&
+      (credentials?.origin === 'env' || credentials?.origin === 'settings'),
+    credentials ? `origin: ${credentials.origin}` : 'no credentials',
+  )
 
   const payload = await fetchOperatorSource()
   const { creatives, baselines, metadata } = payload

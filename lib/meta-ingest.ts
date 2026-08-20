@@ -13,20 +13,22 @@
  * and skips everything else. Per CLAUDE.md it never throws — every failure
  * degrades to a summary the caller can surface.
  *
- * Env: META_ACCESS_TOKEN (required, shared with the dashboard). Optional:
- * META_INGEST_MIN_SPEND (spend floor to judge an ad, default 50, account
- * currency), META_INGEST_DATE_PRESET (Graph date_preset, default last_30d).
+ * Credentials: the connection stored from the Meta Intelligence settings
+ * screen first, META_ACCESS_TOKEN as the fallback (shared with the dashboard).
+ * Optional env: META_INGEST_MIN_SPEND (spend floor to judge an ad, default 50,
+ * account currency), META_INGEST_DATE_PRESET (Graph date_preset, default
+ * last_30d).
  */
 
 import {
   graphGet,
   listAccountIds,
-  metaApiConfigured,
   num,
   conversions,
   roas,
   type InsightRow,
 } from '@/lib/meta-graph'
+import { resolveMetaCredentials } from '@/lib/operator/adapters/meta-credentials'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { ingestKnowledge } from '@/lib/knowledge'
 import { parseTestToken, type TestToken } from '@/lib/meta-ads'
@@ -131,13 +133,17 @@ const WIN_VERDICTS: Verdict[] = ['winner', 'high_performer']
 
 /* ------------------------------ Live pull ---------------------------------- */
 
-async function adInsights(accountId: string): Promise<InsightRow[]> {
-  const json = (await graphGet(`act_${accountId}/insights`, {
-    level: 'ad',
-    fields: 'ad_id,ad_name,campaign_name,spend,impressions,ctr,cpm,frequency,actions,purchase_roas',
-    date_preset: datePreset(),
-    limit: '200',
-  })) as { data?: InsightRow[] }
+async function adInsights(accountId: string, token?: string): Promise<InsightRow[]> {
+  const json = (await graphGet(
+    `act_${accountId}/insights`,
+    {
+      level: 'ad',
+      fields: 'ad_id,ad_name,campaign_name,spend,impressions,ctr,cpm,frequency,actions,purchase_roas',
+      date_preset: datePreset(),
+      limit: '200',
+    },
+    token,
+  )) as { data?: InsightRow[] }
   return json.data ?? []
 }
 
@@ -253,8 +259,12 @@ function perfAttributes(
  * Winners flow on into the knowledge Vault automatically. Never throws.
  */
 export async function syncMetaPerformance(): Promise<MetaIngestSummary> {
-  if (!metaApiConfigured()) {
-    return { ...emptySummary(false), error: 'META_ACCESS_TOKEN not configured' }
+  const credentials = await resolveMetaCredentials()
+  if (!credentials) {
+    return {
+      ...emptySummary(false),
+      error: 'Meta is not connected — add a token on Meta Intelligence or set META_ACCESS_TOKEN',
+    }
   }
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     return { ...emptySummary(true), error: 'Supabase not configured — nowhere to store outcomes' }
@@ -262,8 +272,12 @@ export async function syncMetaPerformance(): Promise<MetaIngestSummary> {
 
   const summary = emptySummary(true)
   try {
-    const accountIds = await listAccountIds()
-    const rows = (await Promise.all(accountIds.map((id) => adInsights(id).catch(() => [])))).flat()
+    const accountIds = credentials.accountId
+      ? [credentials.accountId]
+      : await listAccountIds(credentials.token)
+    const rows = (
+      await Promise.all(accountIds.map((id) => adInsights(id, credentials.token).catch(() => [])))
+    ).flat()
     const ads = rows.map(toPerf).filter((a): a is AdPerf => a !== null)
     summary.scanned = ads.length
 
@@ -368,7 +382,7 @@ export async function metaIngestStatus(): Promise<{
   syncedAds: number
 }> {
   const base = {
-    configured: metaApiConfigured(),
+    configured: Boolean(await resolveMetaCredentials()),
     storageReady: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL),
     minSpend: minSpend(),
     datePreset: datePreset(),

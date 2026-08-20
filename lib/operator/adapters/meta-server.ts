@@ -43,11 +43,14 @@
 import {
   graphGet,
   listAccountIds,
-  metaApiConfigured,
   num,
   resultCount,
   type InsightRow,
 } from '@/lib/meta-graph'
+import {
+  resolveMetaCredentials,
+  type ResolvedMetaCredentials,
+} from '@/lib/operator/adapters/meta-credentials'
 import { addDays, todayIn } from '@/lib/operator/dates'
 import type {
   AudienceTemperature,
@@ -93,8 +96,9 @@ const MATURITY_DELAY_HOURS = 48
 async function graphGetAll<T>(
   path: string,
   params: Record<string, string>,
+  token: string,
 ): Promise<T[]> {
-  const first = (await graphGet(path, params)) as {
+  const first = (await graphGet(path, params, token)) as {
     data?: T[]
     paging?: { next?: string }
     error?: { message?: string }
@@ -127,15 +131,14 @@ async function graphGetAll<T>(
   return rows
 }
 
-function configuredAccountId(): string | null {
-  const raw = (process.env.META_AD_ACCOUNT_ID ?? '').trim()
-  return raw ? raw.replace(/^act_/, '') : null
-}
-
-async function resolveAccountId(): Promise<string> {
-  const configured = configuredAccountId()
-  if (configured) return configured
-  const ids = await listAccountIds()
+/**
+ * The account the source reads: the one the connection names, else the first
+ * the token can see. A token with no accounts is a permissions problem, and it
+ * is reported as one rather than read as an empty account.
+ */
+async function resolveAccountId(credentials: ResolvedMetaCredentials): Promise<string> {
+  if (credentials.accountId) return credentials.accountId
+  const ids = await listAccountIds(credentials.token)
   if (ids.length === 0) {
     throw new MetaSourceError('The token can see no ad accounts — check its permissions.')
   }
@@ -363,12 +366,19 @@ function buildBaselines(
  * Throws MetaSourceError on any failure — partial data never crosses this seam.
  */
 export async function fetchOperatorSource(): Promise<OperatorSourcePayload> {
-  if (!metaApiConfigured()) {
-    throw new MetaSourceError('META_ACCESS_TOKEN is not configured.')
+  // The stored connection (Meta Intelligence settings screen) wins; the
+  // META_ACCESS_TOKEN env var is the fallback. Neither → the loud throw the
+  // client surface renders as its disconnected state.
+  const credentials = await resolveMetaCredentials()
+  if (!credentials) {
+    throw new MetaSourceError(
+      'Meta is not connected — add a System User token on Meta Intelligence or set META_ACCESS_TOKEN.',
+    )
   }
+  const { token } = credentials
 
-  const accountId = await resolveAccountId()
-  const account = (await graphGet(`act_${accountId}`, { fields: 'timezone_name' })) as {
+  const accountId = await resolveAccountId(credentials)
+  const account = (await graphGet(`act_${accountId}`, { fields: 'timezone_name' }, token)) as {
     timezone_name?: string
   }
   const timezone = account.timezone_name || 'UTC'
@@ -385,31 +395,47 @@ export async function fetchOperatorSource(): Promise<OperatorSourcePayload> {
   }
 
   const [dailyRows, currentRows, previousRows, adObjects] = await Promise.all([
-    graphGetAll<DailyInsightRow>(`act_${accountId}/insights`, {
-      level: 'ad',
-      time_increment: '1',
-      time_range: JSON.stringify({ since: dailyFrom, until: lastCompleteDay }),
-      fields:
-        'ad_id,ad_name,spend,impressions,reach,clicks,outbound_clicks,actions,date_start,date_stop',
-      limit: '500',
-    }),
-    graphGetAll<InsightRow>(`act_${accountId}/insights`, {
-      level: 'ad',
-      time_range: JSON.stringify(currentWindow),
-      fields: 'ad_id,impressions,reach,frequency',
-      limit: '500',
-    }),
-    graphGetAll<InsightRow>(`act_${accountId}/insights`, {
-      level: 'ad',
-      time_range: JSON.stringify(previousWindow),
-      fields: 'ad_id,impressions,reach,frequency',
-      limit: '500',
-    }),
-    graphGetAll<AdObject>(`act_${accountId}/ads`, {
-      fields:
-        'id,name,created_time,effective_status,creative{object_type,video_id,image_url},adset{name,targeting,campaign{name,objective}}',
-      limit: '200',
-    }),
+    graphGetAll<DailyInsightRow>(
+      `act_${accountId}/insights`,
+      {
+        level: 'ad',
+        time_increment: '1',
+        time_range: JSON.stringify({ since: dailyFrom, until: lastCompleteDay }),
+        fields:
+          'ad_id,ad_name,spend,impressions,reach,clicks,outbound_clicks,actions,date_start,date_stop',
+        limit: '500',
+      },
+      token,
+    ),
+    graphGetAll<InsightRow>(
+      `act_${accountId}/insights`,
+      {
+        level: 'ad',
+        time_range: JSON.stringify(currentWindow),
+        fields: 'ad_id,impressions,reach,frequency',
+        limit: '500',
+      },
+      token,
+    ),
+    graphGetAll<InsightRow>(
+      `act_${accountId}/insights`,
+      {
+        level: 'ad',
+        time_range: JSON.stringify(previousWindow),
+        fields: 'ad_id,impressions,reach,frequency',
+        limit: '500',
+      },
+      token,
+    ),
+    graphGetAll<AdObject>(
+      `act_${accountId}/ads`,
+      {
+        fields:
+          'id,name,created_time,effective_status,creative{object_type,video_id,image_url},adset{name,targeting,campaign{name,objective}}',
+        limit: '200',
+      },
+      token,
+    ),
   ])
 
   const adsById = new Map<string, AdObject>()

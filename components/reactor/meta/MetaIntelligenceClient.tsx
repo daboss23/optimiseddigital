@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { AlertTriangle, RefreshCw } from 'lucide-react'
 import { PageHeader, Panel, Pill } from '@/components/reactor/ui'
 import { DateRangePicker } from '@/components/reactor/DateRangePicker'
+import { ConnectMetaPanel } from '@/components/reactor/meta/ConnectMetaPanel'
 import { MetaIntelligenceView } from '@/components/reactor/meta/MetaIntelligenceView'
 import type { MetaDashboard } from '@/lib/meta-data'
 import { rangeKey, rangeQuery, rangeSubLabel, type DateRange } from '@/lib/date-range'
@@ -191,6 +192,11 @@ export function MetaIntelligenceClient({
           </div>
         </Panel>
       )}
+
+      {/* The connection this tab reads with. Storing or removing one changes
+          where the figures come from, so the current range is re-pulled
+          against the new credentials rather than left showing the old ones. */}
+      <ConnectMetaPanel onConnectionChange={() => void fetchRange(range, { force: true })} />
 
       <MetaIntelligenceView data={data} loading={loading} />
     </>
