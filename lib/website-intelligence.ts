@@ -5,9 +5,17 @@
 // whole agent network can retrieve it. Reuses the existing chunk → Voyage embed →
 // pgvector pipeline (`ingestKnowledge`) — no duplicate ingestion machinery.
 //
-// Everything degrades gracefully: with no Anthropic key the profiles fall back to
-// a heuristic read; with no Supabase/Voyage the scan still runs and returns a
-// summary, it just isn't persisted.
+// Everything degrades gracefully, but not identically, and the difference
+// matters when connecting a site for the first time:
+//   · No Supabase/Voyage — the scan runs in full and the profiles are returned;
+//     they simply are not persisted, so they do not survive a reload.
+//   · No ANTHROPIC_API_KEY — pages are still discovered, classified, and the
+//     logo and palette are still read from the markup, but the FIVE PROFILES
+//     ARE NOT DERIVED AT ALL. They come back empty, `extractionSkipped` is set
+//     on the summary, and the telemetry says so out loud. There is no heuristic
+//     fallback for the profiles (there was never one) — a connected site with
+//     five blank profiles means the key is missing, not that the site was
+//     unreadable.
 
 import { createHash } from 'crypto'
 import Anthropic from '@anthropic-ai/sdk'
@@ -344,7 +352,37 @@ function stripTags(s: string): string {
   return decodeEntities(s.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim()
 }
 
+/** The content of a `<meta>` tag, matched on either attribute order. */
+function metaContent(html: string, name: string): string {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const patterns = [
+    new RegExp(`<meta[^>]+(?:property|name)=["']${escaped}["'][^>]*content=["']([^"']+)["']`, 'i'),
+    new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["']${escaped}["']`, 'i'),
+  ]
+  for (const pattern of patterns) {
+    const found = html.match(pattern)?.[1]
+    if (found) return stripTags(found).trim()
+  }
+  return ''
+}
+
+/**
+ * The company's name, as the site itself declares it.
+ *
+ * `og:site_name` is asked first because it is the only tag that means the
+ * company rather than the page — everything else is a guess about where the
+ * brand sits in a string. Falling straight to `<title>` and cutting at the
+ * first separator gets it right for "Harbourline Kitchens | Newcastle" and
+ * exactly backwards for "Kitchen Renovations, Newcastle | Harbourline
+ * Kitchens", which is the more common ordering on a site that cares about
+ * search. Getting it backwards is not cosmetic: this name becomes the tenant
+ * identity every agent writes under, it is painted on the shell, and it is
+ * handed to the profile extraction as the company it is reading about.
+ */
 function extractTitle(html: string): string {
+  const declared = metaContent(html, 'og:site_name') || metaContent(html, 'application-name')
+  if (declared) return declared.slice(0, 160)
+
   const t = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]
   const fromTitle = t ? stripTags(t).replace(/\s*[|\-–—:]\s*.+$/, '').trim() : ''
   if (fromTitle) return fromTitle.slice(0, 160)
@@ -1787,6 +1825,13 @@ export async function getConnectedWebsite(): Promise<WebsiteSummary | null> {
 
 /** Disconnect a website — remove all of its stored chunks from the Vault. */
 export async function disconnectWebsite(domain: string): Promise<void> {
+  // The tenant identity is DERIVED from the connected site and cached for a
+  // minute, so a disconnect that does not drop the cache leaves the agents
+  // still writing as the company that was just removed — and leaves the
+  // company's name painted on the shell. A scan invalidates for exactly this
+  // reason; a disconnect is the same event in the other direction.
+  invalidateTenant()
+
   if (!persistConfigured()) {
     lastUnpersistedScan = null
     return
@@ -1798,4 +1843,5 @@ export async function disconnectWebsite(domain: string): Promise<void> {
     .eq('system', 'website')
     .eq('metadata->>domain', root)
   if (error) throw error
+  lastUnpersistedScan = null
 }

@@ -41,6 +41,7 @@ import {
   MikeQueuePanel,
   OperatorProvider,
   OperatorToast,
+  WelcomeModal,
   OPERATOR_QUEUE_ANCHOR,
 } from '@/components/reactor/operator'
 import { getDashboardData } from '@/lib/dashboard-data'
@@ -601,6 +602,11 @@ export default async function ReactorDashboard({
         </div>
       </div>
 
+      {/* Mike's introduction, over the dashboard, once per operator. It has to
+          live inside the provider — the greeting and the show-once state are
+          both context — which is why the flow is login → dashboard → greeting
+          rather than a greeting on the login page itself. */}
+      <WelcomeModal />
       <OperatorToast />
     </OperatorProvider>
   )

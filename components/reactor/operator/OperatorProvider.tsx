@@ -53,6 +53,7 @@ import {
   saveNarration,
 } from '@/lib/operator/persistence'
 import { welcomeCopy } from '@/lib/operator/welcome'
+import { readOperatorNameCookie } from '@/lib/auth'
 import type {
   AskOutput,
   CatchupOutput,
@@ -85,8 +86,15 @@ import type {
 /** Past this many days away, the strip offers a catch-up instead of a remark. */
 const AWAY_THRESHOLD_DAYS = 2
 
-/** Who Mike greets by name — the deployment's setting, inlined at build time. */
-const OPERATOR_NAME = (process.env.NEXT_PUBLIC_OPERATOR_NAME ?? '').trim() || null
+/**
+ * Who Mike greets by name.
+ *
+ * The deployment's setting is a build-time constant — changing it means a
+ * redeploy — so it is the FALLBACK, not the answer. The answer is whoever
+ * signed in, read from the session cookie at boot. That way one deployment
+ * greets each operator by their own name without being rebuilt for them.
+ */
+const DEPLOYMENT_OPERATOR_NAME = (process.env.NEXT_PUBLIC_OPERATOR_NAME ?? '').trim() || null
 
 /** Which slice of the decision log the surface is showing. */
 export type QueueFilter = 'open' | 'done' | 'dismissed'
@@ -211,6 +219,10 @@ export function OperatorProvider({ children }: { children: ReactNode }) {
   const [justDecided, setJustDecided] = useState<JustDecided | null>(null)
   const [lastUpdated, setLastUpdated] = useState<number | null>(null)
   const [refreshing, setRefreshing] = useState(false)
+  // Resolved in the boot effect alongside memory, never during render — the
+  // cookie does not exist on the server pass, and a name that differs between
+  // the two passes is a hydration mismatch on the first thing Mike says.
+  const [operatorName, setOperatorName] = useState<string | null>(DEPLOYMENT_OPERATOR_NAME)
 
   // The previous visit, captured before `lastSeenAt` is stamped forward.
   const previousVisit = useRef<string | null>(null)
@@ -233,6 +245,7 @@ export function OperatorProvider({ children }: { children: ReactNode }) {
 
     setEvaluationDate(today)
     setMemory(booted)
+    setOperatorName(readOperatorNameCookie() ?? DEPLOYMENT_OPERATOR_NAME)
 
     let live = true
     const src = operatorDataSource({ evaluationDate: today })
@@ -598,7 +611,7 @@ export function OperatorProvider({ children }: { children: ReactNode }) {
   // The first meeting, per browser per deployment. Fixed copy — a greeting
   // needs to be instant and exact, not generated — and it stays on screen
   // until it is dismissed once, then it never comes back.
-  const welcome = memory && !memory.welcomedAt ? welcomeCopy(OPERATOR_NAME) : null
+  const welcome = memory && !memory.welcomedAt ? welcomeCopy(operatorName) : null
 
   const dismissWelcome = useCallback(() => {
     setMemory((current) => {
