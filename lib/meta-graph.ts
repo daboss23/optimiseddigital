@@ -54,8 +54,9 @@ import { resolveMetaCredentials } from '@/lib/operator/adapters/meta-credentials
  * Credentials come from `resolveMetaCredentials` — the connection stored from
  * the Meta Intelligence settings screen first, the META_ACCESS_TOKEN env var
  * as the fallback. Optional env: META_APP_SECRET (adds appsecret_proof),
- * META_API_VERSION (default v19.0), META_LIVE_MIN_SPEND (default 1000, in the
- * account currency), META_TARGET_COST_PER_RESULT.
+ * META_API_VERSION (default v19.0), META_LIVE_MIN_SPEND (default 0 — a
+ * connected account is live from the first dollar; raise it only to hold demo
+ * data until spend proves the account), META_TARGET_COST_PER_RESULT.
  */
 
 const GRAPH_BASE = 'https://graph.facebook.com'
@@ -71,7 +72,10 @@ function apiVersion(): string {
 
 function liveMinSpend(): number {
   const raw = Number(process.env.META_LIVE_MIN_SPEND)
-  return Number.isFinite(raw) && raw >= 0 ? raw : 1000
+  // Default 0: a connected account shows its own numbers from the first
+  // dollar. The floor exists only for deployments that want demo data to hold
+  // until the account proves itself — set META_LIVE_MIN_SPEND to raise one.
+  return Number.isFinite(raw) && raw >= 0 ? raw : 0
 }
 
 // Meta's recommended request signing: HMAC-SHA256 of the access token keyed by
@@ -547,8 +551,9 @@ function aggregate(rows: InsightRow[]): InsightRow {
 /**
  * Resolves the dataset both dashboards render, for ONE date range.
  *
- * Live numbers are returned only when the API is configured AND spend in the
- * window clears META_LIVE_MIN_SPEND; otherwise the curated demo set projected
+ * Live numbers are returned whenever the API is configured (an optional
+ * META_LIVE_MIN_SPEND floor can hold demo data until spend clears it — off by
+ * default); otherwise the curated demo set projected
  * onto the same range. A live failure returns the demo set WITH an `error` the
  * UI shows, rather than pretending seeded numbers are live ones.
  */
