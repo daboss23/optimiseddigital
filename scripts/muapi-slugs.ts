@@ -2,9 +2,10 @@
  * Find the working Muapi endpoint slugs for the frontier image models.
  *
  * WHY: `lib/image/muapi.ts` maps our model ids to Muapi endpoint paths. Only
- * `flux-dev-image` was ever confirmed; vendor paths drift, so when the frontier
- * slugs 404 the oven quietly falls all the way down to FLUX.1 Dev — the weakest
- * text renderer in the menu — and ads ship with misspelled headlines. Every
+ * `flux-dev-image` was ever confirmed; vendor paths drift, and a 404'd frontier
+ * slug costs you the model you asked for. FLUX.1 Dev used to catch those falls
+ * and render the headline misspelled — it has been removed from the menu, so a
+ * wrong slug now surfaces as a reported substitution instead. Every
  * slug is env-overridable precisely so this is fixable without a code change;
  * this script tells you which override to set.
  *
@@ -72,11 +73,6 @@ const CANDIDATES: { envVar: string; label: string; slugs: string[] }[] = [
     envVar: 'MUAPI_MODEL_MIDJOURNEY',
     label: 'Midjourney V8',
     slugs: ['midjourney-v8', 'midjourney-v7', 'midjourney'],
-  },
-  {
-    envVar: 'MUAPI_MODEL_FLUX_DEV',
-    label: 'FLUX.1 Dev (known-good control)',
-    slugs: ['flux-dev-image', 'flux-dev', 'flux-schnell'],
   },
 ]
 

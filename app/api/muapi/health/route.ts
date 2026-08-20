@@ -11,13 +11,13 @@ export const dynamic = 'force-dynamic'
  *
  *   /api/muapi/health            → FREE. Key presence + a live auth probe that
  *                                  starts no generation and spends no credits.
- *   /api/muapi/health?render=1   → spends. Renders one real still (~$0.03 on a
- *                                  live key, $0 on a Sandbox key) and returns
- *                                  the image URL, proving the whole path.
- *   /api/muapi/health?render=1&model=muapi-nano-banana-pro
+ *   /api/muapi/health?render=1   → spends. Renders one real still on Nano
+ *                                  Banana Pro (~$0.03 on a live key, $0 on a
+ *                                  Sandbox key) and returns the image URL,
+ *                                  proving the whole path.
+ *   /api/muapi/health?render=1&model=muapi-seedream
  *                                → same, on a specific model, which is how you
- *                                  confirm a frontier slug rather than the
- *                                  FLUX.1 Dev fallback.
+ *                                  confirm each frontier slug still resolves.
  *
  * The auth probe asks Muapi for a prediction id that cannot exist. A rejected
  * key answers 401/403; an accepted key answers "no such prediction" — which is
@@ -29,7 +29,7 @@ export const dynamic = 'force-dynamic'
 
 const API_BASE = process.env.MUAPI_API_BASE || 'https://api.muapi.ai/api/v1'
 const PROBE_ID = '00000000-0000-0000-0000-000000000000'
-const DEFAULT_RENDER_MODEL = 'muapi-flux-dev'
+const DEFAULT_RENDER_MODEL = 'muapi-nano-banana-pro'
 
 function muapiKey(): string | undefined {
   return process.env.MUAPIAPP_API_KEY || process.env.MUAPI_API_KEY

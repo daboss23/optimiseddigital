@@ -53,9 +53,9 @@ export function listImageModels(): ImageModelAvailability[] {
  * writer phrases it its own way, so both spellings are detected.
  *
  * This matters because the fallback chain is otherwise ordered by quality, and
- * quality is not spelling: a headline creative that falls through to FLUX.1 Dev
- * renders a beautiful photo with a mangled headline, which looks like a working
- * render and is unusable.
+ * quality is not spelling: a headline creative that falls through to a
+ * weak-text model renders a beautiful photo with a mangled headline, which
+ * looks like a working render and is unusable.
  */
 const CARRIES_COPY = /ON-IMAGE TEXT|rendered exactly|render(?:ed)? these strings exactly|on-ad text/i
 
