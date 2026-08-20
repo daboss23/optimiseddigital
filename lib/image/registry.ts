@@ -25,7 +25,13 @@ export const IMAGE_MODELS: ImageModel[] = [
   // These are ranked by TEXT FIDELITY first, not raw image quality, because
   // every TPB static carries a headline and a CTA. A model that renders a
   // gorgeous scene and a misspelled headline has produced an unusable ad.
-  // Midjourney and FLUX.1 Dev sit at the bottom for exactly that reason.
+  // Midjourney sits at the bottom for exactly that reason.
+  //
+  // FLUX.1 Dev was REMOVED from the Muapi menu deliberately. It was the cheap
+  // workhorse at the end of every fallback chain, which meant a frontier slug
+  // that 404'd silently landed a headline creative on the worst text renderer
+  // in the oven — the exact path that shipped misspelled ads. A creative that
+  // carries copy is better served by failing loudly than by rendering wrong.
   {
     id: 'muapi-nano-banana-pro',
     label: 'Nano Banana Pro',
@@ -97,15 +103,6 @@ export const IMAGE_MODELS: ImageModel[] = [
     tier: 'flagship',
     textFidelity: 'weak',
     notes: 'Midjourney V8 — the most stylised, art-directed look and the highest scroll-stop ceiling when the angle wants a brand image rather than a literal scene. Cannot set legible on-image copy: use it for text-free creative only.',
-  },
-  {
-    id: 'muapi-flux-dev',
-    label: 'FLUX.1 Dev',
-    provider: 'muapi',
-    aspectRatios: ['1:1', '4:5', '16:9', '4:3', '9:16', '3:4'],
-    tier: 'fast',
-    textFidelity: 'weak',
-    notes: 'FLUX.1 Dev — the fast, high-volume workhorse at 0.015 credits. Weak at in-image text (headlines come back misspelled), so it is used for text-free variations and is the last resort for a creative that carries copy.',
   },
   // Kie.ai flagship image market — the most powerful models, one KIE_API_KEY.
   {

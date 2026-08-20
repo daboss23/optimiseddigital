@@ -46,9 +46,10 @@ const API_BASE = process.env.MUAPI_API_BASE || 'https://api.muapi.ai/api/v1'
  * `flux-kontext-max` has no text-to-image endpoint at all; the Kontext family's
  * generation entry is `flux-kontext-dev-t2i`.
  *
- * `flux-dev-image` is left as-is: it is the one slug empirically CONFIRMED to
- * render on this account. (The index also lists `flux-dev`; both appear valid,
- * and there is nothing to gain from changing a proven fallback.)
+ * FLUX.1 Dev (`flux-dev-image`) is gone from this map on purpose. It rendered
+ * fine, but as the cheapest entry it sat at the bottom of every fallback chain
+ * and quietly absorbed headline creatives whose frontier slug had 404'd. Its
+ * env override (MUAPI_MODEL_FLUX_DEV) is dead — remove it from Vercel.
  *
  * Each entry stays env-overridable: vendor paths drift, and correcting one must
  * never require a code change. `npm run muapi:slugs` finds the new one. A wrong
@@ -64,7 +65,6 @@ const MUAPI_MODEL_ENDPOINTS: Record<string, string> = {
   'muapi-flux-3': process.env.MUAPI_MODEL_FLUX_3 || 'flux-3-text-to-image',
   'muapi-flux-kontext-max': process.env.MUAPI_MODEL_FLUX_KONTEXT_MAX || 'flux-kontext-dev-t2i',
   'muapi-midjourney': process.env.MUAPI_MODEL_MIDJOURNEY || 'midjourney-v8',
-  'muapi-flux-dev': process.env.MUAPI_MODEL_FLUX_DEV || 'flux-dev-image',
 }
 
 /**
