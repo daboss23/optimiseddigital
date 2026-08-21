@@ -70,7 +70,7 @@ export function WelcomeModal() {
   }
 
   return createPortal(
-    <div className="mike-first fixed inset-0 z-[120] flex flex-col items-center px-5 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[42vh] sm:pt-[44vh]">
+    <div className="mike-first mike-first--sheer fixed inset-0 z-[120] flex flex-col items-center px-5 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[42vh] sm:pt-[44vh]">
       {/* He arrives in the middle rather than travelling, because there is no
           corner to travel from yet — this is the first time anyone has seen
           him. */}

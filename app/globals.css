@@ -3137,14 +3137,23 @@ body {
   .mike-words--dissolve { opacity: 0; }
 }
 
-/* The first meeting. The same stage as the console, but opaque — there is no
-   dashboard worth showing behind it yet, and a first-run account is empty
-   anyway. Fading a blurred picture of nothing in behind him would say the
-   product is loading rather than that somebody is talking to you. */
+/* The stage both transmissions play on. */
 .mike-first {
   background:
     radial-gradient(120% 90% at 50% 20%, rgb(16 12 26 / 0.96), rgb(5 4 9 / 0.99));
   animation: mike-veil-in 700ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+/* Sheer.
+
+   He is talking ABOUT the screen he is standing in front of, and an opaque
+   sheet makes his sentence do work the page could do for free. Dimmed and
+   blurred enough that his words stay the brightest thing on screen, sheer
+   enough that you can read where you have arrived behind him. */
+.mike-first--sheer {
+  background:
+    radial-gradient(120% 90% at 50% 18%, rgb(14 11 24 / 0.7), rgb(5 4 9 / 0.86));
+  backdrop-filter: blur(7px);
 }
 
 /* Autofill, de-yellowed.

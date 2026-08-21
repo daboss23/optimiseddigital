@@ -74,7 +74,7 @@ export function BrandOnboardingModal() {
   if (!open) return null
 
   return createPortal(
-    <div className="mike-first fixed inset-0 z-[120] flex flex-col items-center px-5 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[42vh] sm:pt-[44vh]">
+    <div className="mike-first mike-first--sheer fixed inset-0 z-[120] flex flex-col items-center px-5 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[42vh] sm:pt-[44vh]">
       <MikeOrb
         state="focus"
         target={() => ({ x: window.innerWidth / 2, y: window.innerHeight * 0.22 })}
