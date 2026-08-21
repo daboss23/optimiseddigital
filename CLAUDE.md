@@ -473,6 +473,24 @@ Full architecture: `docs/MIKE_DELIGHT.md`.
       cards: **the dashboard never depends on a model call to display**
 - [x] Capability allowlist enforced by a throwing assertion — Approve stages a
       brief into the Campaign Reactor and nothing else is reachable
+- [x] **Mike Delight's live Meta adapter is built** — `lib/operator/adapters/`
+      now holds the real thing: `meta-server.ts` does all the Graph work
+      server-side (ad-level insights at `time_increment=1` for 30 days of daily
+      rows, PLUS a separate range-level call per 7-day evaluation window for
+      deduplicated reach and frequency — frequency cannot be reconstructed from
+      daily reach at any level of effort — plus `/act_<id>/ads` for identity,
+      format, objective and audience temperature), `meta.ts` is a thin client
+      shell over `/api/operator/source` so the token never reaches the browser,
+      and `meta-credentials.ts` resolves the stored `meta.connection` setting
+      first and the `META_ACCESS_TOKEN` / `META_AD_ACCOUNT_ID` env second. The
+      seam holds: the switch is `NEXT_PUBLIC_OPERATOR_SOURCE=meta` in
+      `adapters/index.ts` and nothing above `adapters/` changed. Both sources
+      throw rather than degrade — a partial account is never rendered as a whole
+      one. Connect from the /meta dashboard (Connect Meta panel →
+      `/api/operator/meta-connection`, token validated against the Graph API
+      before it persists); verify with `npm run selftest:operator-meta`, which
+      imports the server builder directly so it asserts byte-for-byte what the
+      route serves
 - [x] `npm run selftest:operator` — 50 in-process checks against a pinned
       evaluation date: all 41 from the engine spec, plus seven guarding the
       queue's presentation contract (word limits, chip caps and deduplication,
@@ -513,12 +531,5 @@ Full architecture: `docs/MIKE_DELIGHT.md`.
 - [ ] SPARK URL-only ingestion for JS-rendered sources (Meta Ad Library / TikTok / shared boards via oEmbed/transcript APIs or a headless render). Uploads, pasted screenshots, direct image links and YouTube transcripts all work today; a client-rendered page has no images in its served HTML, so `lib/ad-image.ts` scrapes og:image/`<img>`/inlined-JSON URLs and otherwise returns a note telling the user to screenshot it
 - [ ] Scheduled auto-sync for the Meta performance ingest (manual one-click sync done; cron/Vercel scheduled function pending)
 - [ ] More dashboards reading live `knowledge_chunks` counts (Agent Network does; Research/Copy/Pattern still curated)
-- [ ] Mike Delight's live Meta adapter — `lib/operator/adapters/meta.ts` is a
-      documented stub that throws. It needs ad-level insights at
-      `time_increment=1` for the daily rows PLUS a separate range-level call per
-      evaluation window for deduplicated reach and frequency (the existing
-      `lib/meta-graph.ts` returns range-aggregated ads with no daily rows, and
-      frequency cannot be reconstructed from daily reach). Finishing it is the
-      three methods plus the one line in `lib/operator/adapters/index.ts`
 - [ ] Deployed + tested end to end with real keys
 
