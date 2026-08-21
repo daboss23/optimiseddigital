@@ -281,7 +281,7 @@ export function ConnectMetaPanel({ onConnectionChange }: { onConnectionChange?: 
                   type="button"
                   disabled={busy || !token.trim() || Boolean(accounts && !chosenAccount)}
                   onClick={() => void connect(accounts ? chosenAccount : undefined)}
-                  className="brief-cta !mt-0 !px-4 !py-2.5 !text-[12.5px] disabled:cursor-not-allowed disabled:opacity-40"
+                  className="fire-btn tap-target inline-flex w-full items-center justify-center gap-2 px-4 py-2.5 font-display text-[12.5px] font-bold uppercase tracking-wide text-white"
                 >
                   {busy ? (
                     <span className="inline-flex items-center gap-1.5">

@@ -148,12 +148,17 @@ export function LoginForm({ next }: { next: string }) {
         </p>
       )}
 
+      {/* The page's one action, so it wears the platform's one primary button.
+          `.fire-btn` carries the gradient, the gloss and the press physics for
+          every ignition control in the product — a sign-in wearing a quieter
+          variant is the first thing anybody sees, and it sets the wrong
+          expectation for everything behind it. */}
       <button
         type="submit"
         disabled={busy}
         className={cn(
-          'brief-cta !mt-1 min-h-[46px] !text-[13px] uppercase',
-          busy && 'cursor-not-allowed opacity-70',
+          'fire-btn tap-target mt-1 inline-flex min-h-[46px] w-full items-center justify-center gap-2',
+          'font-display text-[13px] font-bold uppercase tracking-wide text-white',
         )}
       >
         {busy ? (
