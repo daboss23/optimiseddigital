@@ -20,3 +20,16 @@ Why you may ask? Because apparently I'm kind of a big deal when it comes to Meta
 export function welcomeCopy(name: string | null): string {
   return MIKE_WELCOME_TEMPLATE.replace('{name}', name?.trim() || 'there')
 }
+
+/**
+ * The second transmission — Mike on the Brand Intelligence screen, immediately
+ * after the welcome routes the operator here.
+ *
+ * Fixed copy for the same reason the welcome is: onboarding has to say the same
+ * thing to every new operator, instantly, with no model call between them and
+ * the first field they have to fill in.
+ */
+export const MIKE_BRAND_ONBOARDING = `Welcome to the Brand Intelligence dashboard, please enter your business website URL. This is the first onboarding step where we extract relevant information to use in our ad creative process.`
+
+/** The label on the control that closes it and puts the cursor in the field. */
+export const MIKE_BRAND_ONBOARDING_CTA = 'Let the magic begin!'
