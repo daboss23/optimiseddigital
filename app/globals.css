@@ -2830,173 +2830,277 @@ body {
   }
 }
 
-/* ── Mike's console ──────────────────────────────────────────────────────────
-   Three small pieces of motion, and each one is a readout rather than a
-   flourish: the caret says he is still speaking, the live dot says a read is
-   still in flight, and the row entrance says a new one just started. Anything
-   that does not carry a fact stays still — a surface where everything moves is
-   a surface where movement means nothing. */
+/* ── Mike ────────────────────────────────────────────────────────────────────
+   He is drawn on a canvas; everything here is the room around him.
 
-.mike-caret {
-  display: inline-block;
-  width: 2px;
-  height: 1.05em;
-  margin-left: 2px;
-  vertical-align: text-bottom;
-  border-radius: 1px;
-  background: rgb(245 158 11 / 0.9);
-  animation: mike-caret-blink 1.1s steps(2, start) infinite;
+   Motion rules, held throughout: transform and opacity only (never a layout
+   property), every curve a custom cubic-bezier (never ease-in-out, never
+   linear), and nothing animates that is not reporting something real. */
+
+/* The corner he lives in. Matches CORNER_INSET in MikeStage — the canvas puts
+   him here, this puts the hit target on top of him. */
+.mike-perch {
+  right: calc(112px - 44px);
+  bottom: calc(128px - 44px);
 }
 
-@keyframes mike-caret-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
-
-/* The trace dot. Live reads pulse with a halo; finished ones go quiet and
-   cyan, so a glance down the list separates "still going" from "got it". */
-.mike-trace-dot {
-  position: relative;
-  flex: none;
-  width: 6px;
-  height: 6px;
-  border-radius: 9999px;
-  background: rgb(var(--lg-cyan) / 0.35);
-}
-
-.mike-trace-dot--live {
-  background: rgb(var(--lg-cyan) / 0.95);
-  animation: mike-trace-pulse 1.4s ease-in-out infinite;
-}
-
-.mike-trace-dot--live::after {
-  content: '';
+/* The card on hover. Rises and resolves out of blur rather than popping, and
+   sits to the LEFT of him so it never runs off the edge of the window. */
+.mike-tag {
   position: absolute;
-  inset: -4px;
+  top: 50%;
+  right: calc(100% + 10px);
+  white-space: nowrap;
+  padding: 0.5rem 0.9rem;
   border-radius: 9999px;
-  border: 1px solid rgb(var(--lg-cyan) / 0.4);
-  animation: mike-trace-ring 1.8s cubic-bezier(0.22, 0.61, 0.36, 1) infinite;
-}
-
-.mike-trace-dot--done {
-  background: rgb(var(--lg-cyan) / 0.5);
-}
-
-@keyframes mike-trace-pulse {
-  0%, 100% { opacity: 0.55; }
-  50% { opacity: 1; }
-}
-
-@keyframes mike-trace-ring {
-  0% { transform: scale(0.7); opacity: 0.7; }
-  100% { transform: scale(1.5); opacity: 0; }
-}
-
-/* A read arriving. Short, and from below — the same direction the list grows,
-   so a new row reads as being added rather than as the list reshuffling. */
-.mike-trace-row {
-  animation: mike-trace-in 260ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
-}
-
-@keyframes mike-trace-in {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: none; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .mike-caret,
-  .mike-trace-dot--live,
-  .mike-trace-dot--live::after,
-  .mike-trace-row {
-    animation: none;
-  }
-  .mike-caret { opacity: 1; }
-}
-
-/* The stage the console plays on.
-
-   The command centre runs on aurora over near-black, and Mike inherits it
-   rather than arriving as a flat panel — a chat surface that ignores the
-   product's own light reads as a widget bolted on. The field is static: one
-   moving thing at a time on this screen, and that thing is him. */
-.mike-stage {
-  background:
-    radial-gradient(1100px 700px at 50% -10%, rgb(245 158 11 / 0.07), transparent 62%),
-    radial-gradient(900px 620px at 88% 8%, rgb(var(--lg-azure) / 0.08), transparent 60%),
-    radial-gradient(880px 700px at 4% 96%, rgb(var(--lg-violet) / 0.07), transparent 58%),
-    #0a0a0a;
-}
-
-/* The header divider carries the state: a plain hairline at rest, an amber
-   charge line while he is reading. It is the one place the chrome itself
-   reports what he is doing. */
-.mike-stage-header {
-  position: relative;
-  border-bottom: 1px solid rgb(255 255 255 / 0.08);
-  background: linear-gradient(to bottom, rgb(255 255 255 / 0.025), transparent);
-}
-
-.mike-stage-header::after {
-  content: '';
-  position: absolute;
-  inset: auto 0 -1px 0;
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgb(245 158 11 / 0.55),
-    rgb(var(--lg-cyan) / 0.45),
-    transparent
-  );
+  border: 1px solid rgb(255 255 255 / 0.1);
+  background: rgb(14 12 20 / 0.72);
+  backdrop-filter: blur(12px);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.08),
+    0 18px 50px -22px rgb(255 196 92 / 0.55);
+  color: rgb(255 255 255 / 0.82);
+  font-size: 12px;
+  letter-spacing: 0.01em;
   opacity: 0;
-  transition: opacity 320ms ease-out;
-}
-
-.mike-stage-header--live::after {
-  opacity: 1;
-  animation: mike-charge-line 2.6s ease-in-out infinite;
-}
-
-@keyframes mike-charge-line {
-  0%, 100% { opacity: 0.45; }
-  50% { opacity: 1; }
-}
-
-.mike-stage-footer {
-  border-top: 1px solid rgb(255 255 255 / 0.08);
-  background: linear-gradient(to top, rgb(0 0 0 / 0.4), transparent);
-}
-
-/* The input warms on focus rather than merely outlining — the same amber the
-   platform uses for "this is the live action". */
-.mike-input {
+  transform: translateY(-50%) translateX(8px) scale(0.96);
+  filter: blur(3px);
+  pointer-events: none;
   transition:
-    border-color 200ms ease-out,
-    box-shadow 240ms ease-out,
-    background-color 200ms ease-out;
+    opacity 420ms cubic-bezier(0.32, 0.72, 0, 1),
+    transform 420ms cubic-bezier(0.32, 0.72, 0, 1),
+    filter 420ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-.mike-input:focus-within {
-  border-color: rgb(245 158 11 / 0.45);
-  background-color: rgb(245 158 11 / 0.035);
-  box-shadow: 0 0 0 1px rgb(245 158 11 / 0.12), 0 12px 40px -18px rgb(245 158 11 / 0.5);
+.mike-tag--shown {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0) scale(1);
+  filter: blur(0);
 }
 
-/* He arrives rather than appearing. Once, on open — a surface that re-animates
-   its own empty state every time you clear it becomes tiring fast. */
-.mike-arrival {
-  animation: mike-arrive 620ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+/* The dim. Deep enough that he is the brightest thing on screen, shallow
+   enough that the dashboard is still visibly behind him — he came out to the
+   middle of YOUR board, he did not open a new page. */
+.mike-veil {
+  background: radial-gradient(120% 90% at 50% 22%, rgb(10 8 16 / 0.72), rgb(5 4 9 / 0.93));
+  backdrop-filter: blur(10px);
+  animation: mike-veil-in 520ms cubic-bezier(0.32, 0.72, 0, 1) both;
 }
 
-@keyframes mike-arrive {
-  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+@keyframes mike-veil-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.mike-room {
+  animation: mike-room-in 620ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+@keyframes mike-room-in {
+  from { opacity: 0; transform: translateY(14px); }
   to { opacity: 1; transform: none; }
 }
 
+/* ── His words ───────────────────────────────────────────────────────────── */
+
+.mike-words {
+  margin: 0;
+  transition: opacity 700ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Each group of three floats out of nothing and resolves. The blur is doing
+   the work: fading alone reads as a fade, and resolving out of blur reads as
+   something arriving. */
+.mike-word {
+  display: inline;
+  animation: mike-word-in 620ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+@keyframes mike-word-in {
+  from { opacity: 0; filter: blur(7px); transform: translateY(6px); }
+  to { opacity: 1; filter: blur(0); transform: none; }
+}
+
+/* You started typing, so he stops. Drifts down and away rather than cutting —
+   he is giving you the floor, not being switched off. */
+.mike-words--dissolve {
+  animation: mike-words-out 900ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  pointer-events: none;
+}
+
+@keyframes mike-words-out {
+  from { opacity: 1; transform: none; filter: blur(0); }
+  to { opacity: 0; transform: translateY(26px); filter: blur(5px); }
+}
+
+/* ── The energy cloud ────────────────────────────────────────────────────── */
+
+/* Not a text field. A region of moving light with your words inside it —
+   which is why there is no box, no rule and no visible edge anywhere on it.
+   Two counter-drifting gradients, at different periods so they never beat in
+   lockstep; lockstep is the clearest tell that something is a loop. */
+.mike-cloud {
+  position: relative;
+  isolation: isolate;
+  padding: 1.6rem 1.4rem;
+}
+
+.mike-cloud::before,
+.mike-cloud::after {
+  content: '';
+  position: absolute;
+  inset: -18% -6%;
+  z-index: -1;
+  border-radius: 9999px;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+.mike-cloud::before {
+  background:
+    radial-gradient(48% 76% at 28% 46%, rgb(255 196 92 / 0.2), transparent 68%),
+    radial-gradient(52% 84% at 74% 54%, rgb(178 132 255 / 0.19), transparent 70%);
+  filter: blur(26px);
+  animation: mike-cloud-a 11s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+.mike-cloud::after {
+  background:
+    radial-gradient(40% 70% at 62% 38%, rgb(255 248 235 / 0.13), transparent 66%),
+    radial-gradient(46% 72% at 34% 66%, rgb(178 132 255 / 0.13), transparent 68%);
+  filter: blur(34px);
+  animation: mike-cloud-b 17s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+@keyframes mike-cloud-a {
+  0%, 100% { transform: translate3d(-3%, 0, 0) scale(1); opacity: 0.85; }
+  50% { transform: translate3d(4%, -3%, 0) scale(1.07); opacity: 1; }
+}
+
+@keyframes mike-cloud-b {
+  0%, 100% { transform: translate3d(4%, 2%, 0) scale(1.05); opacity: 0.7; }
+  50% { transform: translate3d(-4%, -1%, 0) scale(0.96); opacity: 1; }
+}
+
+.mike-cloud-input {
+  display: block;
+  width: 100%;
+  max-height: 8rem;
+  resize: none;
+  border: 0;
+  background: transparent;
+  text-align: center;
+  font-size: 19px;
+  line-height: 1.6;
+  color: rgb(255 255 255 / 0.95);
+  caret-color: rgb(255 196 92);
+  outline: none;
+}
+
+.mike-cloud-input::placeholder {
+  color: rgb(255 255 255 / 0.3);
+}
+
+@media (max-width: 767px) {
+  .mike-cloud-input { font-size: 17px; }
+  /* Blur is expensive to composite continuously on a phone. One cloud layer
+     instead of two, held still. */
+  .mike-cloud::after { display: none; }
+  .mike-cloud::before { animation: none; }
+}
+
+/* ── The go ──────────────────────────────────────────────────────────────── */
+
+.mike-go {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.6rem 0.6rem 1.4rem;
+  border-radius: 9999px;
+  border: 1px solid rgb(255 196 92 / 0.28);
+  background: linear-gradient(180deg, rgb(255 196 92 / 0.16), rgb(255 196 92 / 0.07));
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.16),
+    0 22px 60px -28px rgb(255 196 92 / 0.9);
+  color: rgb(255 236 205);
+  font-size: 14px;
+  font-weight: 500;
+  animation: mike-go-in 520ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  transition: border-color 260ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@keyframes mike-go-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.96); filter: blur(4px); }
+  to { opacity: 1; transform: none; filter: blur(0); }
+}
+
+.mike-go:hover { border-color: rgb(255 196 92 / 0.5); }
+.mike-go:active { transform: scale(0.98); }
+
+/* The arrow never sits naked next to the label — it gets its own well, and it
+   leans out of it on hover. */
+.mike-go-well {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  border-radius: 9999px;
+  background: rgb(255 255 255 / 0.1);
+  transition: transform 320ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.mike-go:hover .mike-go-well { transform: translate3d(2px, -1px, 0) scale(1.06); }
+
+/* ── Openers and reads ───────────────────────────────────────────────────── */
+
+.mike-opener {
+  min-height: 44px;
+  padding: 0 1.05rem;
+  border-radius: 9999px;
+  border: 1px solid rgb(255 255 255 / 0.09);
+  background: rgb(255 255 255 / 0.03);
+  color: rgb(255 255 255 / 0.6);
+  font-size: 12.5px;
+  animation: mike-word-in 700ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  transition:
+    transform 320ms cubic-bezier(0.32, 0.72, 0, 1),
+    border-color 320ms cubic-bezier(0.32, 0.72, 0, 1),
+    color 320ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.mike-opener:hover {
+  transform: translateY(-1px);
+  border-color: rgb(255 196 92 / 0.4);
+  color: rgb(255 255 255 / 0.9);
+}
+
+/* Each read appears as he starts it. Same arrival as his words, because it is
+   the same event: something surfacing that was not there a moment ago. */
+.mike-read {
+  animation: mike-word-in 520ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+.mike-footnote {
+  animation: mike-word-in 900ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  animation-delay: 500ms;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .mike-arrival,
-  .mike-stage-header--live::after {
+  .mike-tag,
+  .mike-veil,
+  .mike-room,
+  .mike-word,
+  .mike-words--dissolve,
+  .mike-cloud::before,
+  .mike-cloud::after,
+  .mike-go,
+  .mike-go-well,
+  .mike-opener,
+  .mike-read,
+  .mike-footnote {
     animation: none;
+    transition: none;
   }
-  .mike-stage-header--live::after { opacity: 1; }
+  .mike-words--dissolve { opacity: 0; }
 }

@@ -519,16 +519,35 @@ Full architecture: `docs/MIKE_DELIGHT.md`.
       instruments exist, the two hard rules) and NO tone instruction, no length
       cap, no worked example. An example would be copied, and a copied answer
       is the one thing the constitution cannot survive
-- [x] **The reading is the interface.** Every tool call streams before it runs
-      with a human label ("Pulling 14 days on The Profit Leak") and its receipt
-      streams after, so the part of the job that was invisible is now the
-      middle of the screen. His asides between reads are kept and shown. The
-      presence (`MikePresence`) is one canvas driven by four critically-damped
-      springs off the REAL loop state: the shell breaks into orbiting arcs
-      while he reads because he genuinely is in four places at once, one
-      satellite per tool in flight, and it pulls back into a single object to
-      answer. Reduced motion renders one honest static frame; a backgrounded
-      tab stops the loop
+- [x] **He is not a chat window — he is resident on the dashboard.** Mike lives
+      in the corner of `/` as an orb (`orb/MikeOrb.tsx`): a real sphere of ~1900
+      points and six great-circle filaments in gold / violet / white, rotated in
+      3D and projected every frame, drawn with additive compositing so
+      overlapping light accumulates instead of flattening into paint. Hovering
+      raises his heat and floats a "Talk with Mike" card; clicking sends him to
+      the middle of the dashboard, where he greets the operator by name (from
+      the session cookie). ONE fixed full-viewport canvas carries him corner to
+      centre and back, never unmounted — a component that faded out in one place
+      and in at another would say he is two things
+- [x] **The energy cloud, not a text field.** No box, no rule, no visible edge:
+      two counter-drifting blurred gradients at different periods (lockstep is
+      the clearest tell that something is a loop) with the caret already inside
+      it. Typing takes the floor — whatever he was saying drifts down and blurs
+      away rather than being cut. Sending evaporates the cloud into hundreds of
+      drag-damped particles, and he stays on screen throwing sparks across his
+      shell, one per read genuinely in flight, with each tool's human label
+      ("Pulling 14 days on The Profit Leak") and its receipt appearing as it
+      happens
+- [x] **He speaks three words at a time** (`WordStream.tsx`), each group
+      resolving out of blur rather than fading in — a typewriter reveals
+      characters and reads as a machine printing, three words reads as phrasing.
+      Nothing is faked: the whole answer arrived and passed the factual checks
+      before the component saw a word of it, and the reveal is skippable
+- [x] Motion discipline throughout: `transform` and `opacity` only, custom
+      cubic-beziers (never `linear` or `ease-in-out`), critically-damped springs
+      for anything interruptible, `prefers-reduced-motion` renders one honest
+      static frame, a backgrounded tab stops the loop entirely, and the phone
+      layer halves the point count and drops a blur layer
 - [x] The server reads the account itself (`lib/operator/ask/source.ts`) rather
       than trusting numbers posted in from a page, resolving the SAME
       seeded/meta switch the browser does — `loadOperatorContext()` resolves

@@ -38,8 +38,8 @@ import {
 import { CreativeLeaderboard } from '@/components/reactor/CreativeLeaderboard'
 import {
   ActionsRequiredTile,
-  AskMikeLauncher,
   MikeQueuePanel,
+  MikeStage,
   OperatorProvider,
   OperatorToast,
   WelcomeModal,
@@ -306,12 +306,8 @@ export default async function ReactorDashboard({
         <SectionLabel hint="The decisions that deserve attention now, ordered by urgency. Mike does the full analysis behind the scenes; the evidence behind any row is one click away.">
           Your Next Moves
         </SectionLabel>
-        <div id={OPERATOR_QUEUE_ANCHOR} className="scroll-mt-24 space-y-3">
+        <div id={OPERATOR_QUEUE_ANCHOR} className="scroll-mt-24">
           <MikeQueuePanel />
-          {/* The queue is what he chose to raise; this is everything else he
-              could be asked. Directly under the board on purpose — same
-              colleague, same account, no floating support bubble. */}
-          <AskMikeLauncher />
         </div>
 
         {/* ── 3 · Creative leaderboard ───────────────────────────────────── */}
@@ -612,6 +608,10 @@ export default async function ReactorDashboard({
           both context — which is why the flow is login → dashboard → greeting
           rather than a greeting on the login page itself. */}
       <WelcomeModal />
+      {/* Mike himself. Outside every panel, because he is not in one — he
+          idles in the corner of the whole dashboard and comes to the middle
+          of it when called. */}
+      <MikeStage />
       <OperatorToast />
     </OperatorProvider>
   )

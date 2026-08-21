@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useRef, useState } from 'react'
-import type { PresenceState } from '@/components/reactor/operator/mike/presence'
 import type { Proposal } from '@/lib/operator/types'
 
 /* ----------------------------------------------------------------------------
@@ -43,7 +42,6 @@ export interface MikeStreamState {
   /** The live turn's trace, before it is attached to a message. */
   trace: TraceEntry[]
   thoughts: string[]
-  presence: PresenceState
   busy: boolean
   error: string | null
   /** Tools resolving right now — drives the satellites. */
@@ -54,7 +52,6 @@ const EMPTY: MikeStreamState = {
   messages: [],
   trace: [],
   thoughts: [],
-  presence: 'dormant',
   busy: false,
   error: null,
   activity: 0,
@@ -77,7 +74,7 @@ export function useMikeStream(board: Proposal[]) {
   const stop = useCallback(() => {
     abortRef.current?.abort()
     abortRef.current = null
-    setState((s) => ({ ...s, busy: false, presence: 'settled', activity: 0 }))
+    setState((s) => ({ ...s, busy: false, activity: 0 }))
   }, [])
 
   const ask = useCallback(
@@ -106,7 +103,6 @@ export function useMikeStream(board: Proposal[]) {
         error: null,
         // He is on it before the first status event lands — a beat of dead
         // orb between pressing enter and the stream opening reads as a miss.
-        presence: 'listening',
         activity: 0,
       }))
 
@@ -149,15 +145,10 @@ export function useMikeStream(board: Proposal[]) {
             setState((s) => {
               switch (event.type) {
                 case 'status':
-                  return {
-                    ...s,
-                    presence:
-                      event.state === 'reading'
-                        ? 'reading'
-                        : event.state === 'writing'
-                          ? 'writing'
-                          : 'listening',
-                  }
+                  // The phase on screen is derived from what is actually in
+                  // flight, not from a label the server chose. Kept as a
+                  // no-op so the event stays part of the contract.
+                  return s
                 case 'thought':
                   return { ...s, thoughts: [...s.thoughts, String(event.text)] }
                 case 'tool': {
@@ -170,7 +161,6 @@ export function useMikeStream(board: Proposal[]) {
                   }
                   return {
                     ...s,
-                    presence: 'reading',
                     activity: s.activity + (exists ? 0 : 1),
                     trace: exists
                       ? s.trace.map((t) => (t.id === id ? { ...t, ...row, receipt: t.receipt } : t))
@@ -188,7 +178,6 @@ export function useMikeStream(board: Proposal[]) {
                 case 'answer':
                   return {
                     ...s,
-                    presence: 'writing',
                     activity: 0,
                     messages: [
                       ...s.messages,
@@ -217,9 +206,9 @@ export function useMikeStream(board: Proposal[]) {
                     ],
                   }
                 case 'error':
-                  return { ...s, error: String(event.message), busy: false, presence: 'settled', activity: 0 }
+                  return { ...s, error: String(event.message), busy: false, activity: 0 }
                 case 'done':
-                  return { ...s, busy: false, presence: 'settled', activity: 0 }
+                  return { ...s, busy: false, activity: 0 }
                 default:
                   return s
               }
@@ -231,13 +220,12 @@ export function useMikeStream(board: Proposal[]) {
         setState((s) => ({
           ...s,
           busy: false,
-          presence: 'settled',
           activity: 0,
           error: error instanceof Error ? error.message : 'Mike could not be reached.',
         }))
       } finally {
         if (abortRef.current === controller) abortRef.current = null
-        setState((s) => (s.busy ? { ...s, busy: false, presence: 'settled', activity: 0 } : s))
+        setState((s) => (s.busy ? { ...s, busy: false, activity: 0 } : s))
       }
     },
     [board, state.messages],
