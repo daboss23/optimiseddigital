@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
+import { Sparkles } from 'lucide-react'
 import { useOperator } from '@/components/reactor/operator/OperatorProvider'
 import { MikeOrb } from '@/components/reactor/operator/mike/orb/MikeOrb'
 import { MikeSpeech } from '@/components/reactor/operator/mike/MikeSpeech'
@@ -34,6 +35,9 @@ import { armBrandOnboarding } from '@/lib/operator/onboarding'
    way as the button on purpose: the destination is the point, not a reward for
    clicking the right control.
 ---------------------------------------------------------------------------- */
+
+/** How long he takes to fade up before the first word. */
+const ARRIVAL_MS = 1600
 
 export function WelcomeModal() {
   const { welcome, dismissWelcome } = useOperator()
@@ -70,38 +74,39 @@ export function WelcomeModal() {
       {/* He arrives in the middle rather than travelling, because there is no
           corner to travel from yet — this is the first time anyone has seen
           him. */}
+      {/* He arrives before he speaks. A person who materialises mid-sentence
+          has not arrived, he has been switched on. */}
       <MikeOrb
         state="focus"
         target={() => ({ x: window.innerWidth / 2, y: window.innerHeight * 0.22 })}
         radius={92}
-        className="pointer-events-none fixed inset-0"
+        className="mike-arrive pointer-events-none fixed inset-0"
       />
 
       <div className="flex w-full max-w-2xl flex-col items-center gap-8">
         <MikeSpeech
           text={welcome}
+          cadence="coalesce"
+          delayMs={ARRIVAL_MS}
           onComplete={() => setFinished(true)}
-          className="text-center text-[17px] leading-relaxed text-white/85 sm:text-[19px]"
+          className="items-center text-center text-[17px] leading-relaxed text-white/85 sm:text-[19px]"
         />
 
         {/* The way on, once he has finished saying hello. Interrupting a man
             mid-introduction with a button is how you tell someone their time
             is not worth the four seconds. */}
+        {/* The platform's one primary button — `.fire-btn`, the same class the
+            topbar and every ignition control use. An onboarding CTA with its
+            own look tells a first-run operator that this screen belongs to a
+            different product than the one behind it. */}
         {finished && (
-          <button type="button" onClick={begin} className="mike-go">
-            <span>Let&rsquo;s get to work</span>
-            <span className="mike-go-well">
-              <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden>
-                <path
-                  d="M3 13L13 3M13 3H5.5M13 3v7.5"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.4"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </span>
+          <button
+            type="button"
+            onClick={begin}
+            className="mike-cta fire-btn tap-target inline-flex items-center gap-2 px-5 py-3 font-display text-[13px] font-bold uppercase tracking-wide text-white"
+          >
+            <Sparkles size={15} />
+            Let&rsquo;s begin
           </button>
         )}
       </div>

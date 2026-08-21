@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils'
 
 const WORDS_PER_GROUP = 3
 /** Milliseconds between groups. Around the pace of unhurried speech. */
-const GROUP_MS = 230
+const GROUP_MS = 300
 
 export interface WordStreamProps {
   text: string
@@ -42,6 +42,11 @@ export function WordStream({ text, dissolving, onComplete, className }: WordStre
 
   const [shown, setShown] = useState(0)
   const done = useRef(false)
+  // Held in a ref for the same reason MikeSpeech holds its own: callers pass a
+  // fresh arrow function every render, and as a dependency that restarts the
+  // reveal from the first word every time the parent re-renders.
+  const complete = useRef(onComplete)
+  complete.current = onComplete
 
   useEffect(() => {
     setShown(0)
@@ -50,7 +55,7 @@ export function WordStream({ text, dissolving, onComplete, className }: WordStre
 
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       setShown(groups.length)
-      onComplete?.()
+      complete.current?.()
       done.current = true
       return
     }
@@ -62,14 +67,14 @@ export function WordStream({ text, dissolving, onComplete, className }: WordStre
       })
     }, GROUP_MS)
     return () => clearInterval(timer)
-  }, [groups, onComplete])
+  }, [groups])
 
   useEffect(() => {
     if (!done.current && groups.length > 0 && shown >= groups.length) {
       done.current = true
-      onComplete?.()
+      complete.current?.()
     }
-  }, [shown, groups.length, onComplete])
+  }, [shown, groups.length])
 
   if (groups.length === 0) return null
 

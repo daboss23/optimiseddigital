@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { Sparkles } from 'lucide-react'
 import { MikeOrb } from '@/components/reactor/operator/mike/orb/MikeOrb'
 import { MikeSpeech } from '@/components/reactor/operator/mike/MikeSpeech'
 import {
@@ -31,6 +32,9 @@ import { WEBSITE_URL_INPUT_ID } from '@/components/brand/WebsiteIntelligence'
    localStorage: reading it while rendering makes the server and the first
    client pass disagree, which React resolves by throwing a hydration error.
 ---------------------------------------------------------------------------- */
+
+/** He fades up before he speaks, the same as the first meeting. */
+const ARRIVAL_MS = 1600
 
 export function BrandOnboardingModal() {
   const [open, setOpen] = useState(false)
@@ -75,7 +79,7 @@ export function BrandOnboardingModal() {
         state="focus"
         target={() => ({ x: window.innerWidth / 2, y: window.innerHeight * 0.22 })}
         radius={92}
-        className="pointer-events-none fixed inset-0"
+        className="mike-arrive pointer-events-none fixed inset-0"
       />
 
       <div className="flex w-full max-w-2xl flex-col items-center gap-8">
@@ -85,25 +89,20 @@ export function BrandOnboardingModal() {
 
         <MikeSpeech
           text={MIKE_BRAND_ONBOARDING}
+          cadence="coalesce"
+          delayMs={ARRIVAL_MS}
           onComplete={() => setFinished(true)}
-          className="text-center text-[17px] leading-relaxed text-white/85 sm:text-[19px]"
+          className="items-center text-center text-[17px] leading-relaxed text-white/85 sm:text-[19px]"
         />
 
         {finished && (
-          <button type="button" onClick={close} className="mike-go">
-            <span>{MIKE_BRAND_ONBOARDING_CTA}</span>
-            <span className="mike-go-well">
-              <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden>
-                <path
-                  d="M3 13L13 3M13 3H5.5M13 3v7.5"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.4"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </span>
+          <button
+            type="button"
+            onClick={close}
+            className="mike-cta fire-btn tap-target inline-flex items-center gap-2 px-5 py-3 font-display text-[13px] font-bold uppercase tracking-wide text-white"
+          >
+            <Sparkles size={15} />
+            {MIKE_BRAND_ONBOARDING_CTA}
           </button>
         )}
       </div>

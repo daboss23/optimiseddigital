@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { Atom } from 'lucide-react'
 import { readOperatorNameCookie } from '@/lib/auth'
 import { cn } from '@/lib/utils'
 import { useOperator } from '@/components/reactor/operator/OperatorProvider'
@@ -310,20 +311,13 @@ export function MikeStage() {
                     leaves under the cloud is visible as a gap nobody can
                     explain. */}
                 {draft.trim() && (
-                  <button type="button" onClick={send} className="mike-go">
-                    <span>Let&rsquo;s Go</span>
-                    <span className="mike-go-well">
-                      <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden>
-                        <path
-                          d="M3 13L13 3M13 3H5.5M13 3v7.5"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.4"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    </span>
+                  <button
+                    type="button"
+                    onClick={send}
+                    className="mike-cta fire-btn tap-target inline-flex items-center gap-2 px-5 py-3 font-display text-[13px] font-bold uppercase tracking-wide text-white"
+                  >
+                    <Atom size={15} />
+                    Let&rsquo;s Go
                   </button>
                 )}
 
