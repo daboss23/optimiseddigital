@@ -473,6 +473,112 @@ Full architecture: `docs/MIKE_DELIGHT.md`.
       cards: **the dashboard never depends on a model call to display**
 - [x] Capability allowlist enforced by a throwing assertion — Approve stages a
       brief into the Campaign Reactor and nothing else is reachable
+- [x] **Mike Delight's live Meta adapter is built** — `lib/operator/adapters/`
+      now holds the real thing: `meta-server.ts` does all the Graph work
+      server-side (ad-level insights at `time_increment=1` for 30 days of daily
+      rows, PLUS a separate range-level call per 7-day evaluation window for
+      deduplicated reach and frequency — frequency cannot be reconstructed from
+      daily reach at any level of effort — plus `/act_<id>/ads` for identity,
+      format, objective and audience temperature), `meta.ts` is a thin client
+      shell over `/api/operator/source` so the token never reaches the browser,
+      and `meta-credentials.ts` resolves the stored `meta.connection` setting
+      first and the `META_ACCESS_TOKEN` / `META_AD_ACCOUNT_ID` env second. The
+      seam holds: the switch is `NEXT_PUBLIC_OPERATOR_SOURCE=meta` in
+      `adapters/index.ts` and nothing above `adapters/` changed. Both sources
+      throw rather than degrade — a partial account is never rendered as a whole
+      one. Connect from the /meta dashboard (Connect Meta panel →
+      `/api/operator/meta-connection`, token validated against the Graph API
+      before it persists); verify with `npm run selftest:operator-meta`, which
+      imports the server builder directly so it asserts byte-for-byte what the
+      route serves
+- [x] **Ask Mike — the open, agentic surface** (`lib/operator/ask/`,
+      `/api/operator/ask`, `components/reactor/operator/mike/`). The queue's
+      `askMike` answers about ONE proposal; this answers about the account,
+      because he goes and reads it. A bounded tool-use loop (6 turns) over
+      seven READ-ONLY instruments — `list_creatives`, `creative_performance`,
+      `compare_to_baseline`, `account_summary`, `todays_board`,
+      `search_knowledge`, `past_outcomes` — enforced by `assertReadOnly`, which
+      THROWS on any name off the allowlist, so nothing that mutates the ad
+      account is reachable even by accident. Every figure is computed by the
+      same `computeSignals` / `resolveBaseline` / `assessMaturity` the rules
+      run on: there is no second implementation for him to be handed a wrong
+      number from
+- [x] **His facts are earned per turn** (`lib/operator/ask/facts.ts`). The
+      narration validator resolves numerals against a payload fixed before the
+      call; an open question has no such payload, so the ledger is built the
+      other way round — every numeric leaf of every tool RESULT, keyed by path,
+      becomes the permitted set. Shares `extractNumerals` and
+      `isApprovedRounding` with `validate.ts` so honest rounding ("about forty
+      quid a lead" off $41.20) passes on both surfaces and a restatement fails
+      on both. One correction attempt carrying his own rejected answer back to
+      him, then he says plainly that he will not stand behind the figure.
+      Voice is never what fails
+- [x] **His personality is loaded, not written.** The system prompt is
+      `operator/mike-delight-constitution.md` unedited — the same file the
+      narration path loads. The agent adds a machine contract (which
+      instruments exist, the two hard rules) and NO tone instruction, no length
+      cap, no worked example. An example would be copied, and a copied answer
+      is the one thing the constitution cannot survive
+- [x] **He is not a chat window — he is resident on the dashboard.** Mike lives
+      in the corner of `/` as an orb (`orb/MikeOrb.tsx`): a real sphere of ~1900
+      points and six great-circle filaments in gold / violet / white, rotated in
+      3D and projected every frame, drawn with additive compositing so
+      overlapping light accumulates instead of flattening into paint. Hovering
+      raises his heat and floats a "Talk with Mike" card; clicking sends him to
+      the middle of the dashboard, where he greets the operator by name (from
+      the session cookie). ONE fixed full-viewport canvas carries him corner to
+      centre and back, never unmounted — a component that faded out in one place
+      and in at another would say he is two things
+- [x] **He is anchored to his card, not to the corner.** An empty inline box at
+      the end of the queue headline (`mike/anchor.ts`) reserves his room; the
+      orb resolves that rect once per FRAME rather than listening for scroll,
+      and movement of the anchor is CARRIED rigidly instead of chased by the
+      spring — so he stays welded to the headline through a scroll instead of
+      swimming after it half a second behind. The spring still resolves genuine
+      moves (his flight to the middle and back), and the carry is skipped on
+      the frame it begins so a handover never teleports him. No anchor on the
+      page → he falls back to the viewport corner
+- [x] **Clicking anywhere off him sends him home.** The room is
+      `pointer-events-none` with only his words and the cloud taking events
+      back, so every other click reaches the veil beneath. Escape does the
+      same. A surface that can put an error on screen must always have a way
+      off it
+- [x] **Both onboarding transmissions are the same Mike** (`WelcomeModal`,
+      `BrandOnboardingModal`): the same orb, the same three-word cadence via
+      `MikeSpeech`, and the CTA held back until he has finished speaking.
+      They were dialogs with his initials in a rounded square, which introduced
+      a product feature — this introduces a person, and the first meeting is
+      the one place that matters most. The copy is still the fixed,
+      non-generated text in `lib/operator/welcome.ts`
+- [x] **The energy cloud, not a text field.** No box, no rule, no visible edge:
+      two counter-drifting blurred gradients at different periods (lockstep is
+      the clearest tell that something is a loop) with the caret already inside
+      it. Typing takes the floor — whatever he was saying drifts down and blurs
+      away rather than being cut. Sending evaporates the cloud into hundreds of
+      drag-damped particles, and he stays on screen throwing sparks across his
+      shell, one per read genuinely in flight, with each tool's human label
+      ("Pulling 14 days on The Profit Leak") and its receipt appearing as it
+      happens
+- [x] **He speaks three words at a time** (`WordStream.tsx`), each group
+      resolving out of blur rather than fading in — a typewriter reveals
+      characters and reads as a machine printing, three words reads as phrasing.
+      Nothing is faked: the whole answer arrived and passed the factual checks
+      before the component saw a word of it, and the reveal is skippable
+- [x] Motion discipline throughout: `transform` and `opacity` only, custom
+      cubic-beziers (never `linear` or `ease-in-out`), critically-damped springs
+      for anything interruptible, `prefers-reduced-motion` renders one honest
+      static frame, a backgrounded tab stops the loop entirely, and the phone
+      layer halves the point count and drops a blur layer
+- [x] The server reads the account itself (`lib/operator/ask/source.ts`) rather
+      than trusting numbers posted in from a page, resolving the SAME
+      seeded/meta switch the browser does — `loadOperatorContext()` resolves
+      the account's own today FIRST, per origin, because building a source with
+      a placeholder date to read its timezone off produces an account generated
+      around an invalid date
+- [x] `npm run selftest:mike-ask` — 36 in-process checks on a pinned date: the
+      allowlist is a wall, every instrument returns computed figures, the
+      ledger accepts what was read and rejects what was not, and the date
+      bootstrap resolves a real account day
 - [x] `npm run selftest:operator` — 50 in-process checks against a pinned
       evaluation date: all 41 from the engine spec, plus seven guarding the
       queue's presentation contract (word limits, chip caps and deduplication,
@@ -513,12 +619,5 @@ Full architecture: `docs/MIKE_DELIGHT.md`.
 - [ ] SPARK URL-only ingestion for JS-rendered sources (Meta Ad Library / TikTok / shared boards via oEmbed/transcript APIs or a headless render). Uploads, pasted screenshots, direct image links and YouTube transcripts all work today; a client-rendered page has no images in its served HTML, so `lib/ad-image.ts` scrapes og:image/`<img>`/inlined-JSON URLs and otherwise returns a note telling the user to screenshot it
 - [ ] Scheduled auto-sync for the Meta performance ingest (manual one-click sync done; cron/Vercel scheduled function pending)
 - [ ] More dashboards reading live `knowledge_chunks` counts (Agent Network does; Research/Copy/Pattern still curated)
-- [ ] Mike Delight's live Meta adapter — `lib/operator/adapters/meta.ts` is a
-      documented stub that throws. It needs ad-level insights at
-      `time_increment=1` for the daily rows PLUS a separate range-level call per
-      evaluation window for deduplicated reach and frequency (the existing
-      `lib/meta-graph.ts` returns range-aggregated ads with no daily rows, and
-      frequency cannot be reconstructed from daily reach). Finishing it is the
-      three methods plus the one line in `lib/operator/adapters/index.ts`
 - [ ] Deployed + tested end to end with real keys
 

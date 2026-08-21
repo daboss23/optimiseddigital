@@ -2829,3 +2829,438 @@ body {
     );
   }
 }
+
+/* ── Mike ────────────────────────────────────────────────────────────────────
+   He is drawn on a canvas; everything here is the room around him.
+
+   Motion rules, held throughout: transform and opacity only (never a layout
+   property), every curve a custom cubic-bezier (never ease-in-out, never
+   linear), and nothing animates that is not reporting something real. */
+
+/* The space he occupies at the end of the queue headline.
+   Empty on purpose: he is painted on a canvas above the page, so nothing here
+   can lay him out — but the room has to be RESERVED or he lands on top of the
+   last word. Inline-block so he wraps with the heading and scrolls with the
+   card he belongs to. */
+.mike-anchor {
+  display: inline-block;
+  width: 66px;
+  height: 0.9em;
+  margin-left: 1.3rem;
+  vertical-align: middle;
+}
+
+@media (max-width: 767px) {
+  .mike-anchor {
+    width: 60px;
+    margin-left: 1rem;
+  }
+}
+
+/* The hit target. Positioned at the origin and moved by transform alone, once
+   per frame, from the orb's own resolved centre — so it is exactly where he
+   is rather than one frame behind him. */
+.mike-perch {
+  width: 88px;
+  height: 88px;
+  will-change: transform;
+}
+
+/* The card on hover. Rises and resolves out of blur rather than popping, and
+   sits to the LEFT of him so it never runs off the edge of the window. */
+.mike-tag {
+  position: absolute;
+  top: 50%;
+  right: calc(100% + 10px);
+  white-space: nowrap;
+  padding: 0.5rem 0.9rem;
+  border-radius: 9999px;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  background: rgb(14 12 20 / 0.72);
+  backdrop-filter: blur(12px);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.08),
+    0 18px 50px -22px rgb(255 196 92 / 0.55);
+  color: rgb(255 255 255 / 0.82);
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  opacity: 0;
+  transform: translateY(-50%) translateX(8px) scale(0.96);
+  filter: blur(3px);
+  pointer-events: none;
+  transition:
+    opacity 420ms cubic-bezier(0.32, 0.72, 0, 1),
+    transform 420ms cubic-bezier(0.32, 0.72, 0, 1),
+    filter 420ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.mike-tag--shown {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0) scale(1);
+  filter: blur(0);
+}
+
+/* The dim. Deep enough that he is the brightest thing on screen, shallow
+   enough that the dashboard is still visibly behind him — he came out to the
+   middle of YOUR board, he did not open a new page. */
+.mike-veil {
+  background: radial-gradient(120% 90% at 50% 22%, rgb(10 8 16 / 0.72), rgb(5 4 9 / 0.93));
+  backdrop-filter: blur(10px);
+  animation: mike-veil-in 520ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+@keyframes mike-veil-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.mike-room {
+  animation: mike-room-in 620ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+@keyframes mike-room-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ── His words ───────────────────────────────────────────────────────────── */
+
+.mike-words {
+  margin: 0;
+  transition: opacity 700ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Each group of three floats out of nothing and resolves. The blur is doing
+   the work: fading alone reads as a fade, and resolving out of blur reads as
+   something arriving. */
+.mike-word {
+  display: inline;
+  animation: mike-word-in 620ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+@keyframes mike-word-in {
+  from { opacity: 0; filter: blur(7px); transform: translateY(6px); }
+  to { opacity: 1; filter: blur(0); transform: none; }
+}
+
+/* You started typing, so he stops. Drifts down and away rather than cutting —
+   he is giving you the floor, not being switched off. */
+.mike-words--dissolve {
+  animation: mike-words-out 900ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  pointer-events: none;
+}
+
+@keyframes mike-words-out {
+  from { opacity: 1; transform: none; filter: blur(0); }
+  to { opacity: 0; transform: translateY(26px); filter: blur(5px); }
+}
+
+/* ── The energy cloud ────────────────────────────────────────────────────── */
+
+/* Not a text field. A region of moving light with your words inside it —
+   which is why there is no box, no rule and no visible edge anywhere on it.
+   Two counter-drifting gradients, at different periods so they never beat in
+   lockstep; lockstep is the clearest tell that something is a loop. */
+.mike-cloud {
+  position: relative;
+  isolation: isolate;
+  padding: 1.6rem 1.4rem;
+}
+
+.mike-cloud::before,
+.mike-cloud::after {
+  content: '';
+  position: absolute;
+  inset: -18% -6%;
+  z-index: -1;
+  border-radius: 9999px;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+.mike-cloud::before {
+  background:
+    radial-gradient(48% 76% at 28% 46%, rgb(255 196 92 / 0.2), transparent 68%),
+    radial-gradient(52% 84% at 74% 54%, rgb(178 132 255 / 0.19), transparent 70%);
+  filter: blur(26px);
+  animation: mike-cloud-a 11s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+.mike-cloud::after {
+  background:
+    radial-gradient(40% 70% at 62% 38%, rgb(255 248 235 / 0.13), transparent 66%),
+    radial-gradient(46% 72% at 34% 66%, rgb(178 132 255 / 0.13), transparent 68%);
+  filter: blur(34px);
+  animation: mike-cloud-b 17s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+@keyframes mike-cloud-a {
+  0%, 100% { transform: translate3d(-3%, 0, 0) scale(1); opacity: 0.85; }
+  50% { transform: translate3d(4%, -3%, 0) scale(1.07); opacity: 1; }
+}
+
+@keyframes mike-cloud-b {
+  0%, 100% { transform: translate3d(4%, 2%, 0) scale(1.05); opacity: 0.7; }
+  50% { transform: translate3d(-4%, -1%, 0) scale(0.96); opacity: 1; }
+}
+
+.mike-cloud-input {
+  display: block;
+  width: 100%;
+  max-height: 8rem;
+  resize: none;
+  border: 0;
+  background: transparent;
+  text-align: center;
+  font-size: 19px;
+  line-height: 1.6;
+  color: rgb(255 255 255 / 0.95);
+  caret-color: rgb(255 196 92);
+  outline: none;
+}
+
+.mike-cloud-input::placeholder {
+  color: rgb(255 255 255 / 0.3);
+}
+
+@media (max-width: 767px) {
+  .mike-cloud-input { font-size: 17px; }
+  /* Blur is expensive to composite continuously on a phone. One cloud layer
+     instead of two, held still. */
+  .mike-cloud::after { display: none; }
+  .mike-cloud::before { animation: none; }
+}
+
+/* Every primary CTA on Mike's surfaces is `.fire-btn`, the platform's one
+   gradient button. All that is added here is the arrival — it should not snap
+   into place the instant he stops talking — and centring, so it sits under the
+   middle of what he just said rather than at the edge of a flex column. */
+.mike-cta {
+  align-self: center;
+  animation: mike-cta-in 700ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+@keyframes mike-cta-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); filter: blur(5px); }
+  to { opacity: 1; transform: none; filter: blur(0); }
+}
+
+/* He fades up out of nothing before the first word. */
+.mike-arrive {
+  animation: mike-arrive-in 1600ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+@keyframes mike-arrive-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* A paragraph gathering out of scattered light.
+
+   Blur is what sells it: fading alone reads as a fade, but resolving out of a
+   heavy blur while the letter-spacing draws in reads as particles collecting
+   into words. Slow on purpose — 1.9s. This is an introduction, not an answer;
+   nobody is waiting on it, and rushing it is what made the words scramble. */
+.mike-coalesce {
+  margin: 0;
+  animation: mike-coalesce 1900ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  will-change: opacity, filter, transform;
+}
+
+@keyframes mike-coalesce {
+  0% {
+    opacity: 0;
+    filter: blur(18px);
+    letter-spacing: 0.22em;
+    transform: translateY(10px) scale(1.015);
+  }
+  55% { opacity: 0.75; filter: blur(5px); letter-spacing: 0.06em; }
+  100% {
+    opacity: 1;
+    filter: blur(0);
+    letter-spacing: normal;
+    transform: none;
+  }
+}
+
+/* ── Openers and reads ───────────────────────────────────────────────────── */
+
+.mike-opener {
+  min-height: 44px;
+  padding: 0 1.05rem;
+  border-radius: 9999px;
+  border: 1px solid rgb(255 255 255 / 0.09);
+  background: rgb(255 255 255 / 0.03);
+  color: rgb(255 255 255 / 0.6);
+  font-size: 12.5px;
+  animation: mike-word-in 700ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  transition:
+    transform 320ms cubic-bezier(0.32, 0.72, 0, 1),
+    border-color 320ms cubic-bezier(0.32, 0.72, 0, 1),
+    color 320ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.mike-opener:hover {
+  transform: translateY(-1px);
+  border-color: rgb(255 196 92 / 0.4);
+  color: rgb(255 255 255 / 0.9);
+}
+
+/* Each read appears as he starts it. Same arrival as his words, because it is
+   the same event: something surfacing that was not there a moment ago. */
+.mike-read {
+  animation: mike-word-in 520ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+.mike-footnote {
+  animation: mike-word-in 900ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  animation-delay: 500ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mike-tag,
+  .mike-veil,
+  .mike-room,
+  .mike-word,
+  .mike-words--dissolve,
+  .mike-cloud::before,
+  .mike-cloud::after,
+  .mike-cta,
+  .mike-arrive,
+  .mike-coalesce,
+  .mike-opener,
+  .mike-read,
+  .mike-footnote {
+    animation: none;
+    transition: none;
+  }
+  .mike-words--dissolve { opacity: 0; }
+}
+
+/* The stage both transmissions play on. */
+.mike-first {
+  background:
+    radial-gradient(120% 90% at 50% 20%, rgb(16 12 26 / 0.96), rgb(5 4 9 / 0.99));
+  animation: mike-veil-in 700ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+/* Sheer.
+
+   He is talking ABOUT the screen he is standing in front of, and an opaque
+   sheet makes his sentence do work the page could do for free. Dimmed and
+   blurred enough that his words stay the brightest thing on screen, sheer
+   enough that you can read where you have arrived behind him. */
+.mike-first--sheer {
+  background:
+    radial-gradient(120% 90% at 50% 18%, rgb(14 11 24 / 0.7), rgb(5 4 9 / 0.86));
+  backdrop-filter: blur(7px);
+}
+
+/* Autofill, de-yellowed.
+
+   Browsers paint an autofilled input with their own opaque background, which
+   on a dark command centre lands as a solid yellow block. The background
+   cannot be set directly — it is drawn by the engine — but an inset shadow is
+   painted over it, which is the standard way to take the field back. Applied
+   to every state so it does not flash yellow on focus. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-text-fill-color: rgb(255 255 255 / 0.92);
+  caret-color: rgb(255 255 255 / 0.92);
+  -webkit-box-shadow: inset 0 0 0 1000px rgb(14 16 24) !important;
+  box-shadow: inset 0 0 0 1000px rgb(14 16 24) !important;
+  /* The engine also animates the fill in; a long delay keeps our colours. */
+  transition: background-color 100000s ease-in-out 0s;
+}
+
+/* The eyebrow, undecorated. Used where the label is centred and a rule
+   pointing into it from the left has nothing to point at. */
+.command-eyebrow--bare::before {
+  display: none;
+}
+
+/* ── The tagline ─────────────────────────────────────────────────────────────
+   "Engineered For Performance." with current running through it.
+
+   The letters are not white — they are a cyan-to-violet gradient with a
+   white-hot band inside it, and the whole gradient slides back and forth
+   under them forever. Two things fall out of that: the words are never a flat
+   dead grey, and the hot band passes through them roughly every four seconds
+   without anything actually blinking. A line that pulses reads as a status
+   light; a line with light travelling through it reads as energised. */
+.tagline {
+  position: relative;
+  text-align: center;
+  font-family: var(--font-space-grotesk);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  text-indent: 0.34em; /* balance the trailing letter-space so it reads centred */
+  filter: drop-shadow(0 0 12px rgb(var(--lg-cyan) / 0.28));
+}
+
+.tagline span {
+  background-image: linear-gradient(
+    100deg,
+    rgb(var(--lg-cyan) / 0.62) 0%,
+    rgb(var(--lg-violet) / 0.68) 16%,
+    rgb(255 255 255 / 0.7) 33%,
+    rgb(255 255 255 / 1) 43%,
+    rgb(var(--lg-cyan) / 1) 50%,
+    rgb(255 255 255 / 1) 57%,
+    rgb(var(--lg-violet) / 0.78) 72%,
+    rgb(var(--lg-cyan) / 0.62) 100%
+  );
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: tagline-sweep 9s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+@keyframes tagline-sweep {
+  0% { background-position: 100% 0; }
+  50% { background-position: 0% 0; }
+  100% { background-position: 100% 0; }
+}
+
+/* A hairline under it, brightening as the band passes overhead — so the sweep
+   reads as travelling THROUGH something rather than across a flat surface. */
+.tagline::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -0.5rem;
+  height: 1px;
+  width: 9.5rem;
+  transform: translateX(-50%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgb(var(--lg-cyan) / 0.6),
+    rgb(var(--lg-violet) / 0.5),
+    transparent
+  );
+  animation: tagline-wire 9s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+@keyframes tagline-wire {
+  0%, 100% { opacity: 0.2; transform: translateX(-50%) scaleX(0.8); }
+  50% { opacity: 0.75; transform: translateX(-50%) scaleX(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tagline span {
+    animation: none;
+    background-position: 50% 0;
+  }
+  .tagline::after {
+    animation: none;
+    opacity: 0.4;
+  }
+}

@@ -207,9 +207,21 @@ export function ConnectMetaPanel({ onConnectionChange }: { onConnectionChange?: 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1.6fr_1fr]">
                 <label className="block">
                   <FieldLabel>Access token</FieldLabel>
+                  {/* A password field next to a text field is what every
+                      browser recognises as a sign-in form, so it helpfully
+                      pastes the operator's saved login into a field meant for
+                      a Meta System User token — and paints both yellow. Chrome
+                      ignores autoComplete="off" on password inputs; it honours
+                      "new-password", and the manager attributes cover the
+                      extensions that ignore both. */}
                   <input
                     type="password"
-                    autoComplete="off"
+                    autoComplete="new-password"
+                    name="meta-system-user-token"
+                    id="meta-system-user-token"
+                    data-1p-ignore
+                    data-lpignore="true"
+                    data-form-type="other"
                     value={token}
                     onChange={(e) => setToken(e.target.value)}
                     placeholder="EAAG…"
@@ -221,6 +233,10 @@ export function ConnectMetaPanel({ onConnectionChange }: { onConnectionChange?: 
                   <input
                     type="text"
                     autoComplete="off"
+                    name="meta-ad-account-id"
+                    data-1p-ignore
+                    data-lpignore="true"
+                    data-form-type="other"
                     value={accountId}
                     onChange={(e) => setAccountId(e.target.value)}
                     placeholder="1234567890"
@@ -265,7 +281,7 @@ export function ConnectMetaPanel({ onConnectionChange }: { onConnectionChange?: 
                   type="button"
                   disabled={busy || !token.trim() || Boolean(accounts && !chosenAccount)}
                   onClick={() => void connect(accounts ? chosenAccount : undefined)}
-                  className="brief-cta !mt-0 !px-4 !py-2.5 !text-[12.5px] disabled:cursor-not-allowed disabled:opacity-40"
+                  className="fire-btn tap-target inline-flex w-full items-center justify-center gap-2 px-4 py-2.5 font-display text-[12.5px] font-bold uppercase tracking-wide text-white"
                 >
                   {busy ? (
                     <span className="inline-flex items-center gap-1.5">

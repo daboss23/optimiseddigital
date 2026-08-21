@@ -4,6 +4,7 @@ import { Loader2, Pause, Play, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { DemoBadge } from '@/components/reactor/Explain'
 import { useOperator, type QueueFilter } from '@/components/reactor/operator/OperatorProvider'
+import { MIKE_ANCHOR_ID } from '@/components/reactor/operator/mike/anchor'
 
 /* ----------------------------------------------------------------------------
    The summary.
@@ -84,6 +85,13 @@ export function MikeQueueSummary() {
 
           <h2 className="mt-2.5 font-display text-[21px] font-bold leading-[1.15] tracking-tight text-white sm:text-[24px] md:text-[27px]">
             {ready ? summary.headline : 'Reading the account…'}
+            {/* Where Mike sits. An empty inline box reserving the room he
+                needs at the end of the headline: he is drawn on a canvas above
+                the page, so nothing here can lay him out — but the space has
+                to be held or he lands on top of the last word. Being INSIDE
+                the heading means he wraps with it and scrolls with the card,
+                which is the point. */}
+            <span id={MIKE_ANCHOR_ID} className="mike-anchor" aria-hidden />
           </h2>
           <p className="mt-2 text-[15px] leading-relaxed text-white/70">
             {ready ? summary.supporting : 'Mike is working through the last complete delivery window.'}

@@ -39,6 +39,7 @@ import { CreativeLeaderboard } from '@/components/reactor/CreativeLeaderboard'
 import {
   ActionsRequiredTile,
   MikeQueuePanel,
+  MikeStage,
   OperatorProvider,
   OperatorToast,
   WelcomeModal,
@@ -607,6 +608,10 @@ export default async function ReactorDashboard({
           both context — which is why the flow is login → dashboard → greeting
           rather than a greeting on the login page itself. */}
       <WelcomeModal />
+      {/* Mike himself. Outside every panel, because he is not in one — he
+          idles in the corner of the whole dashboard and comes to the middle
+          of it when called. */}
+      <MikeStage />
       <OperatorToast />
     </OperatorProvider>
   )

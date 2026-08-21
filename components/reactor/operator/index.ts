@@ -13,6 +13,7 @@ export { MikeQueuePanel } from '@/components/reactor/operator/queue/MikeQueuePan
 export { ActionsRequiredTile } from '@/components/reactor/operator/ActionsRequiredTile'
 export { OperatorToast } from '@/components/reactor/operator/OperatorToast'
 export { WelcomeModal } from '@/components/reactor/operator/WelcomeModal'
+export { MikeStage } from '@/components/reactor/operator/mike/MikeStage'
 
 /** The scroll target for anything that links at the queue. */
 export const OPERATOR_QUEUE_ANCHOR = 'mikes-queue'
