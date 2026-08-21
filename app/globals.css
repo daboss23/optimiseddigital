@@ -3167,3 +3167,91 @@ select:-webkit-autofill {
   /* The engine also animates the fill in; a long delay keeps our colours. */
   transition: background-color 100000s ease-in-out 0s;
 }
+
+/* The eyebrow, undecorated. Used where the label is centred and a rule
+   pointing into it from the left has nothing to point at. */
+.command-eyebrow--bare::before {
+  display: none;
+}
+
+/* ── The tagline ─────────────────────────────────────────────────────────────
+   "Engineered For Performance." with current running through it.
+
+   The letters are not white — they are a cyan-to-violet gradient with a
+   white-hot band inside it, and the whole gradient slides back and forth
+   under them forever. Two things fall out of that: the words are never a flat
+   dead grey, and the hot band passes through them roughly every four seconds
+   without anything actually blinking. A line that pulses reads as a status
+   light; a line with light travelling through it reads as energised. */
+.tagline {
+  position: relative;
+  text-align: center;
+  font-family: var(--font-space-grotesk);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  text-indent: 0.34em; /* balance the trailing letter-space so it reads centred */
+  filter: drop-shadow(0 0 12px rgb(var(--lg-cyan) / 0.28));
+}
+
+.tagline span {
+  background-image: linear-gradient(
+    100deg,
+    rgb(var(--lg-cyan) / 0.62) 0%,
+    rgb(var(--lg-violet) / 0.68) 16%,
+    rgb(255 255 255 / 0.7) 33%,
+    rgb(255 255 255 / 1) 43%,
+    rgb(var(--lg-cyan) / 1) 50%,
+    rgb(255 255 255 / 1) 57%,
+    rgb(var(--lg-violet) / 0.78) 72%,
+    rgb(var(--lg-cyan) / 0.62) 100%
+  );
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: tagline-sweep 9s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+@keyframes tagline-sweep {
+  0% { background-position: 100% 0; }
+  50% { background-position: 0% 0; }
+  100% { background-position: 100% 0; }
+}
+
+/* A hairline under it, brightening as the band passes overhead — so the sweep
+   reads as travelling THROUGH something rather than across a flat surface. */
+.tagline::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -0.5rem;
+  height: 1px;
+  width: 9.5rem;
+  transform: translateX(-50%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgb(var(--lg-cyan) / 0.6),
+    rgb(var(--lg-violet) / 0.5),
+    transparent
+  );
+  animation: tagline-wire 9s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+@keyframes tagline-wire {
+  0%, 100% { opacity: 0.2; transform: translateX(-50%) scaleX(0.8); }
+  50% { opacity: 0.75; transform: translateX(-50%) scaleX(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tagline span {
+    animation: none;
+    background-position: 50% 0;
+  }
+  .tagline::after {
+    animation: none;
+    opacity: 0.4;
+  }
+}

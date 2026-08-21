@@ -1,9 +1,10 @@
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
-import { Atom, ShieldCheck, Sparkles } from 'lucide-react'
+import { Atom, Sparkles } from 'lucide-react'
 import { SESSION_COOKIE, credentialsAreDemo, expectedCredentials, readSessionToken } from '@/lib/auth'
 import { DEFAULT_IDENTITY } from '@/lib/brand-identity'
 import { getBrandIdentity } from '@/lib/brand-identity.server'
+import { LoginField } from '@/components/login/LoginField'
 import { LoginForm } from '@/components/login/LoginForm'
 
 /* ----------------------------------------------------------------------------
@@ -58,8 +59,11 @@ export default async function LoginPage({
   const credentials = expectedCredentials()
 
   return (
-    <main className="flex min-h-[100dvh] items-center justify-center px-4 py-10 pb-[max(2.5rem,env(safe-area-inset-bottom))] pt-[max(2.5rem,env(safe-area-inset-top))]">
-      <div className="w-full max-w-[420px] animate-fade-up">
+    <main className="relative flex min-h-[100dvh] items-center justify-center px-4 py-10 pb-[max(2.5rem,env(safe-area-inset-bottom))] pt-[max(2.5rem,env(safe-area-inset-top))]">
+      {/* Loose motes of light behind the door. Subtle on purpose — there is a
+          form in front of it that somebody has to read. */}
+      <LoginField />
+      <div className="relative z-10 w-full max-w-[420px] animate-fade-up">
         {/* Identity — the mark, then who this belongs to. */}
         <div className="mb-6 flex flex-col items-center text-center">
           <span className="grid h-14 w-14 place-items-center rounded-2xl border border-[color:rgb(var(--lg-cyan)/0.3)] bg-gradient-to-br from-primary/25 to-violet/15 shadow-glow">
@@ -68,18 +72,14 @@ export default async function LoginPage({
           {/* "Creative Intelligence Command Center" is the dashboard hero's
               eyebrow and it wraps to two ragged lines inside a 420px card.
               Two words here, the full phrase under the title. */}
-          <span className="command-eyebrow mt-4">
-            <span className="command-eyebrow-dot" />
-            Operator Access
-          </span>
+          {/* The eyebrow's typography without its wire-and-dot decoration —
+              a centred card does not need a rule pointing into it. */}
+          <span className="command-eyebrow command-eyebrow--bare mt-4">Operator Access</span>
           <h1 className="mt-3 font-display text-[30px] font-bold leading-[1.1] tracking-tight text-white">
             {identity.name}
           </h1>
           <p className="mt-2 text-[13px] font-medium uppercase tracking-[0.14em] text-glow/60">
             Creative Intelligence Command Center
-          </p>
-          <p className="mt-3 max-w-[19rem] text-[14px] leading-relaxed text-white/60">
-            Sign in and Mike Delight will pick up where your Meta account left off.
           </p>
         </div>
 
@@ -114,9 +114,11 @@ export default async function LoginPage({
           )}
         </div>
 
-        <p className="mt-5 flex items-center justify-center gap-1.5 text-center text-[12px] text-white/35">
-          <ShieldCheck size={12} />
-          Engineered For Performance.
+        {/* The tagline, lit. A slow band of light travels across the letters
+            rather than the whole line pulsing: a pulse is a status indicator,
+            a sweep reads as something with current running through it. */}
+        <p className="tagline mt-6" aria-label="Engineered For Performance.">
+          <span aria-hidden>Engineered For Performance.</span>
         </p>
       </div>
     </main>
