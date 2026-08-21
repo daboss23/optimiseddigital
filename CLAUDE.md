@@ -529,6 +529,27 @@ Full architecture: `docs/MIKE_DELIGHT.md`.
       the session cookie). ONE fixed full-viewport canvas carries him corner to
       centre and back, never unmounted — a component that faded out in one place
       and in at another would say he is two things
+- [x] **He is anchored to his card, not to the corner.** An empty inline box at
+      the end of the queue headline (`mike/anchor.ts`) reserves his room; the
+      orb resolves that rect once per FRAME rather than listening for scroll,
+      and movement of the anchor is CARRIED rigidly instead of chased by the
+      spring — so he stays welded to the headline through a scroll instead of
+      swimming after it half a second behind. The spring still resolves genuine
+      moves (his flight to the middle and back), and the carry is skipped on
+      the frame it begins so a handover never teleports him. No anchor on the
+      page → he falls back to the viewport corner
+- [x] **Clicking anywhere off him sends him home.** The room is
+      `pointer-events-none` with only his words and the cloud taking events
+      back, so every other click reaches the veil beneath. Escape does the
+      same. A surface that can put an error on screen must always have a way
+      off it
+- [x] **Both onboarding transmissions are the same Mike** (`WelcomeModal`,
+      `BrandOnboardingModal`): the same orb, the same three-word cadence via
+      `MikeSpeech`, and the CTA held back until he has finished speaking.
+      They were dialogs with his initials in a rounded square, which introduced
+      a product feature — this introduces a person, and the first meeting is
+      the one place that matters most. The copy is still the fixed,
+      non-generated text in `lib/operator/welcome.ts`
 - [x] **The energy cloud, not a text field.** No box, no rule, no visible edge:
       two counter-drifting blurred gradients at different periods (lockstep is
       the clearest tell that something is a loop) with the caret already inside

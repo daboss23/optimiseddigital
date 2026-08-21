@@ -114,7 +114,18 @@ export function Topbar() {
         <div className="ml-auto flex items-center gap-1.5 sm:gap-2.5">
           <label className="topbar-search hidden w-64 xl:flex" aria-label="Search intelligence">
             <Search size={15} className="shrink-0 text-glow/70" />
-            <input type="text" placeholder="Search intelligence…" spellCheck={false} />
+            {/* Named and typed as search so no password manager mistakes it
+                for a username field and drops the operator's login into it. */}
+            <input
+              type="search"
+              name="intelligence-search"
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
+              placeholder="Search intelligence…"
+              spellCheck={false}
+            />
             <kbd className="topbar-kbd ml-auto shrink-0">⌘K</kbd>
           </label>
           <button

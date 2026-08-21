@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { readOperatorNameCookie } from '@/lib/auth'
 import { cn } from '@/lib/utils'
 import { useOperator } from '@/components/reactor/operator/OperatorProvider'
+import { anchorPoint } from '@/components/reactor/operator/mike/anchor'
 import { MikeOrb, type OrbState } from '@/components/reactor/operator/mike/orb/MikeOrb'
 import { WordStream } from '@/components/reactor/operator/mike/WordStream'
 import { useMikeStream } from '@/components/reactor/operator/mike/useMikeStream'
@@ -36,10 +37,15 @@ import { useMikeStream } from '@/components/reactor/operator/mike/useMikeStream'
 
 type Phase = 'resting' | 'greeting' | 'composing' | 'working' | 'speaking'
 
-/** Where he sits when nobody wants him. Clear of the mobile nav and the edges. */
+/**
+ * The fallback perch, for pages where his anchor is not rendered. Clear of the
+ * mobile nav and the window edges.
+ */
 const CORNER_INSET = { x: 112, y: 128 }
-const RESTING_RADIUS = 34
-const HOVER_RADIUS = 40
+// Small enough that his corona does not wash over the supporting line under
+// the headline — he sits beside the words, he does not sit on them.
+const RESTING_RADIUS = 27
+const HOVER_RADIUS = 32
 
 export function MikeStage() {
   const { proposals, metadata, queue } = useOperator()
@@ -52,6 +58,8 @@ export function MikeStage() {
   const [burst, setBurst] = useState(0)
   const [viewport, setViewport] = useState({ w: 1440, h: 900 })
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
+  const perchRef = useRef<HTMLDivElement | null>(null)
+  const openRef = useRef(false)
 
   useEffect(() => {
     setMounted(true)
@@ -132,9 +140,34 @@ export function MikeStage() {
   // High enough that his corona — which reaches roughly twice his radius —
   // clears the first line of text. Light bleeding through his own words is
   // the one thing that would make him read as a background image.
-  const target = open
-    ? { x: viewport.w / 2, y: viewport.h * (compact ? 0.19 : 0.22) }
-    : { x: viewport.w - CORNER_INSET.x, y: viewport.h - CORNER_INSET.y }
+  openRef.current = open
+
+  /**
+   * Where he should be, resolved once per FRAME rather than per render.
+   *
+   * At rest he rides his anchor in the queue headline, so he scrolls with the
+   * card he belongs to instead of hanging in a fixed corner while the page
+   * slides past underneath him. Reading the rect every frame rather than
+   * listening for scroll is both simpler and smoother: there is no event to
+   * miss, no throttle to tune, and no React render per scroll tick.
+   */
+  const resolveTarget = useCallback(() => {
+    if (openRef.current) {
+      return { x: window.innerWidth / 2, y: window.innerHeight * (compact ? 0.19 : 0.22) }
+    }
+    return (
+      anchorPoint() ?? {
+        x: window.innerWidth - CORNER_INSET.x,
+        y: window.innerHeight - CORNER_INSET.y,
+      }
+    )
+  }, [compact])
+
+  /** The hit target rides along, moved by transform only. */
+  const onFrame = useCallback((x: number, y: number) => {
+    const perch = perchRef.current
+    if (perch) perch.style.transform = `translate3d(${x - 44}px, ${y - 44}px, 0)`
+  }, [])
 
   const radius = open
     ? compact
@@ -177,8 +210,10 @@ export function MikeStage() {
           back, never unmounted — which is what makes it the same object. */}
       <MikeOrb
         state={orbState}
-        target={target}
+        target={resolveTarget}
         radius={radius}
+        carried={!open}
+        onFrame={onFrame}
         arousal={hovered && !open ? 1 : 0}
         activity={mike.activity}
         burst={burst}
@@ -187,7 +222,7 @@ export function MikeStage() {
 
       {/* At rest: the only thing you can touch is him. */}
       {!open && (
-        <div className="mike-perch fixed z-[92]">
+        <div ref={perchRef} className="mike-perch fixed left-0 top-0 z-[92]">
           <button
             type="button"
             onClick={wake}
@@ -209,7 +244,7 @@ export function MikeStage() {
 
       {/* Open: everything he says and everything you type, hung below him. */}
       {open && (
-        <div className="mike-room fixed inset-0 z-[93] flex flex-col items-center justify-start px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[42vh] sm:pt-[44vh]">
+        <div className="mike-room pointer-events-none fixed inset-0 z-[93] flex flex-col items-center justify-start px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[42vh] sm:pt-[44vh]">
           <div className="flex w-full max-w-2xl flex-col items-center gap-7">
             {/* What he is saying. */}
             {phase !== 'working' && (
@@ -218,7 +253,7 @@ export function MikeStage() {
                 text={phase === 'speaking' ? spoken : greeting}
                 dissolving={phase !== 'speaking' && dissolving}
                 className={cn(
-                  'text-center leading-relaxed text-white/85',
+                  'pointer-events-auto text-center leading-relaxed text-white/85',
                   compact ? 'text-[17px]' : 'text-[20px]',
                 )}
               />
@@ -251,7 +286,7 @@ export function MikeStage() {
                 It is gone entirely while he is away reading, because there is
                 nothing to type into a man who is not in the room. */}
             {phase !== 'working' && (
-              <div className="flex w-full flex-col items-center gap-5">
+              <div className="pointer-events-auto flex w-full flex-col items-center gap-5">
                 <div className="mike-cloud w-full">
                   <textarea
                     ref={inputRef}

@@ -33,10 +33,22 @@ import {
 
 export type OrbState = 'ambient' | 'focus' | 'working' | 'speaking'
 
+export interface Point {
+  x: number
+  y: number
+}
+
 export interface MikeOrbProps {
   state: OrbState
-  /** Where he should be, in viewport pixels. */
-  target: { x: number; y: number }
+  /**
+   * Where he should be, in viewport pixels.
+   *
+   * A FUNCTION when he is following something on the page — it is called once
+   * per frame, so an anchor that moves with the scroll is tracked without a
+   * React render per scroll event, and he stays glued to his card instead of
+   * hanging in a fixed corner while the page slides past underneath him.
+   */
+  target: Point | (() => Point)
   /** How big he should be, in viewport pixels. */
   radius: number
   /** Extra life on top of the state — hover, mostly. 0–1. */
@@ -45,6 +57,21 @@ export interface MikeOrbProps {
   activity?: number
   /** Increment to evaporate the cloud into particles. */
   burst?: number
+  /**
+   * The target is attached to the PAGE rather than to the viewport.
+   *
+   * When it is, movement of the target is carried rigidly instead of being
+   * chased by the spring: scrolling should slide him along with his card, not
+   * set him swimming after it half a second behind. The spring still resolves
+   * any genuine error — it just never sees the scroll as one.
+   */
+  carried?: boolean
+  /**
+   * Called each frame with where he actually IS, springs and all. Lets the hit
+   * target ride along without a second animation loop measuring the same
+   * thing a frame out of step.
+   */
+  onFrame?: (x: number, y: number, r: number) => void
   className?: string
 }
 
@@ -100,14 +127,16 @@ export function MikeOrb({
   arousal = 0,
   activity = 0,
   burst = 0,
+  carried = false,
+  onFrame,
   className,
 }: MikeOrbProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const props = useRef({ state, target, radius, arousal, activity, burst })
+  const props = useRef({ state, target, radius, arousal, activity, burst, carried, onFrame })
   // Read through a ref so a prop change never restarts the loop — a restart
   // would reset every spring to rest, which is the jump the springs exist to
   // prevent.
-  props.current = { state, target, radius, arousal, activity, burst }
+  props.current = { state, target, radius, arousal, activity, burst, carried, onFrame }
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -170,8 +199,15 @@ export function MikeOrb({
     }
 
     /* State that lives across frames. */
-    const px = new Spring(props.current.target.x, 0.62)
-    const py = new Spring(props.current.target.y, 0.62)
+    const resolve = (): { x: number; y: number } => {
+      const t = props.current.target
+      return typeof t === 'function' ? t() : t
+    }
+    const start = resolve()
+    const px = new Spring(start.x, 0.62)
+    const py = new Spring(start.y, 0.62)
+    let previous = start
+    let wasCarried = false
     const pr = new Spring(props.current.radius, 0.55)
     const heat = new Spring(HEAT[props.current.state], 0.5)
 
@@ -202,7 +238,28 @@ export function MikeOrb({
     }
 
     const draw = (dt: number, time: number) => {
-      const { state: s, target, radius: wanted, arousal: a, activity: act, burst: b } = props.current
+      const {
+        state: s,
+        radius: wanted,
+        arousal: a,
+        activity: act,
+        burst: b,
+        carried: isCarried,
+      } = props.current
+      const target = resolve()
+
+      // Carry, don't chase. While he is attached to something on the page, any
+      // movement of that thing is applied to him directly, so he stays welded
+      // to it through a scroll. Skipped on the frame carrying BEGINS, because
+      // that frame's delta is the handover between two different places to be
+      // — corner to centre, or centre back to his card — and carrying it would
+      // teleport him across the screen instead of flying him there.
+      if (isCarried && wasCarried) {
+        px.value += target.x - previous.x
+        py.value += target.y - previous.y
+      }
+      wasCarried = isCarried
+      previous = target
 
       px.setTarget(target.x)
       py.setTarget(target.y)
@@ -349,6 +406,7 @@ export function MikeOrb({
       }
 
       ctx.globalCompositeOperation = 'source-over'
+      props.current.onFrame?.(cx, cy, r)
     }
 
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)')

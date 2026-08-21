@@ -2837,11 +2837,33 @@ body {
    property), every curve a custom cubic-bezier (never ease-in-out, never
    linear), and nothing animates that is not reporting something real. */
 
-/* The corner he lives in. Matches CORNER_INSET in MikeStage — the canvas puts
-   him here, this puts the hit target on top of him. */
+/* The space he occupies at the end of the queue headline.
+   Empty on purpose: he is painted on a canvas above the page, so nothing here
+   can lay him out — but the room has to be RESERVED or he lands on top of the
+   last word. Inline-block so he wraps with the heading and scrolls with the
+   card he belongs to. */
+.mike-anchor {
+  display: inline-block;
+  width: 66px;
+  height: 0.9em;
+  margin-left: 1.3rem;
+  vertical-align: middle;
+}
+
+@media (max-width: 767px) {
+  .mike-anchor {
+    width: 60px;
+    margin-left: 1rem;
+  }
+}
+
+/* The hit target. Positioned at the origin and moved by transform alone, once
+   per frame, from the orb's own resolved centre — so it is exactly where he
+   is rather than one frame behind him. */
 .mike-perch {
-  right: calc(112px - 44px);
-  bottom: calc(128px - 44px);
+  width: 88px;
+  height: 88px;
+  will-change: transform;
 }
 
 /* The card on hover. Rises and resolves out of blur rather than popping, and
@@ -3103,4 +3125,35 @@ body {
     transition: none;
   }
   .mike-words--dissolve { opacity: 0; }
+}
+
+/* The first meeting. The same stage as the console, but opaque — there is no
+   dashboard worth showing behind it yet, and a first-run account is empty
+   anyway. Fading a blurred picture of nothing in behind him would say the
+   product is loading rather than that somebody is talking to you. */
+.mike-first {
+  background:
+    radial-gradient(120% 90% at 50% 20%, rgb(16 12 26 / 0.96), rgb(5 4 9 / 0.99));
+  animation: mike-veil-in 700ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+/* Autofill, de-yellowed.
+
+   Browsers paint an autofilled input with their own opaque background, which
+   on a dark command centre lands as a solid yellow block. The background
+   cannot be set directly — it is drawn by the engine — but an inset shadow is
+   painted over it, which is the standard way to take the field back. Applied
+   to every state so it does not flash yellow on focus. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-text-fill-color: rgb(255 255 255 / 0.92);
+  caret-color: rgb(255 255 255 / 0.92);
+  -webkit-box-shadow: inset 0 0 0 1000px rgb(14 16 24) !important;
+  box-shadow: inset 0 0 0 1000px rgb(14 16 24) !important;
+  /* The engine also animates the fill in; a long delay keeps our colours. */
+  transition: background-color 100000s ease-in-out 0s;
 }
