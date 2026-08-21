@@ -1,5 +1,6 @@
 import { PageHeader } from '@/components/reactor/ui'
 import { BrandIntelligence } from '@/components/brand/BrandIntelligence'
+import { BrandOnboardingModal } from '@/components/brand/BrandOnboardingModal'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,6 +14,7 @@ export default function BrandIntelligencePage() {
         tagline="Engineered For Performance."
       />
       <BrandIntelligence />
+      <BrandOnboardingModal />
     </>
   )
 }

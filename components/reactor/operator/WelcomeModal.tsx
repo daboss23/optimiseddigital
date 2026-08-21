@@ -1,8 +1,10 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { ArrowRight } from 'lucide-react'
 import { useOperator } from '@/components/reactor/operator/OperatorProvider'
 import { OperatorModal } from '@/components/reactor/operator/shell'
+import { armBrandOnboarding } from '@/lib/operator/onboarding'
 
 /* ----------------------------------------------------------------------------
    The first meeting.
@@ -20,21 +22,37 @@ import { OperatorModal } from '@/components/reactor/operator/shell'
    does — the portal escapes the dashboard's backdrop-filter containing block,
    and Escape, the scrim and the close control all behave identically to the
    rest of the surface.
+
+   Dismissing does not just close: it routes to Brand Intelligence and arms
+   Mike's second transmission there. A first-run operator has nothing in the
+   Vault, so every number on this dashboard is empty and every campaign the
+   reactor could write would be ungrounded — reading their website is the one
+   move that makes the rest of the platform mean anything. Escape and the scrim
+   go the same way as the button on purpose: the destination is the point, not
+   a reward for clicking the right control.
 ---------------------------------------------------------------------------- */
 
 export function WelcomeModal() {
   const { welcome, dismissWelcome } = useOperator()
+  const router = useRouter()
+
   if (!welcome) return null
+
+  const begin = () => {
+    dismissWelcome()
+    armBrandOnboarding()
+    router.push('/brand')
+  }
 
   return (
     <OperatorModal
       open
-      onClose={dismissWelcome}
+      onClose={begin}
       accent="cyan"
       title="Mike Delight"
       subtitle="Smooth Operator · your daily Meta performance wingman"
       footer={
-        <button type="button" onClick={dismissWelcome} className="brief-cta !w-auto !px-4">
+        <button type="button" onClick={begin} className="brief-cta !w-auto !px-4">
           Let&rsquo;s get to work
           <ArrowRight size={13} />
         </button>

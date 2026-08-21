@@ -29,6 +29,13 @@ const inputCls =
   'w-full rounded-lg border border-border bg-surface/60 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:border-glow focus:outline-none focus:ring-1 focus:ring-glow/40 transition-colors'
 
 const PANEL_ID = 'website-intelligence-panel'
+
+/**
+ * The field Mike's onboarding greeting hands the operator to. Exported so the
+ * modal focuses the real input rather than guessing at a selector that a later
+ * refactor would silently break.
+ */
+export const WEBSITE_URL_INPUT_ID = 'website-url-input'
 const UNKNOWN = 'Not confidently identified'
 
 /* ---------------------------- Analysis streaming -------------------------- */
@@ -302,6 +309,7 @@ export function WebsiteLinkInput({ onChanged }: { onChanged: (summary?: WebsiteS
               className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-white/30"
             />
             <input
+              id={WEBSITE_URL_INPUT_ID}
               type="url"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
