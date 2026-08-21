@@ -13,7 +13,8 @@
     "verify": "./scripts/verify-reactor.sh",
     "vault:copy": "tsx scripts/vault-copy.ts",
     "selftest:operator": "tsx scripts/operator-selftest.ts",
-    "selftest:operator-meta": "tsx scripts/operator-meta-selftest.ts"
+    "selftest:operator-meta": "tsx scripts/operator-meta-selftest.ts",
+    "selftest:mike-ask": "tsx scripts/mike-ask-selftest.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.103.0",

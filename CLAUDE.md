@@ -491,6 +491,54 @@ Full architecture: `docs/MIKE_DELIGHT.md`.
       before it persists); verify with `npm run selftest:operator-meta`, which
       imports the server builder directly so it asserts byte-for-byte what the
       route serves
+- [x] **Ask Mike — the open, agentic surface** (`lib/operator/ask/`,
+      `/api/operator/ask`, `components/reactor/operator/mike/`). The queue's
+      `askMike` answers about ONE proposal; this answers about the account,
+      because he goes and reads it. A bounded tool-use loop (6 turns) over
+      seven READ-ONLY instruments — `list_creatives`, `creative_performance`,
+      `compare_to_baseline`, `account_summary`, `todays_board`,
+      `search_knowledge`, `past_outcomes` — enforced by `assertReadOnly`, which
+      THROWS on any name off the allowlist, so nothing that mutates the ad
+      account is reachable even by accident. Every figure is computed by the
+      same `computeSignals` / `resolveBaseline` / `assessMaturity` the rules
+      run on: there is no second implementation for him to be handed a wrong
+      number from
+- [x] **His facts are earned per turn** (`lib/operator/ask/facts.ts`). The
+      narration validator resolves numerals against a payload fixed before the
+      call; an open question has no such payload, so the ledger is built the
+      other way round — every numeric leaf of every tool RESULT, keyed by path,
+      becomes the permitted set. Shares `extractNumerals` and
+      `isApprovedRounding` with `validate.ts` so honest rounding ("about forty
+      quid a lead" off $41.20) passes on both surfaces and a restatement fails
+      on both. One correction attempt carrying his own rejected answer back to
+      him, then he says plainly that he will not stand behind the figure.
+      Voice is never what fails
+- [x] **His personality is loaded, not written.** The system prompt is
+      `operator/mike-delight-constitution.md` unedited — the same file the
+      narration path loads. The agent adds a machine contract (which
+      instruments exist, the two hard rules) and NO tone instruction, no length
+      cap, no worked example. An example would be copied, and a copied answer
+      is the one thing the constitution cannot survive
+- [x] **The reading is the interface.** Every tool call streams before it runs
+      with a human label ("Pulling 14 days on The Profit Leak") and its receipt
+      streams after, so the part of the job that was invisible is now the
+      middle of the screen. His asides between reads are kept and shown. The
+      presence (`MikePresence`) is one canvas driven by four critically-damped
+      springs off the REAL loop state: the shell breaks into orbiting arcs
+      while he reads because he genuinely is in four places at once, one
+      satellite per tool in flight, and it pulls back into a single object to
+      answer. Reduced motion renders one honest static frame; a backgrounded
+      tab stops the loop
+- [x] The server reads the account itself (`lib/operator/ask/source.ts`) rather
+      than trusting numbers posted in from a page, resolving the SAME
+      seeded/meta switch the browser does — `loadOperatorContext()` resolves
+      the account's own today FIRST, per origin, because building a source with
+      a placeholder date to read its timezone off produces an account generated
+      around an invalid date
+- [x] `npm run selftest:mike-ask` — 36 in-process checks on a pinned date: the
+      allowlist is a wall, every instrument returns computed figures, the
+      ledger accepts what was read and rejects what was not, and the date
+      bootstrap resolves a real account day
 - [x] `npm run selftest:operator` — 50 in-process checks against a pinned
       evaluation date: all 41 from the engine spec, plus seven guarding the
       queue's presentation contract (word limits, chip caps and deduplication,
