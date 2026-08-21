@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseUrl, getSupabaseAdmin } from '@/lib/supabase'
+import { demoDataEnabled } from '@/lib/demo-mode'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -63,10 +64,26 @@ export async function GET() {
     canReingestWinners: tablesOk && keys.voyage,
   }
 
+  /**
+   * Display switches, reported so they can be CHECKED rather than guessed at.
+   *
+   * Both are read at build time on the client and at request time here, which
+   * is exactly why they need reporting: an environment variable saved in the
+   * host's dashboard does nothing until the deployment is rebuilt, and from
+   * the outside that is indistinguishable from the flag being wrong. Neither
+   * is a secret — they only choose which of two harmless states renders.
+   */
+  const display = {
+    demoData: demoDataEnabled(),
+    operatorSource:
+      process.env.OPERATOR_SOURCE ?? process.env.NEXT_PUBLIC_OPERATOR_SOURCE ?? 'seeded',
+  }
+
   return NextResponse.json({
     ok: true,
     timestamp: new Date().toISOString(),
     keys,
+    display,
     supabaseConfigured,
     tables,
     learningLoop,
