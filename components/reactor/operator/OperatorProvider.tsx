@@ -207,6 +207,16 @@ export function OperatorProvider({ children }: { children: ReactNode }) {
   // primary surface of the dashboard is not a subtle bug.
   const [evaluationDate, setEvaluationDate] = useState<string>('')
   const [memory, setMemory] = useState<OperatorMemory | null>(null)
+  /**
+   * The latest memory, readable synchronously.
+   *
+   * Needed by any handler that must WRITE before the page navigates away. A
+   * state updater is not a safe place to do that: React may call it during a
+   * render it later discards, and if the component unmounts first — which is
+   * exactly what `router.push` does — the write never happens at all.
+   */
+  const memoryRef = useRef<OperatorMemory | null>(null)
+  memoryRef.current = memory
   const [source, setSource] = useState<SourceData | null>(null)
   const [narration, setNarration] = useState<NarrationOutput | null>(null)
   const [narrating, setNarrating] = useState(false)
@@ -613,13 +623,21 @@ export function OperatorProvider({ children }: { children: ReactNode }) {
   // until it is dismissed once, then it never comes back.
   const welcome = memory && !memory.welcomedAt ? welcomeCopy(operatorName) : null
 
+  /**
+   * Mark the first meeting as had.
+   *
+   * The write happens HERE, synchronously, not inside a state updater — its
+   * caller routes to Brand Intelligence in the same tick, and a persist that
+   * rides on a state update React has not committed yet is a persist that
+   * never lands. The symptom was Mike introducing himself a second time the
+   * moment you came back to the dashboard.
+   */
   const dismissWelcome = useCallback(() => {
-    setMemory((current) => {
-      if (!current || current.welcomedAt) return current
-      const next = { ...current, welcomedAt: new Date().toISOString() }
-      saveMemory(next)
-      return next
-    })
+    const current = memoryRef.current
+    if (!current || current.welcomedAt) return
+    const next = { ...current, welcomedAt: new Date().toISOString() }
+    saveMemory(next)
+    setMemory(next)
   }, [])
 
   /* -- Ask Mike ------------------------------------------------------------ */

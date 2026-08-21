@@ -4,7 +4,6 @@ import { Atom, Sparkles } from 'lucide-react'
 import { SESSION_COOKIE, credentialsAreDemo, expectedCredentials, readSessionToken } from '@/lib/auth'
 import { DEFAULT_IDENTITY } from '@/lib/brand-identity'
 import { getBrandIdentity } from '@/lib/brand-identity.server'
-import { LoginField } from '@/components/login/LoginField'
 import { LoginForm } from '@/components/login/LoginForm'
 
 /* ----------------------------------------------------------------------------
@@ -59,11 +58,8 @@ export default async function LoginPage({
   const credentials = expectedCredentials()
 
   return (
-    <main className="relative flex min-h-[100dvh] items-center justify-center px-4 py-10 pb-[max(2.5rem,env(safe-area-inset-bottom))] pt-[max(2.5rem,env(safe-area-inset-top))]">
-      {/* Loose motes of light behind the door. Subtle on purpose — there is a
-          form in front of it that somebody has to read. */}
-      <LoginField />
-      <div className="relative z-10 w-full max-w-[420px] animate-fade-up">
+    <main className="flex min-h-[100dvh] items-center justify-center px-4 py-10 pb-[max(2.5rem,env(safe-area-inset-bottom))] pt-[max(2.5rem,env(safe-area-inset-top))]">
+      <div className="w-full max-w-[420px] animate-fade-up">
         {/* Identity — the mark, then who this belongs to. */}
         <div className="mb-6 flex flex-col items-center text-center">
           <span className="grid h-14 w-14 place-items-center rounded-2xl border border-[color:rgb(var(--lg-cyan)/0.3)] bg-gradient-to-br from-primary/25 to-violet/15 shadow-glow">

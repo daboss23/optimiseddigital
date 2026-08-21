@@ -3152,8 +3152,8 @@ body {
    enough that you can read where you have arrived behind him. */
 .mike-first--sheer {
   background:
-    radial-gradient(120% 90% at 50% 18%, rgb(14 11 24 / 0.7), rgb(5 4 9 / 0.86));
-  backdrop-filter: blur(7px);
+    radial-gradient(120% 90% at 50% 18%, rgb(14 11 24 / 0.46), rgb(5 4 9 / 0.66));
+  backdrop-filter: blur(4px);
 }
 
 /* Autofill, de-yellowed.
