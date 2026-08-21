@@ -241,6 +241,17 @@ export const baselineAds: BaselineAd[] = [
   { id: 'ad_margin_math', name: 'Margin Math', format: 'Static', spend: 12300, primaryResults: 267, resultType: 'lead', hookRate: null, ctr: 2.2, frequency: 2.4, trend: 'Stable', daysLive: 19 },
   { id: 'ad_stop_scaling', name: 'Stop Scaling — VSL Opener', format: 'VSL', spend: 2940, primaryResults: 51, resultType: 'lead', hookRate: 26, ctr: 1.9, frequency: 1.2, trend: 'Stable', daysLive: 8 },
   { id: 'ad_systems_before_scale', name: 'Systems Before Scale', format: 'Carousel', spend: 6450, primaryResults: 91, resultType: 'lead', hookRate: null, ctr: 1.6, frequency: 3.4, trend: 'Declining', daysLive: 31 },
+  // Two creatives that have NOT yet reached a verdict, so the board carries the
+  // states an ad account really spends most of its time in. Without them the
+  // demo skips straight from launch to a graded winner, and the two tiles that
+  // describe the middle of the funnel — Currently testing, Emerging winners —
+  // sit at zero on a dashboard that is otherwise busy.
+  //
+  // The numbers are chosen to land on those statuses through `evaluateStatus`
+  // rather than being labelled: below the $1,500 / 5 day / 20 result gate is
+  // "testing", and inside the $45 target but light on results is "emerging".
+  { id: 'ad_quiet_quote', name: 'The Quiet Quote — Hook Test', format: 'UGC Video', spend: 940, primaryResults: 13, resultType: 'lead', hookRate: 31, ctr: 2.4, frequency: 1.1, trend: 'Improving', daysLive: 4 },
+  { id: 'ad_two_week_build', name: 'Two-Week Build — Reel Cut', format: 'Founder Video', spend: 5180, primaryResults: 116, resultType: 'lead', hookRate: 34, ctr: 2.7, frequency: 1.5, trend: 'Improving', daysLive: 11 },
 ]
 
 // Where spend lands and how each slice performs. Cold and retargeting are shown
