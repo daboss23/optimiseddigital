@@ -5,44 +5,70 @@ import { useEffect, useRef } from 'react'
 /* ----------------------------------------------------------------------------
    The field behind the door.
 
-   Loose motes of light that surface somewhere at random, drift a little, flare
-   once, and go. It is the same idea as Mike's shell — the platform runs on
-   energy, and the sign-in should already feel like that — held down to a
-   fraction of the intensity, because this sits BEHIND a form somebody has to
-   read and type into.
+   Frequency, not stars. Points of light scattered on black are a night sky —
+   they say nothing about signal, and nothing about this product. What reads as
+   energy is OSCILLATION: a waveform that surfaces somewhere, holds a shape you
+   can see repeating, carries a pulse of brightness down its length, and fades
+   out. Plus the occasional ring propagating out of a point, which is what an
+   emission actually looks like.
 
-   Kept honest in three ways: nothing here is on a grid or a shared clock, so
-   it never falls into the visible loop that gives ambient motion away; every
-   mote is drawn additively so overlaps accumulate as light rather than paint;
-   and the whole thing stops for `prefers-reduced-motion` and for a
-   backgrounded tab.
+   Three rules keep it from becoming decoration:
+
+   - Nothing shares a clock. Every trace has its own wavelength, speed, phase
+     and lifetime, so the field never falls into the visible repeat that gives
+     ambient motion away.
+   - Everything is drawn additively, so where two traces cross they accumulate
+     into brighter light rather than painting over each other.
+   - It is held far below the intensity of Mike's own shell, because there is a
+     form in front of it that somebody has to read and type into.
 ---------------------------------------------------------------------------- */
 
-/** Sparse on purpose. This is atmosphere, not weather. */
-const MOTES = 46
-const MOTES_MOBILE = 22
+/** Concurrent traces. Sparse on purpose — this is atmosphere, not weather. */
+const TRACES = 6
+const TRACES_MOBILE = 3
+const RINGS = 2
 
-/** Cyan, azure, violet — the command centre's own light — and a little gold. */
+/** Cyan, azure, violet — the command centre's own light. */
 const HUES: readonly (readonly [number, number, number])[] = [
   [94, 168, 255],
   [56, 232, 255],
   [178, 132, 255],
-  [255, 205, 130],
 ]
 
-interface Mote {
+const rgba = (c: readonly [number, number, number], a: number) =>
+  `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${a < 0 ? 0 : a})`
+
+const pick = <T,>(list: readonly T[]): T => list[Math.floor(Math.random() * list.length)]
+const between = (min: number, max: number) => min + Math.random() * (max - min)
+
+interface Trace {
   x: number
   y: number
-  vx: number
-  vy: number
+  width: number
+  amplitude: number
+  /** Radians per pixel — how tight the oscillation reads. */
+  frequency: number
+  /** Phase drift per second: the wave visibly travels along its own length. */
+  speed: number
+  phase: number
+  tilt: number
   age: number
   life: number
-  size: number
   peak: number
   hue: readonly [number, number, number]
-  /** When in its life it flares. Never the same moment twice. */
-  flareAt: number
-  flared: number
+  /** 0–1 along the trace: where the bright pulse currently sits. */
+  pulse: number
+  pulseSpeed: number
+}
+
+interface Ring {
+  x: number
+  y: number
+  age: number
+  life: number
+  radius: number
+  peak: number
+  hue: readonly [number, number, number]
 }
 
 export function LoginField() {
@@ -71,71 +97,126 @@ export function LoginField() {
     resize()
     window.addEventListener('resize', resize)
 
-    const spawn = (mote: Partial<Mote> = {}): Mote => ({
-      x: Math.random() * width,
-      y: Math.random() * height,
-      // Slow enough to read as suspended rather than as falling.
-      vx: (Math.random() - 0.5) * 9,
-      vy: (Math.random() - 0.5) * 9,
-      age: 0,
-      life: 3.5 + Math.random() * 5.5,
-      size: 0.7 + Math.random() * 1.5,
-      peak: 0.16 + Math.random() * 0.3,
-      hue: HUES[Math.floor(Math.random() * HUES.length)],
-      flareAt: 0.25 + Math.random() * 0.5,
-      flared: 0,
-      ...mote,
+    const spawnTrace = (age = 0): Trace => {
+      const w = between(220, 620) * (mobile ? 0.6 : 1)
+      return {
+        x: between(-80, width - w + 80),
+        y: between(60, height - 60),
+        width: w,
+        amplitude: between(5, 20),
+        // Short wavelengths read as high frequency, long ones as a slow
+        // carrier. Both on screen at once is what makes it look like signal
+        // rather than like one repeated ornament.
+        frequency: between(0.012, 0.055),
+        speed: between(-3.2, 3.2),
+        phase: Math.random() * Math.PI * 2,
+        tilt: between(-0.16, 0.16),
+        age,
+        life: between(4.5, 9),
+        peak: between(0.1, 0.26),
+        hue: pick(HUES),
+        pulse: 0,
+        pulseSpeed: between(0.22, 0.5),
+      }
+    }
+
+    const spawnRing = (age = 0): Ring => ({
+      x: between(0.1, 0.9) * width,
+      y: between(0.1, 0.9) * height,
+      age,
+      life: between(5, 9),
+      radius: between(120, 340),
+      peak: between(0.06, 0.13),
+      hue: pick(HUES),
     })
 
-    const count = mobile ? MOTES_MOBILE : MOTES
-    const motes: Mote[] = Array.from({ length: count }, () =>
-      // Staggered ages, so they do not all arrive and leave together on the
+    const traces: Trace[] = Array.from({ length: mobile ? TRACES_MOBILE : TRACES }, () =>
+      // Staggered ages so they do not all arrive and leave together on the
       // first pass — a synchronised field is the tell that it is a loop.
-      spawn({ age: Math.random() * 6 }),
+      spawnTrace(Math.random() * 6),
     )
+    const rings: Ring[] = Array.from({ length: mobile ? 1 : RINGS }, () =>
+      spawnRing(Math.random() * 7),
+    )
+
+    /** Where the wave sits at a given distance along its own length. */
+    const pointAt = (t: Trace, along: number) => ({
+      x: t.x + along,
+      y: t.y + along * t.tilt + Math.sin(along * t.frequency + t.phase) * t.amplitude,
+    })
+
+    const strokeWave = (t: Trace, from: number, to: number, alpha: number, lineWidth: number) => {
+      if (alpha <= 0.002 || to <= from) return
+      ctx.beginPath()
+      const step = 5
+      for (let along = from; along <= to; along += step) {
+        const p = pointAt(t, along)
+        if (along === from) ctx.moveTo(p.x, p.y)
+        else ctx.lineTo(p.x, p.y)
+      }
+      // Transparent at both ends: a trace that stops dead has an edge, and an
+      // edge turns a signal back into a drawn line.
+      const a = pointAt(t, from)
+      const b = pointAt(t, to)
+      const gradient = ctx.createLinearGradient(a.x, a.y, b.x, b.y)
+      gradient.addColorStop(0, rgba(t.hue, 0))
+      gradient.addColorStop(0.5, rgba(t.hue, alpha))
+      gradient.addColorStop(1, rgba(t.hue, 0))
+      ctx.strokeStyle = gradient
+      ctx.lineWidth = lineWidth
+      ctx.lineCap = 'round'
+      ctx.stroke()
+    }
 
     const draw = (dt: number) => {
       ctx.clearRect(0, 0, width, height)
       ctx.globalCompositeOperation = 'lighter'
 
-      for (let i = 0; i < motes.length; i += 1) {
-        const m = motes[i]
-        m.age += dt
-        if (m.age > m.life) {
-          motes[i] = spawn()
+      /* Rings — an emission propagating out of a point. */
+      for (let i = 0; i < rings.length; i += 1) {
+        const r = rings[i]
+        r.age += dt
+        if (r.age > r.life) {
+          rings[i] = spawnRing()
           continue
         }
-        m.x += m.vx * dt
-        m.y += m.vy * dt
-
-        const t = m.age / m.life
-        // Up and down over its whole life, so nothing ever pops in or cuts out.
-        const envelope = Math.sin(t * Math.PI)
-
-        // The flare: one short bloom somewhere in the middle of its life.
-        const since = Math.abs(t - m.flareAt)
-        const flare = since < 0.06 ? (1 - since / 0.06) ** 2 : 0
-        m.flared = flare
-
-        const alpha = m.peak * envelope * (1 + flare * 2.2)
-        const radius = m.size * (1 + flare * 1.6)
-
-        const glow = ctx.createRadialGradient(m.x, m.y, 0, m.x, m.y, radius * 6)
-        glow.addColorStop(0, `rgba(${m.hue[0]}, ${m.hue[1]}, ${m.hue[2]}, ${alpha})`)
-        glow.addColorStop(0.4, `rgba(${m.hue[0]}, ${m.hue[1]}, ${m.hue[2]}, ${alpha * 0.28})`)
-        glow.addColorStop(1, 'rgba(0,0,0,0)')
-        ctx.fillStyle = glow
+        const t = r.age / r.life
+        const radius = r.radius * t
         ctx.beginPath()
-        ctx.arc(m.x, m.y, radius * 6, 0, Math.PI * 2)
-        ctx.fill()
+        ctx.arc(r.x, r.y, radius, 0, Math.PI * 2)
+        ctx.strokeStyle = rgba(r.hue, r.peak * Math.sin(t * Math.PI) * (1 - t))
+        ctx.lineWidth = 1
+        ctx.stroke()
+      }
 
-        // A hard core only while it is flaring — that is what reads as a
-        // flash rather than as a lamp being turned up.
-        if (flare > 0.05) {
-          ctx.fillStyle = `rgba(255, 255, 255, ${flare * 0.5})`
-          ctx.beginPath()
-          ctx.arc(m.x, m.y, radius * 0.5, 0, Math.PI * 2)
-          ctx.fill()
+      /* Traces — the waveforms, and the pulse running down each one. */
+      for (let i = 0; i < traces.length; i += 1) {
+        const tr = traces[i]
+        tr.age += dt
+        if (tr.age > tr.life) {
+          traces[i] = spawnTrace()
+          continue
+        }
+        tr.phase += tr.speed * dt
+        tr.pulse = (tr.pulse + tr.pulseSpeed * dt) % 1.3
+
+        // Up and down across its whole life, so nothing pops in or cuts out.
+        const envelope = Math.sin((tr.age / tr.life) * Math.PI)
+        strokeWave(tr, 0, tr.width, tr.peak * envelope, 1)
+
+        // The pulse: a short bright window of the SAME wave, travelling along
+        // it. This is the part that reads as something being carried rather
+        // than as a shape sitting there oscillating.
+        if (tr.pulse <= 1) {
+          const centre = tr.pulse * tr.width
+          const span = Math.min(90, tr.width * 0.28)
+          strokeWave(
+            tr,
+            Math.max(0, centre - span / 2),
+            Math.min(tr.width, centre + span / 2),
+            tr.peak * envelope * 3.1,
+            1.5,
+          )
         }
       }
 
