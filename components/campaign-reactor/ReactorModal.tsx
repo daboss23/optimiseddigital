@@ -942,7 +942,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                   value={form.brief}
                   onChange={(e) => form.setBrief(e.target.value)}
                   placeholder={`e.g. "Cold traffic. Owner-led businesses doing $1M–$5M who are still doing the work manually. Lead with a named client result and the time it took. Sell the shift in how they operate, not the tool. No hype, no countdown timers."`}
-                  className="launch-input h-28 resize-none px-4 py-3.5 text-[15px] leading-relaxed"
+                  className="launch-input h-44 resize-none px-4 py-3.5 text-[15px] leading-relaxed sm:h-28"
                 />
               </div>
 
@@ -1430,7 +1430,7 @@ function QuickLaunch({
               value={form.brief}
               onChange={(e) => form.setBrief(e.target.value)}
               placeholder={`e.g. "A founder video for owner-led businesses doing $1M–$5M who are still doing the work manually. Lead with a named client who got 15 hours a week back. Drive masterclass registrations."`}
-              className="launch-input h-32 resize-none px-4 py-3.5 text-[15px] leading-relaxed"
+              className="launch-input h-44 resize-none px-4 py-3.5 text-[15px] leading-relaxed sm:h-32"
             />
           </div>
 
@@ -1488,10 +1488,18 @@ function QuickLaunch({
           <button
             type="button"
             onClick={onGuided}
-            className="group flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 text-sm font-medium text-white/75 transition-colors hover:border-white/20 hover:text-white"
+            /* Centred on a desktop, where the label is one line and centring
+               reads as balance. On a phone it wraps, and a wrapped centred
+               label between two pinned icons reads as a mistake — so there the
+               icons bookend a left-aligned label instead. */
+            className="group flex w-full items-center gap-2 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 text-left text-sm font-medium text-white/75 transition-colors hover:border-white/20 hover:text-white sm:justify-center sm:text-center"
           >
-            <SlidersHorizontal size={15} /> Prefer full control? Set it up step-by-step
-            <ArrowRight size={15} className="transition-transform group-hover:translate-x-0.5" />
+            <SlidersHorizontal size={15} className="shrink-0" />
+            <span className="flex-1 sm:flex-none">Prefer full control? Set it up step-by-step</span>
+            <ArrowRight
+              size={15}
+              className="shrink-0 transition-transform group-hover:translate-x-0.5"
+            />
           </button>
         </div>
       </div>

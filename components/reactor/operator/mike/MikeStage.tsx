@@ -10,6 +10,7 @@ import { anchorPoint } from '@/components/reactor/operator/mike/anchor'
 import { MikeOrb, type OrbState } from '@/components/reactor/operator/mike/orb/MikeOrb'
 import { WordStream } from '@/components/reactor/operator/mike/WordStream'
 import { useMikeStream } from '@/components/reactor/operator/mike/useMikeStream'
+import { useMikeGeometry } from '@/components/reactor/operator/mike/viewport'
 
 /* ----------------------------------------------------------------------------
    Mike, resident.
@@ -57,21 +58,16 @@ export function MikeStage() {
   const [hovered, setHovered] = useState(false)
   const [draft, setDraft] = useState('')
   const [burst, setBurst] = useState(0)
-  const [viewport, setViewport] = useState({ w: 1440, h: 900 })
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const perchRef = useRef<HTMLDivElement | null>(null)
   const openRef = useRef(false)
 
-  useEffect(() => {
-    setMounted(true)
-    const measure = () => setViewport({ w: window.innerWidth, h: window.innerHeight })
-    measure()
-    window.addEventListener('resize', measure)
-    return () => window.removeEventListener('resize', measure)
-  }, [])
+  useEffect(() => setMounted(true), [])
 
   const open = phase !== 'resting'
-  const compact = viewport.w < 768
+  // Shared with both of Mike's transmissions, so the size and height he
+  // resolves to on a phone is one number in one place rather than three.
+  const { compact, transmissionRadius, transmissionHeight } = useMikeGeometry()
 
   /* The stream drives the phase, never the other way round. He is "working"
      because reads are in flight, not because a timer said so. */
@@ -154,7 +150,7 @@ export function MikeStage() {
    */
   const resolveTarget = useCallback(() => {
     if (openRef.current) {
-      return { x: window.innerWidth / 2, y: window.innerHeight * (compact ? 0.19 : 0.22) }
+      return { x: window.innerWidth / 2, y: window.innerHeight * transmissionHeight }
     }
     return (
       anchorPoint() ?? {
@@ -162,7 +158,7 @@ export function MikeStage() {
         y: window.innerHeight - CORNER_INSET.y,
       }
     )
-  }, [compact])
+  }, [transmissionHeight])
 
   /** The hit target rides along, moved by transform only. */
   const onFrame = useCallback((x: number, y: number) => {
@@ -170,13 +166,7 @@ export function MikeStage() {
     if (perch) perch.style.transform = `translate3d(${x - 44}px, ${y - 44}px, 0)`
   }, [])
 
-  const radius = open
-    ? compact
-      ? 58
-      : 88
-    : hovered
-      ? HOVER_RADIUS
-      : RESTING_RADIUS
+  const radius = open ? transmissionRadius : hovered ? HOVER_RADIUS : RESTING_RADIUS
 
   const orbState: OrbState =
     phase === 'working' ? 'working' : phase === 'speaking' ? 'speaking' : open ? 'focus' : 'ambient'
@@ -245,16 +235,21 @@ export function MikeStage() {
 
       {/* Open: everything he says and everything you type, hung below him. */}
       {open && (
-        <div className="mike-room pointer-events-none fixed inset-0 z-[93] flex flex-col items-center justify-start px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[42vh] sm:pt-[44vh]">
-          <div className="flex w-full max-w-2xl flex-col items-center gap-7">
+        <div className="mike-room mike-headroom pointer-events-none fixed inset-0 z-[93] flex flex-col items-center justify-start px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-5">
+          <div className="flex w-full max-w-2xl shrink-0 flex-col items-center gap-6 sm:gap-7">
             {/* What he is saying. */}
             {phase !== 'working' && (
               <WordStream
                 key={phase === 'speaking' ? latest?.id : 'greeting'}
                 text={phase === 'speaking' ? spoken : greeting}
                 dissolving={phase !== 'speaking' && dissolving}
+                /* His answer is the one part of the room that can run long —
+                   a phone fits maybe five lines under him, and he is not
+                   rationed to five lines. So it scrolls, and only it: the room
+                   around it stays pointer-transparent so a tap anywhere off
+                   him still sends him home. */
                 className={cn(
-                  'pointer-events-auto text-center leading-relaxed text-white/85',
+                  'mike-said pointer-events-auto overscroll-contain text-center leading-relaxed text-white/85',
                   compact ? 'text-[17px]' : 'text-[20px]',
                 )}
               />

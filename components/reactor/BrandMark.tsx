@@ -185,7 +185,22 @@ function LogoUpload({ size, className }: { size: 'sm' | 'md'; className?: string
         )}
       >
         {busy ? <Loader2 size={14} className="animate-spin" /> : <ImagePlus size={14} />}
-        <span>{busy ? 'Uploading…' : 'Add your logo'}</span>
+        {/* "Add your logo" is 125px of a 390px topbar, next to a menu button
+            and the platform's primary action. The small variant IS the topbar
+            one, so it says the short version there and the full sentence
+            wherever there is room for it. */}
+        <span>
+          {busy ? (
+            'Uploading…'
+          ) : size === 'sm' ? (
+            <>
+              <span className="sm:hidden">Logo</span>
+              <span className="hidden sm:inline">Add your logo</span>
+            </>
+          ) : (
+            'Add your logo'
+          )}
+        </span>
       </button>
       <input
         ref={inputRef}

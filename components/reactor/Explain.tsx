@@ -1,6 +1,5 @@
-import type { ReactNode } from 'react'
-import { Info } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { InfoTip } from '@/components/reactor/InfoTip'
 import { Pill, accentClass } from '@/components/reactor/ui'
 import {
   CONFIDENCE_DEFS,
@@ -16,50 +15,18 @@ import {
    Nothing on either dashboard is allowed to be a number without a definition or
    a colour without a word. These are the pieces that enforce it: a hover/focus
    tooltip, a status chip that always carries its reason, and an evidence line.
-   All CSS-driven (no client JS) so they stay inside server components.
+   The chips and lines are CSS-only and stay inside server components; the
+   tooltip they hang off is a client island (see `InfoTip`), which server
+   components may render freely.
 ---------------------------------------------------------------------------- */
 
 /**
- * A definition attached to a label. Opens on hover AND keyboard focus, so the
- * threshold behind a metric is reachable without a mouse.
+ * A definition attached to a label — re-exported so the dozen call sites that
+ * already import it from here keep working. It lives in its own module because
+ * it is the one piece of this file that needs the browser: a tooltip has to be
+ * measured against the viewport before it can be trusted not to fall off it.
  */
-export function InfoTip({
-  children,
-  label,
-  className,
-  align = 'left',
-}: {
-  children: ReactNode
-  label?: string
-  className?: string
-  align?: 'left' | 'right'
-}) {
-  return (
-    <span className={cn('group/tip relative inline-flex items-center', className)}>
-      <button
-        type="button"
-        aria-label={label ? `What ${label} means` : 'Definition'}
-        className="inline-grid h-4 w-4 place-items-center rounded-full text-white/30 transition-colors hover:text-glow focus:outline-none focus-visible:text-glow focus-visible:ring-1 focus-visible:ring-primary/60"
-      >
-        <Info size={11} />
-      </button>
-      <span
-        role="tooltip"
-        className={cn(
-          'pointer-events-none absolute bottom-full z-30 mb-2 w-64 rounded-lg border border-border bg-background/95 p-3 text-[12.5px] leading-relaxed text-white/80 opacity-0 shadow-panel backdrop-blur-md transition-opacity duration-150 group-hover/tip:opacity-100 group-focus-within/tip:opacity-100',
-          align === 'right' ? 'right-0' : 'left-0',
-        )}
-      >
-        {label && (
-          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-white/55">
-            {label}
-          </span>
-        )}
-        {children}
-      </span>
-    </span>
-  )
-}
+export { InfoTip }
 
 /** Text plus colour, never colour alone — with the evidence one hover away. */
 export function StatusChip({

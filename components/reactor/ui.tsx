@@ -60,24 +60,31 @@ export function PanelHeader({
   accent?: Accent
 }) {
   return (
-    <div className="panel-header flex items-start justify-between gap-3 border-b border-border px-5 py-4">
-      <div className="flex items-center gap-3">
+    /* `flex-wrap` with a real basis on the text group is what lets the
+       accessory — usually a status pill — drop to its own line on a phone
+       rather than being squeezed to its minimum width beside a two-line
+       subtitle. On a desktop the basis is never the binding constraint, so the
+       header keeps its single row. The icon aligns to the TITLE rather than to
+       the centre of the whole block, which is only the same place when the
+       subtitle happens to be one line long. */
+    <div className="panel-header flex flex-wrap items-start justify-between gap-x-3 gap-y-2.5 border-b border-border px-4 py-3.5 sm:px-5 sm:py-4">
+      <div className="flex min-w-0 flex-1 basis-[15rem] items-start gap-3">
         {icon && (
           <span
             className={cn(
-              'panel-icon grid h-9 w-9 place-items-center rounded-lg',
+              'panel-icon mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-lg',
               accentClass[accent],
             )}
           >
             {icon}
           </span>
         )}
-        <div>
+        <div className="min-w-0">
           <h2 className="font-display text-[15px] font-semibold tracking-tight text-white">{title}</h2>
           {subtitle && <p className="mt-0.5 text-[12.5px] leading-snug text-white/55">{subtitle}</p>}
         </div>
       </div>
-      {accessory}
+      {accessory && <div className="shrink-0">{accessory}</div>}
     </div>
   )
 }

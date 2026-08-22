@@ -1069,6 +1069,13 @@ body {
   .command-surface { padding: 0.85rem; border-radius: 1rem; }
   .kpi-card { min-height: 8.25rem; }
   .kpi-sparkline { width: 4.8rem; opacity: 0.65; }
+
+  /* The eyebrow's leading rule costs 30px plus its gap, and at 0.34em tracking
+     that is the difference between "CREATIVE INTELLIGENCE COMMAND CENTER"
+     sitting on two clean lines and sitting on two lines with a 46px hanging
+     indent under the first. The dot alone still marks it as a system label. */
+  .command-eyebrow { letter-spacing: 0.24em; }
+  .command-eyebrow::before { display: none; }
 }
 
 /* ============================================================================
@@ -2615,6 +2622,56 @@ body {
   select {
     font-size: max(16px, 1em);
   }
+
+  /* The floor, applied where the work happens rather than control by control.
+
+     `.tap-target` was opt-in, and an audit of every interactive box on a 390px
+     phone found the opt-in had been missed on most of them: segmented filters
+     at 32px, source chips at 34px, every text input and select at 38px, the
+     topbar's own primary button at 36px. A 36px control is not broken on a
+     mouse and is a coin toss under a thumb, so the floor belongs in one rule
+     that cannot be forgotten at the next call site.
+
+     Height only, by default — it is the axis a thumb misses on, and forcing
+     width would stretch inline controls out of their sentences. Square icon
+     buttons (`display: grid` with a fixed size, which is how every one of them
+     is written here) get the other axis too, since for those the width is a
+     hit target rather than a measure. */
+  .reactor-main button,
+  .reactor-main [role='button'],
+  .reactor-main select,
+  .reactor-main textarea,
+  .reactor-main input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  .reactor-topbar button,
+  .mobile-nav-panel button,
+  .mobile-nav-panel a,
+  /* Links that are dressed as buttons get the floor too — a control does not
+     stop needing a thumb-sized box because it happens to be an anchor. Links
+     inside prose deliberately do NOT, since a 44px line box would tear the
+     paragraph they sit in apart. */
+  .reactor-main a.brief-cta {
+    min-height: 44px;
+  }
+  .reactor-main button.grid,
+  .reactor-topbar button.grid {
+    min-width: 44px;
+  }
+
+  /* Two deliberate exemptions.
+
+     The definition trigger is a 16px glyph that sits INSIDE a sentence — given
+     a 44px box it would push the line it belongs to apart. It carries its
+     target as an invisible ::after instead (see `.infotip-trigger`).
+
+     `.tap-exempt` is the escape hatch for anything else that must stay inline;
+     it is a deliberate, greppable opt-out rather than a shorter class name
+     somewhere that quietly misses the rule. */
+  .reactor-main button.infotip-trigger,
+  .reactor-main .tap-exempt,
+  .reactor-topbar .tap-exempt {
+    min-height: 0;
+    min-width: 0;
+  }
 }
 
 /* Mobile navigation drawer ---------------------------------------------------*/
@@ -2687,9 +2744,19 @@ body {
   .conv-bloom,
   .conv-core { animation: none !important; }
 
-  /* Horizontal overflow is the classic mobile break — a wide table or canvas
-     scrolls the whole page sideways. Contain it at the shell. */
-  body { overflow-x: hidden; }
+  /* Horizontal overflow is the classic mobile break, and it costs more than a
+     sideways scroll: Chrome answers document overflow by WIDENING THE LAYOUT
+     VIEWPORT, so `window.innerWidth` starts reporting the content width and
+     every `position: fixed` overlay — the nav drawer, the brief sheet, Mike's
+     whole room — is laid out to a box wider than the screen and hangs off the
+     side of it.
+
+     `clip` rather than `hidden` on purpose. `hidden` makes the element a
+     scroll container and forces the other axis to `auto`; `clip` just refuses
+     the overflow, which is all that is wanted, and leaves vertical scrolling,
+     `position: sticky` and the safe-area insets exactly as they were. */
+  html,
+  body { overflow-x: clip; }
 }
 
 /* Data-saver and reduced-motion users get the cheapest version everywhere. */
@@ -2851,9 +2918,12 @@ body {
 }
 
 @media (max-width: 767px) {
+  /* His corona reaches roughly twice his radius, so the room reserved for him
+     has to clear the last word by more than his body — 60px at a 1rem offset
+     put the centre 46px out and washed light back over "today". */
   .mike-anchor {
-    width: 60px;
-    margin-left: 1rem;
+    width: 64px;
+    margin-left: 1.35rem;
   }
 }
 
@@ -3263,4 +3333,123 @@ select:-webkit-autofill {
     animation: none;
     opacity: 0.4;
   }
+}
+
+/* ============================================================================
+   INFOTIP — the definition behind every number, placed so it stays on screen
+
+   The panel is portaled to <body> and positioned as `fixed` by the component,
+   which measures it and clamps it into the visual viewport. That is the whole
+   point of the rewrite: as an `absolute` box it could hang off the side of the
+   document, and Chrome answers horizontal document overflow by widening the
+   LAYOUT VIEWPORT — which silently mis-sized every fixed overlay on the
+   platform. Fixed content is outside the document's scrollable overflow, so
+   this panel cannot do that to the page no matter where its anchor sits.
+   ========================================================================== */
+.infotip-panel {
+  position: fixed;
+  z-index: 130;                  /* over the panels, under Mike's transmissions */
+  /* Never wider than the screen it has to fit on. On a 390px phone that is
+     366px, which is a readable measure; on a desktop it stays at 18rem. */
+  width: min(18rem, calc(100vw - 24px));
+  padding: 0.7rem 0.8rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(42, 54, 86, 0.9);
+  background: rgba(11, 16, 36, 0.97);
+  color: rgb(255 255 255 / 0.8);
+  font-size: 12.5px;
+  line-height: 1.55;
+  box-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.08) inset, 0 24px 60px -24px rgba(2, 4, 14, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  /* The panel is offered, not grabbed: it must never eat a tap meant for what
+     is underneath it. Selection stays available for anyone copying a
+     definition out. */
+  pointer-events: none;
+  user-select: text;
+  animation: infotip-in 160ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+/* It grows out of the anchor it belongs to, so the eye knows which number it
+   is explaining without having to reason about it. */
+.infotip-panel[data-side='above'] { transform-origin: bottom center; }
+.infotip-panel[data-side='below'] { transform-origin: top center; }
+
+@keyframes infotip-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+
+.infotip-panel__label {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgb(255 255 255 / 0.55);
+}
+
+/* On a touchscreen the icon keeps its 16px inline footprint — it sits tight
+   against the word it defines — but the THING YOU HIT is 44px. An invisible
+   ::after does that without pushing the label around. */
+@media (hover: none) and (pointer: coarse) {
+  .infotip-trigger { position: relative; }
+  .infotip-trigger::after {
+    content: '';
+    position: absolute;
+    inset: -14px;
+    border-radius: 9999px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .infotip-panel { animation: none; }
+}
+
+/* Mike's answer, bounded.
+
+   He is not rationed to what fits above the fold of a phone, and the room he
+   speaks in cannot itself scroll — it has to stay pointer-transparent so a tap
+   anywhere off him sends him home. So the words carry the scroll, and nothing
+   else does. The bound is generous on a laptop and tight on a handset, because
+   that is where the difference between "a long answer" and "a lost answer"
+   actually is. */
+.mike-said {
+  max-height: min(46vh, 22rem);
+  overflow-y: auto;
+  /* No visible track — a scrollbar drawn across his words would say "panel". */
+  scrollbar-width: none;
+}
+.mike-said::-webkit-scrollbar { width: 0; height: 0; }
+
+/* The headroom every transmission room hangs its copy below.
+
+   Owned here rather than by `pt-[36vh] sm:pt-[44vh]` on three components, for
+   two reasons. The small one is that three call sites had to agree. The real
+   one is that this build emits Tailwind's utilities AFTER the rest of this
+   stylesheet, so a plain class of equal specificity silently loses to the
+   utility it is meant to override — which is exactly what happened to the
+   landscape rule below the first time it was written.
+
+   The three cases are the three shapes of window:
+
+     phone portrait  — 36vh, which clears a 62px sphere with room to spare
+     desktop/tablet  — 44vh, which clears a 92px one
+     anything SHORT  — 68vh, because a phone held sideways is 844px wide and
+                       390px tall: by width it is a desktop, and 44vh of 390px
+                       lands the first line of his introduction through the
+                       middle of him. He is already sized off the short axis
+                       (see `useMikeGeometry`); this is the room following him.
+
+   Order is load-bearing — the short-viewport case is last so it wins on a
+   landscape phone, which matches the `min-width` case too. */
+.mike-headroom { padding-top: 36vh; }
+
+@media (min-width: 640px) {
+  .mike-headroom { padding-top: 44vh; }
+}
+
+@media (max-height: 560px) {
+  .mike-headroom { padding-top: 68vh; }
 }

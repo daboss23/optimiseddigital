@@ -15,6 +15,7 @@
     "selftest:operator": "tsx scripts/operator-selftest.ts",
     "selftest:operator-meta": "tsx scripts/operator-meta-selftest.ts",
     "selftest:mike-ask": "tsx scripts/mike-ask-selftest.ts",
+    "selftest:mobile": "tsx scripts/mobile-selftest.ts",
     "preflight": "tsx scripts/preflight.ts"
   },
   "dependencies": {

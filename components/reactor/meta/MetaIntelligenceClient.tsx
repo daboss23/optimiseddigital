@@ -151,7 +151,12 @@ export function MetaIntelligenceClient({
           subtitle={subtitle}
           tagline="Engineered For Performance."
         />
-        <div className="flex flex-col items-end gap-2">
+        {/* Right-aligned beside the page title on a desktop, where the title
+            is to its left. On a phone the column wraps under the title and
+            "right" becomes the ragged edge of whatever sits above it — so the
+            provenance pill hangs from the same left margin as every other
+            thing on the page. */}
+        <div className="flex flex-col items-start gap-2 sm:items-end">
           <DateRangePicker value={range} onChange={applyRange} busy={loading} />
           <Pill tone={live ? 'success' : 'warning'}>
             <span

@@ -277,7 +277,10 @@ export default async function ReactorDashboard({
           <div className="hero-scanline" />
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Link href={`/meta?${rangeQuery(range)}`} className="no-underline">
+          <Link
+            href={`/meta?${rangeQuery(range)}`}
+            className="tap-target inline-flex items-center no-underline"
+          >
             <Pill tone="primary">
               <CalendarDays size={12} />
               {rangeLabel(range)} · change on Meta Intelligence

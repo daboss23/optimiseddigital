@@ -1,13 +1,14 @@
-'use client'
+"use client";
 
-import { useEffect, useState } from 'react'
-import { createPortal } from 'react-dom'
-import { useRouter } from 'next/navigation'
-import { Sparkles } from 'lucide-react'
-import { useOperator } from '@/components/reactor/operator/OperatorProvider'
-import { MikeOrb } from '@/components/reactor/operator/mike/orb/MikeOrb'
-import { MikeSpeech } from '@/components/reactor/operator/mike/MikeSpeech'
-import { armBrandOnboarding } from '@/lib/operator/onboarding'
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import { useRouter } from "next/navigation";
+import { Sparkles } from "lucide-react";
+import { useOperator } from "@/components/reactor/operator/OperatorProvider";
+import { MikeOrb } from "@/components/reactor/operator/mike/orb/MikeOrb";
+import { MikeSpeech } from "@/components/reactor/operator/mike/MikeSpeech";
+import { useMikeGeometry } from "@/components/reactor/operator/mike/viewport";
+import { armBrandOnboarding } from "@/lib/operator/onboarding";
 
 /* ----------------------------------------------------------------------------
    The first meeting.
@@ -37,40 +38,51 @@ import { armBrandOnboarding } from '@/lib/operator/onboarding'
 ---------------------------------------------------------------------------- */
 
 /** How long he takes to fade up before the first word. */
-const ARRIVAL_MS = 1600
+const ARRIVAL_MS = 1600;
 
 export function WelcomeModal() {
-  const { welcome, dismissWelcome } = useOperator()
-  const router = useRouter()
-  const [mounted, setMounted] = useState(false)
-  const [finished, setFinished] = useState(false)
+  const { welcome, dismissWelcome } = useOperator();
+  const router = useRouter();
+  const [mounted, setMounted] = useState(false);
+  const [finished, setFinished] = useState(false);
+  const { transmissionRadius, transmissionHeight } = useMikeGeometry();
 
-  useEffect(() => setMounted(true), [])
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
-    if (!welcome) return
+    if (!welcome) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.stopPropagation()
-        begin()
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        begin();
       }
-    }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
     // `begin` is stable for the life of this mount — it only routes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [welcome])
+  }, [welcome]);
 
-  if (!welcome || !mounted) return null
+  if (!welcome || !mounted) return null;
 
   const begin = () => {
-    dismissWelcome()
-    armBrandOnboarding()
-    router.push('/brand')
-  }
+    dismissWelcome();
+    armBrandOnboarding();
+    router.push("/brand");
+  };
 
   return createPortal(
-    <div className="mike-first mike-first--sheer fixed inset-0 z-[120] flex flex-col items-center px-5 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[42vh] sm:pt-[44vh]">
+    <>
+      {/* Three layers rather than one box, because they need different powers.
+
+          The veil blurs what is behind it, and `backdrop-filter` makes an
+          element the containing block for any `position: fixed` descendant —
+          so anything nested inside it stops being fixed to the viewport and
+          starts being fixed to the veil. Keeping the veil childless is what
+          lets the room below scroll (his introduction is taller than an
+          iPhone SE) without dragging Mike's canvas up the screen with it. */}
+      <div className="mike-first mike-first--sheer pointer-events-none fixed inset-0 z-[120]" />
+
       {/* He arrives in the middle rather than travelling, because there is no
           corner to travel from yet — this is the first time anyone has seen
           him. */}
@@ -78,39 +90,49 @@ export function WelcomeModal() {
           has not arrived, he has been switched on. */}
       <MikeOrb
         state="focus"
-        target={() => ({ x: window.innerWidth / 2, y: window.innerHeight * 0.22 })}
-        radius={92}
-        className="mike-arrive pointer-events-none fixed inset-0"
+        target={() => ({
+          x: window.innerWidth / 2,
+          y: window.innerHeight * transmissionHeight,
+        })}
+        radius={transmissionRadius}
+        className="mike-arrive pointer-events-none fixed inset-0 z-[121]"
       />
 
-      <div className="flex w-full max-w-2xl flex-col items-center gap-8">
-        <MikeSpeech
-          text={welcome}
-          cadence="coalesce"
-          delayMs={ARRIVAL_MS}
-          onComplete={() => setFinished(true)}
-          className="items-center text-center text-[17px] leading-relaxed text-white/85 sm:text-[19px]"
-        />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Mike Delight"
+        className="mike-headroom fixed inset-0 z-[122] flex flex-col items-center overflow-y-auto overscroll-contain px-5 pb-[max(2rem,env(safe-area-inset-bottom))]"
+      >
+        <div className="flex w-full max-w-2xl shrink-0 flex-col items-center gap-8">
+          <MikeSpeech
+            text={welcome}
+            cadence="coalesce"
+            delayMs={ARRIVAL_MS}
+            onComplete={() => setFinished(true)}
+            className="items-center text-center text-[17px] leading-relaxed text-white/85 sm:text-[19px]"
+          />
 
-        {/* The way on, once he has finished saying hello. Interrupting a man
+          {/* The way on, once he has finished saying hello. Interrupting a man
             mid-introduction with a button is how you tell someone their time
             is not worth the four seconds. */}
-        {/* The platform's one primary button — `.fire-btn`, the same class the
+          {/* The platform's one primary button — `.fire-btn`, the same class the
             topbar and every ignition control use. An onboarding CTA with its
             own look tells a first-run operator that this screen belongs to a
             different product than the one behind it. */}
-        {finished && (
-          <button
-            type="button"
-            onClick={begin}
-            className="mike-cta fire-btn tap-target inline-flex items-center gap-2 px-5 py-3 font-display text-[13px] font-bold uppercase tracking-wide text-white"
-          >
-            <Sparkles size={15} />
-            Let&rsquo;s begin
-          </button>
-        )}
+          {finished && (
+            <button
+              type="button"
+              onClick={begin}
+              className="mike-cta fire-btn tap-target inline-flex items-center gap-2 px-5 py-3 font-display text-[13px] font-bold uppercase tracking-wide text-white"
+            >
+              <Sparkles size={15} />
+              Let&rsquo;s begin
+            </button>
+          )}
+        </div>
       </div>
-    </div>,
+    </>,
     document.body,
-  )
+  );
 }

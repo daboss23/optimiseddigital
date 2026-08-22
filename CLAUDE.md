@@ -353,6 +353,46 @@ To run the *real* agent end to end: set `ANTHROPIC_API_KEY` (agent),
 
 ---
 
+## TESTING MOBILE
+
+The mobile layer is checked against a real browser at real phone sizes, because
+the bug it exists to catch could not be seen any other way:
+
+```bash
+npm i -D playwright && npx playwright install chromium   # not a project dep
+npm run dev                                              # in another terminal
+npm run selftest:mobile
+```
+
+74 assertions across 11 routes at 390×844 and 375×667, with `hover: none` and
+`pointer: coarse` FORCED through CDP — Playwright's `isMobile`/`hasTouch` do not
+set those media features, so without the override every touch rule in
+`globals.css` is inert and the audit reports the design as failing for a reason
+that is entirely its own.
+
+What it asserts, and why each one is there:
+
+- **The layout viewport equals the visual viewport.** This is the load-bearing
+  one. Chrome answers horizontal document overflow by WIDENING THE LAYOUT
+  VIEWPORT, so `window.innerWidth` starts reporting the content width — and
+  every `position: fixed` overlay is laid out against that. One 16rem tooltip
+  hanging off the right edge measured `innerWidth` at 583 on a 390px phone, and
+  the nav drawer, the brief sheet and Mike's first-run welcome were all sized
+  and centred to a box a third wider than the screen.
+- **Nothing overflows the document horizontally.**
+- **Every control clears 44px.** The definition triggers are the one exemption
+  — 16px glyphs inside sentences that carry the target as an invisible
+  `::after` — and the test measures that pseudo-element rather than taking the
+  exemption on trust. Links whose computed `display` is `inline` are prose, not
+  controls, and are excluded: a 44px line box would tear their paragraph apart.
+- **A TAP opens a definition, and the panel lands on screen.** The half a
+  CSS-only hover tooltip could never do at all.
+
+`PLAYWRIGHT_CHROMIUM_PATH` overrides the browser binary for environments that
+ship one at a fixed path.
+
+---
+
 ## TESTING MIKE DELIGHT
 
 The operator on the dashboard is a pure pipeline, so it is tested in-process
@@ -614,6 +654,42 @@ Full architecture: `docs/MIKE_DELIGHT.md`.
 - [x] `npm run selftest` (`scripts/reactor-selftest.ts`) — asserts every
       mandatory layer activates with real evidence, evidence is attributable,
       and deliverable counts match the brief
+- [x] **The layout viewport is defended, not assumed.** `InfoTip` is a client
+      popover portaled to `<body>` and clamped into the visual viewport
+      (`components/reactor/InfoTip.tsx`) rather than a CSS-only `absolute`
+      panel. As an absolute box it hung off the right edge of a phone, and
+      Chrome answers document overflow by WIDENING THE LAYOUT VIEWPORT —
+      `window.innerWidth` measured 583 on a 390px screen, so every fixed
+      overlay on the platform, Mike's first meeting included, was laid out a
+      third wider than the screen. Fixed content is outside the document's
+      scrollable overflow and cannot do that; `html, body { overflow-x: clip }`
+      under 768px is the backstop (`clip`, not `hidden` — it refuses the
+      overflow without becoming a scroll container or forcing the other axis to
+      `auto`)
+- [x] **44px is a floor, not an opt-in.** `.tap-target` was opt-in and had been
+      missed on most controls — segmented filters at 32px, source chips at 34,
+      every input and select at 38, the topbar's own primary button at 36. The
+      floor now lives in one `(hover: none) and (pointer: coarse)` rule scoped
+      to `.reactor-main` / `.reactor-topbar` / the nav drawer. Height by
+      default (the axis a thumb misses on); square icon buttons — `display:
+      grid` with a fixed size, which is how every one of them is written —
+      get width too. Two exemptions: `.infotip-trigger`, which carries a 44px
+      hit area as an invisible `::after` so a 16px glyph can stay inside its
+      sentence, and `.tap-exempt` as a greppable escape hatch
+- [x] **Mike is sized off the SHORT viewport axis** (`mike/viewport.ts`), one
+      hook shared by all three of his surfaces. Both transmissions were pinned
+      at `radius={92}` while the resident orb already halved itself under
+      768px — on a 390px screen that is a 184px sphere with a corona reaching
+      twice as far, sitting exactly where the first paragraph of his
+      introduction renders. A phone held sideways is 844×390: by WIDTH it is a
+      desktop, which is why the axis and not a breakpoint is what decides. The
+      room's headroom follows him from one class (`.mike-headroom`) rather than
+      three `pt-[36vh]` call sites — this build emits Tailwind's utilities
+      after the rest of the stylesheet, so a plain class of equal specificity
+      silently loses to the utility it means to override
+- [x] `npm run selftest:mobile` — 74 assertions over every route at two phone
+      sizes: layout viewport, overflow, touch floor, and tap-to-open
+      definitions. See TESTING MOBILE
 
 **Still open**
 - [ ] SPARK URL-only ingestion for JS-rendered sources (Meta Ad Library / TikTok / shared boards via oEmbed/transcript APIs or a headless render). Uploads, pasted screenshots, direct image links and YouTube transcripts all work today; a client-rendered page has no images in its served HTML, so `lib/ad-image.ts` scrapes og:image/`<img>`/inlined-JSON URLs and otherwise returns a note telling the user to screenshot it
