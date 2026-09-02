@@ -2,7 +2,10 @@
  * NEURO Vault seed — verified neuromarketing principles.
  *
  * These are the grounding rubric NEURO (the Predicted Response pre-test) scores
- * concepts against. Each entry is one principle (small, focused chunks retrieve
+ * concepts against. Deliberately industry-neutral: the principles are about how
+ * any human brain processes an ad, and the APPLY lines used to name one
+ * company's audience ("the builder's eye", "one named member"), which pushed
+ * the pre-test to reason about the wrong reader on every other deployment. Each entry is one principle (small, focused chunks retrieve
  * far better than one large doc), tagged for the `learning` system so NEURO's
  * retrieval picks them up. Every citation has been checked against its primary
  * source — safe to treat as authoritative.
@@ -30,7 +33,7 @@ WHY (mechanism): Salience-based selection is fast, automatic, and image-driven; 
 
 DRIVES: attention, hook.
 
-APPLY TO TPB: Engineer one clear focal point in the first frame — a high-contrast figure, a face, or one bold word/number. The builder's eye lands on whatever is most conspicuous, so make that your message. Don't split attention across a busy layout.
+APPLY: Engineer one clear focal point in the first frame — a high-contrast figure, a face, or one bold word/number. The reader's eye lands on whatever is most conspicuous, so make that your message. Don't split attention across a busy layout.
 
 AVOID: Low-contrast, evenly-weighted compositions where nothing pops; logos and bullet lists competing with the hero element.
 
@@ -46,7 +49,7 @@ WHY (mechanism): Distinctiveness reduces interference at encoding; the isolated 
 
 DRIVES: memorability, attention.
 
-APPLY TO TPB: Give each creative ONE distinctive element — one stark figure, one named member, one accent colour against a flat field. Decide the single thing you want the builder to remember and isolate it. Don't stack competing claims.
+APPLY: Give each creative ONE distinctive element — one stark figure, one named person, one accent colour against a flat field. Decide the single thing you want the reader to remember and isolate it. Don't stack competing claims.
 
 AVOID: Multi-stat, multi-benefit creatives where every element dilutes the others.
 
@@ -62,7 +65,7 @@ WHY (mechanism): Affective responses occur quickly and automatically, acting as 
 
 DRIVES: emotion, memorability.
 
-APPLY TO TPB: Anchor on the felt stakes before the mechanism — the relief of control regained, the sting of the lost weekend, the pride of a finished site. The feeling does the persuading; the proof and logic justify it.
+APPLY: Anchor on the felt stakes before the mechanism — the relief of control regained, the sting of what the problem costs, the pride of the finished result. Draw the stakes from this audience's own life, not a generic one. The feeling does the persuading; the proof and logic justify it.
 
 AVOID: Flat, purely informational feature lists with no affective charge.
 
@@ -78,7 +81,7 @@ WHY (mechanism): The brain misattributes the ease of processing to the quality o
 
 DRIVES: hook, memorability.
 
-APPLY TO TPB: Reduce cognitive load — one idea per beat, plain words, legible contrast, concrete specifics over abstractions. A message that is effortless to grasp is believed and remembered more than a "clever" one that makes the builder work.
+APPLY: Reduce cognitive load — one idea per beat, plain words, legible contrast, concrete specifics over abstractions. A message that is effortless to grasp is believed and remembered more than a "clever" one that makes the reader work.
 
 AVOID: Dense copy, low contrast, jargon, and multiple ideas competing in a single frame.
 

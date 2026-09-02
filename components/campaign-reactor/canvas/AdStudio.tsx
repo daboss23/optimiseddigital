@@ -259,8 +259,12 @@ function FacebookAdPreview({
   const above = primaryText.slice(0, fold)
   const below = primaryText.slice(fold)
   // Advertiser identity comes from the connected website, so a fresh
-  // deployment previews as the customer's own brand rather than TPB's.
+  // deployment previews as the customer's own brand rather than the product's.
   const identity = useBrandIdentity()
+  // The link footer's domain. `identity.domain` is the connected site; the
+  // placeholder is obviously a placeholder, so a preview never quietly shows a
+  // real domain that is not this customer's.
+  const previewDomain = identity.domain?.trim() || 'yourdomain.com'
 
   return (
     <div className="overflow-hidden rounded-xl border border-white/10 bg-white shadow-[0_18px_44px_-22px_rgba(0,0,0,0.9)]">
@@ -320,7 +324,11 @@ function FacebookAdPreview({
       <div className="flex items-center justify-between gap-3 bg-[#F0F2F5] px-3.5 py-2.5">
         <span className="min-w-0">
           <span className="block truncate text-[11px] uppercase tracking-wide text-[#65676B]">
-            theprobuilder.com
+            {/* The connected business's own domain. This was hard-coded to the
+                original tenant's, so every customer previewed their ad with
+                someone else's link under it — the one part of a Meta preview
+                that says whose ad this is. */}
+            {previewDomain}
           </span>
           <span className="block truncate text-[15px] font-semibold leading-snug text-[#050505]">
             {headline || 'Your headline'}

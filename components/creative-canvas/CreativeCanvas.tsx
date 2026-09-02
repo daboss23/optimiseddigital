@@ -530,6 +530,10 @@ function CanvasInner({ mode, concepts, active, strategy, imageModel, videoModel,
   const [pendingReassign, setPendingReassign] = useState<PendingReassign | null>(null)
   const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | null>(null)
   const [regenerating, setRegenerating] = useState<Record<string, boolean>>({})
+  // Why a regeneration did not land. Shown under the button: the node keeps its
+  // words when the call fails, and a spinner that stops with nothing changed
+  // and nothing said reads as a broken button.
+  const [regenError, setRegenError] = useState<Record<string, string>>({})
   const [direction, setDirection] = useState('')
 
   /* ------------------- Build the opening structure per run ------------------ */
@@ -650,6 +654,10 @@ function CanvasInner({ mode, concepts, active, strategy, imageModel, videoModel,
   const runRegenerate = useCallback(
     async (id: string, lane: number, kind: CanvasNodeKind, title: string, currentText: string) => {
       setRegenerating((r) => ({ ...r, [id]: true }))
+      setRegenError((e) => {
+        const { [id]: _drop, ...rest } = e
+        return rest
+      })
       try {
         const res = await fetch('/api/canvas/regenerate', {
           method: 'POST',
@@ -664,8 +672,10 @@ function CanvasInner({ mode, concepts, active, strategy, imageModel, videoModel,
           }),
         }).then((r) => r.json())
         if (res.ok && res.text) patchNode(id, { text: res.text })
+        else if (res.error) setRegenError((e) => ({ ...e, [id]: String(res.error) }))
       } catch {
-        /* regeneration is best-effort — the current version stands */
+        // Best-effort: the current version stands, and says so.
+        setRegenError((e) => ({ ...e, [id]: 'Regeneration failed — the node is unchanged.' }))
       } finally {
         setRegenerating((r) => ({ ...r, [id]: false }))
       }
@@ -1201,6 +1211,12 @@ function CanvasInner({ mode, concepts, active, strategy, imageModel, videoModel,
                     placeholder={`Optional steer — e.g. "harder on identity, no numbers"`}
                     className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-[11px] text-white placeholder:text-white/25 outline-none transition-colors focus:border-[#38E8FF]/35"
                   />
+                )}
+
+                {regenError[selected.id] && (
+                  <p className="rounded-lg border border-red-500/25 bg-red-500/[0.06] px-3 py-2 text-[11px] leading-snug text-red-300/90">
+                    {regenError[selected.id]}
+                  </p>
                 )}
 
                 <div className="grid grid-cols-2 gap-2">

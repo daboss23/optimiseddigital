@@ -142,8 +142,8 @@ async function writeClone(
 
   // The CONNECTED business's brand, not the repository's checked-in one. The
   // clone writer fills a proven layout with fresh copy, and it was filling it
-  // with a Hunter Valley home builder's voice for every customer of the
-  // platform — see `resolveBrandMemory`.
+  // with a residential builder's voice for every customer of the platform —
+  // see `resolveBrandMemory`.
   const { memory: brand } = await resolveBrandMemory()
 
   const system = `You are SPARK's clone designer for ${tenantDescriptor(await getTenant())}. You are handed the DESIGN of an ad that has already won, and you rebuild it for a different business and offer.

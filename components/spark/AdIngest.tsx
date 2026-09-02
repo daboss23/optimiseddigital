@@ -655,7 +655,7 @@ export function AdIngest({ variant = 'studio' }: AdIngestProps) {
                   <input
                     value={goal}
                     onChange={(e) => setGoal(e.target.value)}
-                    placeholder="What is your ad selling? (blank = TPB brand memory)"
+                    placeholder="What is your ad selling? (blank = your connected brand)"
                     className={inputClass}
                   />
                   <button

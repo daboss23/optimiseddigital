@@ -6,13 +6,16 @@ import { getTenant } from '@/lib/tenant'
 import { getConnectedWebsite } from '@/lib/website-intelligence'
 
 /**
- * Reads the Summit Build Co brand intelligence document that is injected into
- * the copy-generation agents at runtime.
+ * Reads the brand-memory template injected into the copy agents at runtime.
+ *
+ * On a white-labelled deployment this file ships BLANK — see
+ * `brand/BRAND_MEMORY.md` and `resolveBrandMemory` below. Anything written here
+ * reaches every business using the deployment, so a real tenant's identity
+ * belongs in their connected website, not in the source tree.
  *
  * NOTE: This intentionally reads `brand/BRAND_MEMORY.md` — NOT `CLAUDE.md`.
  * Per the project rules, CLAUDE.md holds Claude Code's build rules and must
- * never be injected into API calls. BRAND_MEMORY.md is the brand's voice,
- * audience, proof points and visual guidelines.
+ * never be injected into API calls.
  */
 export function getBrandMemory(): string {
   const brandPath = path.join(process.cwd(), 'brand', 'BRAND_MEMORY.md')
@@ -39,13 +42,14 @@ export interface ResolvedBrandMemory {
  * Whose brand a copy call writes for, resolved in order of how explicit the
  * choice was.
  *
- * `brand/BRAND_MEMORY.md` is one specific company's brand intelligence — a
- * residential builder in the Hunter Valley — checked into the repository as the
- * original tenant's memory. Every copy route reached for it unconditionally, so
- * a customer who connected their own website still had that builder's voice,
- * proof points and visual style injected into the system prompt underneath
- * their own brief. Copy written to the wrong brand memory does not look broken;
- * it looks like the platform simply misunderstood the business.
+ * `brand/BRAND_MEMORY.md` used to hold one specific company's brand
+ * intelligence — a residential builder — checked into the repository as the
+ * original tenant's memory, and every copy route reached for it
+ * unconditionally. A customer who connected their own website still had that
+ * builder's voice, proof points and visual style injected into the system
+ * prompt underneath their own brief. Copy written to the wrong brand memory
+ * does not look broken; it looks like the platform simply misunderstood the
+ * business. The file now ships blank and this resolver prefers what is real.
  *
  * Order:
  *   1. An explicitly selected builder — the user named this profile.
@@ -81,5 +85,13 @@ export async function resolveBrandMemory(
     console.error('Connected website lookup failed, using the static brand file:', err)
   }
 
-  return { memory: getBrandMemory(), brandName: 'Summit Build Co', source: 'file' }
+  // Nothing connected. The file ships blank (see brand/BRAND_MEMORY.md), so
+  // this is genuinely "write to the brief alone" — and the name comes from the
+  // tenant profile or an env override, never a company hard-coded here.
+  const tenant = await getTenant().catch(() => null)
+  return {
+    memory: getBrandMemory(),
+    brandName: tenant?.companyName?.trim() || 'the brand',
+    source: 'file',
+  }
 }

@@ -222,9 +222,43 @@ async function fireReactor(payload: Record<string, unknown>): Promise<RunResult>
 
 /* ---------------------------------- Suite ---------------------------------- */
 
+/**
+ * Whether this deployment has a knowledge corpus behind the agent layers.
+ *
+ * A blank platform is the SHIPPED state: the curated corpus belongs to one
+ * company and is gated behind NEXT_PUBLIC_REACTOR_DEMO_DATA, so on a fresh
+ * deployment with no vault of its own, NOVA/SPARK/ECHO/ORACLE genuinely have
+ * nothing to retrieve. That is correct behaviour, not a failure — the layers
+ * must still activate and must still report Exploratory rather than inventing
+ * findings, which is what this suite checks instead.
+ */
+async function hasCorpus(): Promise<boolean> {
+  try {
+    const health = await fetch(`${BASE_URL}/api/health`, { headers: authHeaders() }).then((r) =>
+      r.json(),
+    )
+    if (health?.display?.demoData === true) return true
+    // A live vault with rows in it counts too.
+    const stats = await fetch(`${BASE_URL}/api/vault/stats`, { headers: authHeaders() }).then((r) =>
+      r.json(),
+    )
+    return Number(stats?.data?.total ?? stats?.total ?? 0) > 0
+  } catch {
+    return false
+  }
+}
+
 async function main() {
   console.log(bold(`\nCampaign Reactor self-test → ${BASE_URL}\n`))
   await signIn()
+  const corpus = await hasCorpus()
+  if (!corpus) {
+    console.log(
+      dim(
+        '   blank platform: no vault rows and demo data off — layers are checked for honest\n   reporting (activate, no invented findings) rather than for retrieval volume.\n',
+      ),
+    )
+  }
 
   /* -- 1. Every mandatory layer activates and reports evidence -------------- */
   console.log(bold('1. Intelligence network activation'))
@@ -262,13 +296,32 @@ async function main() {
       a.completed,
       `started=${a.started} completed=${a.completed}`,
     )
-    check(
-      `${name} retrieved real evidence`,
-      a.findings.length > 0,
-      `${name} reported with zero retrievals — its knowledge systems (${INTELLIGENCE[
-        id
-      ].systems.join(', ')}) returned nothing`,
-    )
+    if (corpus) {
+      check(
+        `${name} retrieved real evidence`,
+        a.findings.length > 0,
+        `${name} reported with zero retrievals — its knowledge systems (${INTELLIGENCE[
+          id
+        ].systems.join(', ')}) returned nothing`,
+      )
+    } else {
+      /* On a blank platform the layers do not all have the same ground. ATLAS
+         reads `vault` + `website`, which carry the universal craft the product
+         ships, so it legitimately retrieves and legitimately bands above
+         Exploratory. The others read systems that only fill from the account's
+         own work, so they correctly find nothing.
+
+         What must hold for EVERY layer either way is that the confidence
+         matches the evidence: a layer that retrieved nothing must say
+         Exploratory. A layer reporting Medium off zero findings is the
+         fabricated-activity failure this suite exists to catch. */
+      const band = a.confidence ?? 'Exploratory'
+      check(
+        `${name} bands its confidence to the evidence it actually has`,
+        a.findings.length > 0 || band === 'Exploratory',
+        `findings=${a.findings.length} confidence=${band}`,
+      )
+    }
   }
 
   const reported = INTELLIGENCE_IDS.filter((id) => run.agents[id].completed)

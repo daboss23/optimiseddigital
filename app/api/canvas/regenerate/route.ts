@@ -15,8 +15,8 @@ export const runtime = 'nodejs'
  * awareness stage, sophistication stage, audience, offer, and brand voice —
  * precision, not a fresh roll of the dice.
  *
- * Degrades gracefully: with no ANTHROPIC_API_KEY it serves a curated TPB
- * alternate so the canvas always works end to end.
+ * With no ANTHROPIC_API_KEY the node is left unchanged and the surface says
+ * why — it never substitutes copy written for a different business.
  */
 
 interface RegenerateBody {
@@ -56,40 +56,20 @@ const KIND_INSTRUCTIONS: Record<string, string> = {
   cta: 'Write ONE Meta ad headline (max 40 characters) that converts the argument into the ask. Direct, specific, zero hype.',
 }
 
-// Curated TPB alternates — the zero-key path stays useful, never lorem ipsum.
-const DEMO_POOL: Record<string, string[]> = {
-  hook: [
-    'You didn’t buy a business. You bought a job with overtime.',
-    '$2.4M turnover. $61K take-home. The maths nobody posts about.',
-    'The best builder on site shouldn’t still be on the tools at 51.',
-    'Your foreman runs the site. Who runs the business?',
-  ],
-  message: [
-    'The problem was never effort. You out-work everyone you know.\n\nThe problem is the machine: no margin discipline, no second layer of leadership, every decision routed through you.\n\nJason ran the same playbook — 14 months later he’s off the tools, margin up 9 points, and the business runs without his ute in the car park.',
-    'Revenue hides the truth. Margin tells it.\n\nWe rebuilt the quoting system, put a real number on every job, and installed a weekly rhythm the team runs without the owner.\n\nSame trucks, same clients — different business inside 12 months.',
-  ],
-  visual: [
-    '1: Pre-dawn — work ute idling, house lights still off.\n2: Site at full speed, owner absent — team running the board.\n3: Close-up — margin dashboard ticking past 24%.\n4: Owner at the school gate, 3:10pm, phone silent.',
-    '1: Split screen — invoice stack vs. one clean profit line.\n2: Whiteboard session — the org chart with a second layer of leadership.\n3: Handshake on site — foreman owning the walkthrough.\n4: Wide shot — owner walking off site mid-afternoon.',
-  ],
-  scene: [
-    '5:47am — headlights sweep an empty site; the owner’s ute is first in again. Caption: "Still first in. Still last out."',
-    'The foreman runs the morning brief solo; the owner watches from the fence line, coffee in hand. Caption: "The site runs. Finally."',
-    'Close on a margin report — 14% crossed out, 24% circled in red pen. Caption: "Same jobs. Different business."',
-  ],
-  cta: ['Get Off The Tools', 'Fix The Margin First', 'Run It Without You', 'Book A Strategy Call'],
-  proof: [
-    'Jason — $2.4M residential builder: off the tools in 14 months, margin up 9 points, first full week away from site in six years. His result, documented in the member vault.',
-    'Mark went from 70-hour weeks at 11% margin to 45 hours at 24% inside a year of installing the leadership layer. Results are individual and not typical.',
-    'Over 500 builders have run this exact margin-first playbook — the vault holds their documented before/after numbers, job by job.',
-  ],
-}
-
-function demoAlternate(kind: string, current: string): string {
-  const pool = DEMO_POOL[kind] ?? DEMO_POOL.hook
-  const options = pool.filter((p) => p.trim() !== current.trim())
-  return options[Math.floor(Math.random() * options.length)] ?? pool[0]
-}
+/**
+ * The zero-key path.
+ *
+ * This used to hand back a pool of finished ad copy — named clients, real
+ * margins, a specific trade — written for one company. On any other deployment
+ * that is not a placeholder, it is another business's ad appearing inside your
+ * campaign, one click from being approved and shipped. A node that regenerated
+ * into someone else's proof point is worse than a node that did not regenerate.
+ *
+ * So without a key the node is left exactly as it was and the caller is told
+ * why. `demo: true` still rides on the response, so the canvas can label it.
+ */
+const NO_KEY_MESSAGE =
+  'Set ANTHROPIC_API_KEY to regenerate this node — the canvas will not substitute copy written for another business.'
 
 export async function POST(request: NextRequest) {
   let body: RegenerateBody
@@ -103,7 +83,7 @@ export async function POST(request: NextRequest) {
   const current = (body.current ?? '').trim()
 
   if (!process.env.ANTHROPIC_API_KEY) {
-    return NextResponse.json({ ok: true, text: demoAlternate(kind, current), demo: true })
+    return NextResponse.json({ ok: false, text: current, demo: true, error: NO_KEY_MESSAGE })
   }
 
   const s = body.strategy ?? {}
@@ -147,7 +127,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, text: out, demo: false })
   } catch (err) {
     console.error('Canvas regenerate error:', err)
-    // Never block the canvas — fall back to a curated alternate.
-    return NextResponse.json({ ok: true, text: demoAlternate(kind, current), demo: true })
+    // Never block the canvas — but never silently swap in copy either. The node
+    // keeps what it had and the surface says the regeneration failed, which is
+    // recoverable; a node quietly replaced with another business's ad is not.
+    return NextResponse.json({
+      ok: false,
+      text: current,
+      demo: false,
+      error: 'Regeneration failed — the node is unchanged. Try again.',
+    })
   }
 }

@@ -1,7 +1,7 @@
 import type { VideoModel } from './types'
 
 /**
- * The model menu — TPB's in-house equivalent of Higgsfield's model picker.
+ * The model menu — the in-house equivalent of Higgsfield's model picker.
  *
  * fal.ai is used as a single gateway for the frontier models (Seedance, Kling,
  * Veo, Wan): one key (FAL_KEY) unlocks all of them with one async pattern.

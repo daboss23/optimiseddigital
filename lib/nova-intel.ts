@@ -1,7 +1,7 @@
 // NOVA's LIVE research memory, read back for the Research dashboard.
 //
 // The Research page used to render `externalSources` and `researchOutputs` from
-// `lib/reactor-data.ts` — curated placeholder copy written in TPB's voice. It
+// `lib/reactor-data.ts` — curated placeholder copy written in one company's voice. It
 // looked exactly like a working intelligence feed, so there was no way to tell
 // whether NOVA had ever swept anything: the same six cards showed either way.
 // A dashboard that reads identically when it holds nothing is worse than an

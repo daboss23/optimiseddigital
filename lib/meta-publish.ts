@@ -1,5 +1,7 @@
 import crypto from 'crypto'
 import { ctaLabel, META_CTA_OPTIONS, type MetaAdPackage, type MetaCta } from '@/lib/meta-ads'
+import { getTenant } from '@/lib/tenant'
+import { getConnectedWebsite } from '@/lib/website-intelligence'
 
 /**
  * Push Creative to Meta — direct Graph API publishing of a configured Studio ad.
@@ -11,7 +13,8 @@ import { ctaLabel, META_CTA_OPTIONS, type MetaAdPackage, type MetaCta } from '@/
  * the platform's job is a launch-ready creative, one click from live.
  *
  * Required env: META_ACCESS_TOKEN, META_AD_ACCOUNT_ID, META_PAGE_ID.
- * Optional: META_LINK_URL (destination link, default https://theprobuilder.com),
+ * Optional: META_LINK_URL (destination link; falls back to the connected
+ *           website, and the push is blocked when there is neither),
  * META_APP_SECRET (adds appsecret_proof), META_API_VERSION (default v19.0).
  *
  * Per CLAUDE.md this module never throws — every failure resolves to a
@@ -50,8 +53,22 @@ function apiVersion(): string {
   return process.env.META_API_VERSION || 'v19.0'
 }
 
-function linkUrl(): string {
-  return process.env.META_LINK_URL || 'https://theprobuilder.com'
+/**
+ * Where a pushed creative sends the click.
+ *
+ * META_LINK_URL first, then the connected website. There is deliberately NO
+ * hard-coded default: this used to fall back to the original tenant's own
+ * domain, so any deployment that had not set the env var published live ads —
+ * against the customer's ad account, spending the customer's money — that sent
+ * every click to a different company's website. `publishMissingEnv` now blocks
+ * the push instead, which is a configuration error the operator can fix in a
+ * minute rather than a leak they might never notice.
+ */
+async function linkUrl(): Promise<string> {
+  const explicit = process.env.META_LINK_URL?.trim()
+  if (explicit) return explicit
+  const site = await getConnectedWebsite().catch(() => null)
+  return site?.url?.trim() || ''
 }
 
 function appSecretProof(token: string): string | null {
@@ -108,11 +125,13 @@ function accountPath(): string {
 }
 
 // The object_story_spec call_to_action block, defaulting to a safe button type.
-function callToAction(pkg: MetaAdPackage): Record<string, unknown> {
+// The destination is resolved once per publish and passed in, so the button and
+// the link_data can never point at different places.
+function callToAction(pkg: MetaAdPackage, link: string): Record<string, unknown> {
   const cta = (pkg.cta ?? '').toUpperCase() as MetaCta
   return {
     type: META_CTA_OPTIONS.includes(cta) ? cta : 'LEARN_MORE',
-    value: { link: linkUrl() },
+    value: { link },
   }
 }
 
@@ -134,7 +153,27 @@ export async function publishCreativeToMeta(input: PublishInput): Promise<Publis
   }
 
   const { pkg, imageUrl, videoUrl } = input
-  const name = input.name?.trim() || `TPB Reactor — ${pkg.headline || 'Studio ad'}`.slice(0, 90)
+  // The name lands in the customer's OWN Ads Manager, next to ads their team
+  // made, and it is what the performance ingest reads back. It carried one
+  // company's initials on every deployment; it now carries the connected
+  // business's, or nothing at all.
+  const tenant = await getTenant().catch(() => null)
+  const prefix = tenant?.companyName?.trim() ? `${tenant.companyName.trim()} Reactor` : 'Reactor'
+  const name = input.name?.trim() || `${prefix} — ${pkg.headline || 'Studio ad'}`.slice(0, 90)
+
+  // Resolved once so the button and the link_data can never disagree, and
+  // checked before anything is created: a live ad with no destination of its
+  // own used to inherit the original tenant's domain.
+  const link = await linkUrl()
+  if (!link) {
+    return {
+      ok: false,
+      notConfigured: true,
+      missing: ['META_LINK_URL'],
+      error:
+        'This ad has nowhere to send the click — connect a website, or set META_LINK_URL to the destination these ads should point at.',
+    }
+  }
 
   try {
     if (videoUrl) {
@@ -162,7 +201,7 @@ export async function publishCreativeToMeta(input: PublishInput): Promise<Publis
             title: pkg.headline,
             message: pkg.primaryText,
             link_description: pkg.description || undefined,
-            call_to_action: callToAction(pkg),
+            call_to_action: callToAction(pkg, link),
           },
         }),
       })
@@ -181,12 +220,12 @@ export async function publishCreativeToMeta(input: PublishInput): Promise<Publis
       object_story_spec: JSON.stringify({
         page_id: process.env.META_PAGE_ID,
         link_data: {
-          link: linkUrl(),
+          link,
           message: pkg.primaryText,
           name: pkg.headline,
           description: pkg.description || undefined,
           picture: imageUrl,
-          call_to_action: callToAction(pkg),
+          call_to_action: callToAction(pkg, link),
         },
       }),
     })

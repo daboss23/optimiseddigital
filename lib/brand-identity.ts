@@ -45,7 +45,7 @@ export const DEFAULT_IDENTITY: BrandIdentity = {
 
 /**
  * Monogram from a company name: first letters of the first two significant
- * words ("Summit Build Co" → "SB"), or the first two characters of a
+ * words ("Northwind Studio" → "NS"), or the first two characters of a
  * single-word name ("Klaviyo" → "KL").
  */
 export function initialsFor(name: string): string {

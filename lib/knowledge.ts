@@ -373,13 +373,31 @@ function buildDemoCorpus(): Doc[] {
   if (demoCorpus) return demoCorpus
   const docs: Doc[] = []
 
-  // ATLAS's foundation — the `vault` and `website` systems. Without these the
-  // Knowledge Intelligence layer is the only one with no documents behind it,
-  // so it reports zero evidence on every run that isn't backed by a live
-  // Supabase + Voyage stack.
+  // ATLAS's foundation — universal craft knowledge (ad anatomy, PAS/BAB/AIDA,
+  // hook construction, compliance, offer framing). True for every business on
+  // the platform, so it ships unconditionally: without it the layer the product
+  // calls its foundation is the one layer with nothing behind it whenever the
+  // vector store is unreachable.
   for (const a of foundationAssets) {
     docs.push({ system: a.system, category: a.category, title: a.title, content: a.content })
   }
+
+  /* Everything below is ONE BUSINESS'S DATA — its patterns, its client
+     transformations with their real margins, its winning hooks, its research
+     findings, its creative win rates. It exists for demos and screenshots and
+     it is gated accordingly.
+
+     The dashboards have always gated it. Retrieval did not, and retrieval is
+     the path that feeds the agents: on a deployment with the flag unset, every
+     panel rendered honestly empty while every reactor run still retrieved
+     another company's members, margins and market as evidence and grounded the
+     campaign in them. The screen said "blank platform" and the ads said
+     otherwise. Same flag, same answer, everywhere. */
+  if (!demoDataEnabled()) {
+    demoCorpus = docs
+    return docs
+  }
+
   // The Vault's asset inventory is retrievable too, so ATLAS can answer "what
   // do we actually hold on this" with the real shape of the library.
   for (const g of vaultCategories) {

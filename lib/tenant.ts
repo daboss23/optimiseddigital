@@ -1,19 +1,19 @@
 /**
  * Tenant identity — who this deployment is FOR.
  *
- * The agent network used to name The Professional Builder (and its trades /
+ * The agent network used to name the original tenant (and its trades /
  * construction audience) directly inside its system prompts. That made every
- * deployment a TPB deployment: point the platform at a marketing agency and
+ * deployment the original tenant's deployment: point the platform at a marketing agency and
  * NOVA still profiled builders, NEURO still framed the pre-test around
  * builder coaching, and the strategic directives still assumed the reader had
- * seen TPB's ads.
+ * seen that first tenant's ads.
  *
  * Identity now resolves in three tiers, most authoritative first:
  *   1. The connected website (ATLAS's own read — the real source of truth)
  *   2. Environment overrides, for a deployment with no site connected yet
  *   3. A neutral fallback that names no company at all
  *
- * The fallback is deliberately generic rather than TPB: a prompt that says
+ * The fallback is deliberately generic rather than any named company: a prompt that says
  * "this business" produces vague copy, but a prompt that says the wrong
  * company produces confidently wrong copy, which is far more expensive.
  */
@@ -23,7 +23,7 @@ import { getConnectedWebsite, type WebsiteSummary } from '@/lib/website-intellig
 const UNKNOWN = 'Not confidently identified'
 
 export interface TenantProfile {
-  /** Full company name, e.g. "Summit Build Co". Empty when genuinely unknown. */
+  /** Full company name, e.g. "Northwind Studio". Empty when genuinely unknown. */
   companyName: string
   /** What the business does, e.g. "marketing agency". */
   industry: string

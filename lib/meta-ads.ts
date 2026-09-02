@@ -6,7 +6,7 @@
  * ~125-character "See more" fold on mobile), a ≤40-character headline, an
  * optional ≤30-character description, and a CTA button from Meta's enum. This
  * module owns that shape end to end: the type, Meta's real constraints, the
- * validator (including TPB's hard compliance phrases), the Ads-Manager-ready
+ * validator (including the platform's hard compliance phrases), the Ads-Manager-ready
  * clipboard format, the orchestrator prompt block, the submit_concepts JSON
  * schema fragment, and the demo-mode generator.
  *
@@ -27,7 +27,7 @@ export const DESCRIPTION_MAX = 30
 
 /**
  * The CTA button types the platform offers — the subset of Meta's
- * call_to_action enum that maps to TPB's funnel (learn → subscribe → apply).
+ * call_to_action enum that maps to a standard funnel (learn → subscribe → apply).
  */
 export const META_CTA_OPTIONS = [
   'LEARN_MORE',
@@ -78,12 +78,12 @@ export interface AdComplianceIssue {
   message: string
 }
 
-// TPB's hard compliance constraints (mirrors the orchestrator's COMPLIANCE
+// The platform's hard compliance constraints (mirrors the orchestrator's COMPLIANCE
 // block) — enforced in code, not just in the prompt, so nothing banned ships.
 const BANNED_PHRASES = ['guaranteed', 'you will make', 'passive income', 'get rich', 'earn from home']
 
 /**
- * Validate an ad package against Meta's placement constraints and TPB's hard
+ * Validate an ad package against Meta's placement constraints and the hard
  * compliance rules. `error` issues block shipping (the orchestrator revises);
  * `warning` issues surface on the concept card but don't block.
  */
@@ -197,7 +197,7 @@ export function metaAdName(opts: {
     .filter(Boolean)
     .join(' · ')
   const parts = [id, descr || opts.fallback?.trim()].filter(Boolean)
-  const name = parts.join(' · ') || opts.fallback?.trim() || 'TPB Reactor creative'
+  const name = parts.join(' · ') || opts.fallback?.trim() || 'Reactor creative'
   return name.slice(0, 90)
 }
 
@@ -290,14 +290,23 @@ export function adPackageFeedback(
  * Deterministic demo ad package so demo mode (no ANTHROPIC_API_KEY) shows the
  * full launch-ready experience, per concept type and angle.
  */
-export function demoAdPackage(conceptType: string, angle: string): MetaAdPackage {
+export function demoAdPackage(
+  conceptType: string,
+  angle: string,
+  audience = 'operators',
+): MetaAdPackage {
   const a = angle || 'Profit'
   const al = a.toLowerCase()
   const hot = /founder|testimonial|campaign/i.test(conceptType)
+  // Deliberately unbranded scaffolding with the SHAPE of a compliant ad unit —
+  // fold discipline, character budgets, one idea, a real CTA — and none of one
+  // company's copy. It used to be a finished ad for a specific coaching
+  // business, complete with its client count, which every deployment without a
+  // key rendered as its own and could push straight to Meta.
   return {
-    primaryText: `Most builders don't have a ${al} problem. They have a ${al} leak.\n\nRecord revenue, shrinking margin — and nobody can tell you where it's going.\n\n500+ builders plugged it with one system. Their numbers (and weekends) came back.\n\nSee how it works below.`,
+    primaryText: `Most ${audience} don't have a ${al} problem. They have a ${al} leak.\n\nThe numbers look fine at the top and nobody can say where it goes after that.\n\nThis is the demo path — connect a website and fire the Reactor for real copy written to your brand.\n\nSee how it works below.`,
     headline: `Find the ${a} leak in your business`.slice(0, HEADLINE_MAX),
-    description: '500+ builder results'.slice(0, DESCRIPTION_MAX),
+    description: 'Demo ad unit'.slice(0, DESCRIPTION_MAX),
     cta: hot ? 'APPLY_NOW' : 'LEARN_MORE',
   }
 }

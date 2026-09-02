@@ -14,7 +14,7 @@ import {
   type VariationMethod,
 } from '@/lib/variations'
 import { searchKnowledge } from '@/lib/knowledge'
-import { learnings } from '@/lib/reactor-data'
+import { learnings, type Learning } from '@/lib/reactor-data'
 import { INTELLIGENCE, INTELLIGENCE_IDS, isIntelligenceId, type IntelligenceId } from '@/lib/agents'
 import {
   ORCHESTRATOR_MODEL,
@@ -31,7 +31,7 @@ import {
   type GenMode,
 } from '@/lib/video'
 import { logGeneration } from '@/lib/video/persistence'
-import { retrieveWinningConfigs, type WinningConfig } from '@/lib/outcomes'
+import { resolveCreativeLearnings, retrieveWinningConfigs, type WinningConfig } from '@/lib/outcomes'
 import { outputTypeOptions, type ReactorInputs, type ProductionBrief, type NeuroScore } from '@/lib/reactor-inputs'
 import {
   retrieveNeuroPrinciples,
@@ -219,12 +219,19 @@ const FAST_PATH = RUN_BUDGET_MS < FAST_PATH_UNDER_MS
  */
 const INLINE_IMAGES = process.env.REACTOR_INLINE_IMAGES === '1'
 
-// The Creative Learnings rubric is a static, documented list — it does not change
-// within a process, so build the get_learnings tool-result string once and reuse
-// it across every run instead of re-mapping the array on each self-critique call.
-const LEARNINGS_RUBRIC = learnings
-  .map((l) => `• ${l.insight} — ${l.recommendation} (evidence: ${l.evidence})`)
-  .join('\n')
+/**
+ * The Creative Learnings rubric, formatted for the get_learnings tool result.
+ *
+ * No longer a process-level constant: the rubric now leads with what THIS
+ * account has actually learned from its own graded outcomes, so it changes as
+ * the account runs creative. It was a static list of figures measured on one
+ * company's ad account and served to every deployment — which meant every
+ * tenant self-scored their creative against another business's results.
+ * Resolved once per run and reused across that run's self-critique calls.
+ */
+function formatLearnings(list: Learning[]): string {
+  return list.map((l) => `• ${l.insight} — ${l.recommendation} (evidence: ${l.evidence})`).join('\n')
+}
 
 // MCP connector (Messages API) beta — lets the coordinator call remote MCP
 // tools (Meta Ads) that Anthropic executes server-side.
@@ -360,7 +367,7 @@ function reconcileConceptCounts(
   if (configs.length === 0) return { kept: concepts, shortfall: [] }
 
   // Bucket by creative family rather than exact label: OPUS submits internal
-  // concept types ("Testimonial Concept"), not the builder's deliverable names.
+  // concept types ("Testimonial Concept"), not the operator's deliverable names.
   const owedBy = new Map<VariationFormat, { output: string; owed: number }>()
   for (const c of configs) {
     const fmt = variationFormat(c.output)
@@ -771,7 +778,7 @@ function coordinatorPrompt(
 
 Your intelligence network:
 - ATLAS — Knowledge Intelligence: frameworks, SOPs, calls, and uploaded assets.
-- NOVA — Market Intelligence: pains, desires, objections, beliefs, and member transformations.
+- NOVA — Market Intelligence: pains, desires, objections, beliefs, and real customer transformations.
 - SPARK — Creative Intelligence: winning creative structures, openings, and Creative DNA.
 - ECHO — Copy Intelligence: high-performing hooks, headlines, offers, and Copy DNA.
 - ORACLE — Strategic Memory: the memory of every winning strategic configuration (angle, audience, offer, awareness, creative + copy structure) — which patterns win, which lose, and what is most likely to work next.
@@ -785,7 +792,7 @@ ${META_CRAFT_BLOCK}
 
 On submit, every concept is run through NEURO — a neural pre-test that scores its PREDICTED RESPONSE (attention, emotion, memorability, first-3-seconds hook) against neuromarketing principles — and its adPackage is validated against Meta's placement limits and the compliance constraints. Concepts with a weak scroll-stop or hook, or a non-compliant ad unit, are returned to you to revise or drop. So lead with a concrete, specific pattern-interrupt in the opening beat of every concept — don't open on the offer or a generic claim.
 
-Voice: confident, specific, builder-native. Engineered for performance.`
+Voice: confident, specific, and native to THIS business and its audience — their vocabulary, their references, their level of expertise. Never a marketing department's voice, never a generic one. Engineered for performance.`
 }
 
 /* --------------------- Reactor modal input → prompt ----------------------- */
@@ -799,7 +806,7 @@ const INTELLIGENCE_BLOCK =
 const COMPLIANCE_BLOCK = `HARD COMPLIANCE CONSTRAINTS — these override all creative instructions:
 - Attribute every income or results figure to a named individual as THEIR result. Never imply typical or guaranteed outcomes for the viewer.
 - Never use: "guaranteed", "you will make", "passive income", "get rich", "earn from home".
-- Where a concept references a member result, it must carry: "Results are individual and not typical. Building a business involves risk."
+- Where a concept references a named client's result, it must carry a disclaimer in the ad package: "Results are individual and not typical." Add the risk clause the offer's own category requires (e.g. financial, health, business) — never omit it, never invent one that does not apply.
 - Reject and rewrite any concept of your own that violates these constraints before calling submit_concepts.`
 
 const BLOCK_SEP = '\n\n─────────────────────────────────────────────\n\n'
@@ -1101,7 +1108,9 @@ function variationDemands(configs: VariationConfig[]): PreflightContext['variati
  * than the angle alone.
  */
 function preflightQuestion(id: IntelligenceId, ctx: PreflightContext): string {
-  const who = ctx.audience && ctx.audience !== 'No Preference' ? ctx.audience : 'builders'
+  // No audience picked: ask about the business's own buyer rather than naming
+  // one. "builders" here scoped every unspecified briefing to one industry.
+  const who = ctx.audience && ctx.audience !== 'No Preference' ? ctx.audience : 'this business\'s buyers'
   const stage = ctx.awareness && ctx.awareness !== 'No Preference' ? ctx.awareness : 'mixed-awareness'
   const offer = ctx.offer && ctx.offer !== 'No Preference' ? ctx.offer : 'the core offer'
   const briefTail = ctx.brief?.trim() ? ` Campaign brief: ${ctx.brief.trim().slice(0, 400)}` : ''
@@ -1218,18 +1227,28 @@ async function preflightBriefing(
 // shows the production-brief-driven workflow. When `montage` is set, frames are
 // labelled as an ordered scene sequence (matching the live orchestrator's
 // MONTAGE / SCENE FLOW instruction) instead of generic numbered frames.
-function demoBrief(creativeType: string, angle: string, montage = false): ProductionBrief {
+function demoBrief(
+  creativeType: string,
+  angle: string,
+  montage = false,
+  audience = 'operators',
+): ProductionBrief {
   const al = angle.toLowerCase()
+  /* Frame 1 names a SUBJECT, not a zone — the compiler strips copy-labelled
+     frames out of the scene, so a demo brief written as zones would render the
+     same subject-less prompt this path exists to demonstrate working.
+     The subject is the tenant's own buyer, never a fixed trade: hard-coding
+     "builder on a job site" here composed every demo render for one industry. */
   const frames = montage
     ? [
-        { label: 'Scene 1 — 5:47am, still on the tools', description: 'Builder overwhelmed on a chaotic job site, headlights sweeping an empty yard.' },
+        { label: 'Scene 1 — Before dawn, still working', description: `A ${audience.replace(/s$/, '')} at work in their own setting, before anyone else has started — tired, capable, carrying it alone.` },
         { label: 'Scene 2 — The leak exposed', description: `Close on a stark figure — the hidden ${al} leak nobody names out loud.` },
-        { label: 'Scene 3 — The turning point', description: 'The system introduced — a whiteboard session, a new second layer of leadership.' },
-        { label: 'Scene 4 — The after', description: 'Margin dashboard ticking up; the owner walking off site mid-afternoon.' },
+        { label: 'Scene 3 — The turning point', description: 'The system introduced — a working session where the second layer of responsibility is drawn up.' },
+        { label: 'Scene 4 — The after', description: 'The numbers moving the right way; the owner leaving mid-afternoon.' },
         { label: 'Scene 5 — Soft CTA', description: 'A quiet, qualifying call to the next step — no hard sell.' },
       ]
     : [
-        { label: 'Frame 1', description: 'Builder overwhelmed on a chaotic job site.' },
+        { label: 'Hero shot', description: `A ${audience.replace(/s$/, '')} at work in their own setting, mid-task, natural light, shot documentary-style.` },
         { label: 'Frame 2', description: `The hidden ${al} problem exposed with one stark figure.` },
         { label: 'Frame 3', description: 'The system / turning point introduced.' },
         { label: 'Frame 4', description: 'The after — margin, time, and control restored.' },
@@ -1238,7 +1257,7 @@ function demoBrief(creativeType: string, angle: string, montage = false): Produc
   return {
     creativeType,
     pattern: angle === 'Profit' ? 'Profit Leak' : angle,
-    audience: 'Builders $1M–$3M',
+    audience,
     awareness: 'Problem-Aware',
     frames,
   }
@@ -1301,6 +1320,14 @@ async function runDemo(controller: ReadableStreamDefaultController, body: Reacto
   const demoAngleSentinel =
     !body.angle || body.angle === 'Agent decides' || body.angle === 'No Preference'
   const demoAngle = demoAngleSentinel ? 'Profit' : (body.angle as string)
+  /* Who the demo speaks to. Resolved from the connected website like everything
+     else — the demo path is still THIS business's platform, so its scaffolding
+     names this business's buyer rather than another company's. Falls back to a
+     neutral noun when nothing is connected yet. */
+  const demoAudience =
+    demoRi?.audienceType && demoRi.audienceType !== 'No Preference'
+      ? demoRi.audienceType.toLowerCase()
+      : (await getTenant().catch(() => null))?.audienceDescriptor?.trim().toLowerCase() || 'operators'
   const demoQuery = [
     demoAngle,
     demoRi?.audienceType && demoRi.audienceType !== 'No Preference' ? demoRi.audienceType : '',
@@ -1310,11 +1337,11 @@ async function runDemo(controller: ReadableStreamDefaultController, body: Reacto
     .join(' ')
 
   const demoSummaries: Partial<Record<IntelligenceId, string>> = {
-    atlas: 'Vault grounded: TPB frameworks, SOPs and member-call assets retrieved as the foundation for this build',
-    nova: 'Builders fear margin erosion despite record revenue; "profit leak" language resonates',
-    spark: 'Founder videos (71% win) + static proof ads outperform; specific figures beat claims',
-    echo: 'Top hook: "Most builders don\'t have a revenue problem. They have a profit leak."',
-    oracle: 'Dominant winning pattern: Time Freedom — owner-dependency relief beats raw growth claims',
+    atlas: 'Vault grounded: the craft frameworks and SOPs behind this build were retrieved as its foundation',
+    nova: `${demoAudience[0].toUpperCase()}${demoAudience.slice(1)} fear erosion despite healthy top-line revenue; leak language resonates`,
+    spark: 'Founder-led video and static proof ads outperform; specific figures beat category claims',
+    echo: `Strongest hook shape: "Most ${demoAudience} don't have a revenue problem. They have a profit leak."`,
+    oracle: 'Dominant winning pattern: relief from owner-dependency beats raw growth claims',
   }
 
   // ATLAS leads every build — the Knowledge Vault is the foundation, never asleep.
@@ -1365,25 +1392,35 @@ async function runDemo(controller: ReadableStreamDefaultController, body: Reacto
   // Resolved once at the top of the run, alongside the retrieval query.
   const a = demoAngle
   const al = a.toLowerCase()
+  /* The demo pool proves the WIRING — the step-by-step flow, the concept card,
+     the ad unit, the variation contract — with no model call behind it. It is
+     therefore written as shape, not as copy: it names the audience the tenant
+     actually sells to and otherwise stays deliberately generic.
+
+     It used to be a set of finished ads for one coaching business: its client
+     count, its members' margins, its trade. On any other deployment those
+     rendered as that deployment's own concepts, one approval away from being
+     pushed to Meta. */
+  const who = demoAudience
   const pool: Concept[] = [
-    { type: 'Hook', text: `Most builders don't have a ${al} problem. They have a ${al} leak hiding in plain sight.`, basis: 'ECHO + NOVA', learningCheck: 'Specific, contrarian framing', score: 9 },
-    { type: 'Headline', text: `From struggling to systemized — how ${a} became TPB's unfair advantage.`, basis: 'NOVA (member transformations)', learningCheck: 'Transformation arc over features', score: 8 },
-    { type: 'Primary Text', text: `You didn't get into building to babysit jobs. This is the ${a} system that gave 500+ builders their margin — and their weekends — back.`, basis: 'NOVA + ECHO', learningCheck: 'Concrete proof (500+ builders)', score: 8 },
-    { type: 'VSL Opener', text: `In the next few minutes I'll show you the exact ${a} mechanism most builders never see until it's too late.`, basis: 'ECHO (VSL openers)', learningCheck: 'Mechanism + curiosity', score: 7 },
-    { type: 'Static Concept', text: `Dark background, one bold profit figure, named member underneath, single cyan accent. Angle: ${a}.`, basis: 'SPARK (static proof ad)', learningCheck: 'Specific $ numbers beat vague claims', score: 9 },
-    { type: 'Video Concept', text: `Founder direct-to-camera on-site: 1.5s pattern interrupt, contrarian ${al} belief, member proof, soft CTA.`, basis: 'SPARK (Founder Video, 71% win)', learningCheck: 'Founder videos beat talking heads', score: 9 },
-    { type: 'Founder Concept', text: `Handheld walk-through of a finished site while the founder breaks down the ${a} turning point.`, basis: 'SPARK (Founder Video, 71% win)', learningCheck: 'Founder-led, on-site, real proof', score: 9 },
-    { type: 'Testimonial Concept', text: `Member states old hours/margin, the ${al} turning point, then the after. B-roll of their jobs.`, basis: 'NOVA (transformations)', learningCheck: 'Named member win over generic promise', score: 8 },
+    { type: 'Hook', text: `Most ${who} don't have a ${al} problem. They have a ${al} leak hiding in plain sight.`, basis: 'ECHO + NOVA', learningCheck: 'Specific, contrarian framing', score: 9 },
+    { type: 'Headline', text: `From guesswork to system — how ${a} became the unfair advantage.`, basis: 'NOVA (client transformations)', learningCheck: 'Transformation arc over features', score: 8 },
+    { type: 'Primary Text', text: `You didn't start this to babysit the work. This is the ${a} system that gave ${who} their margin — and their weekends — back.`, basis: 'NOVA + ECHO', learningCheck: 'Outcome before mechanism', score: 8 },
+    { type: 'VSL Opener', text: `In the next few minutes I'll show you the exact ${a} mechanism most ${who} never see until it's too late.`, basis: 'ECHO (VSL openers)', learningCheck: 'Mechanism + curiosity', score: 7 },
+    { type: 'Static Concept', text: `Dark field, one bold figure carrying the ${al} claim, the named client underneath, a single accent colour. Angle: ${a}.`, basis: 'SPARK (static proof ad)', learningCheck: 'One specific number beats a vague claim', score: 9 },
+    { type: 'Video Concept', text: `Founder direct-to-camera in the business's own setting: 1.5s pattern interrupt, contrarian ${al} belief, client proof, soft CTA.`, basis: 'SPARK (founder-led format)', learningCheck: 'Founder-led beats talking head', score: 9 },
+    { type: 'Founder Concept', text: `Handheld walk-through of finished work while the founder breaks down the ${a} turning point.`, basis: 'SPARK (founder-led format)', learningCheck: 'Founder-led, in context, real proof', score: 9 },
+    { type: 'Testimonial Concept', text: `A named client states the before, the ${al} turning point, then the after. B-roll of their actual work.`, basis: 'NOVA (transformations)', learningCheck: 'Named client win over generic promise', score: 8 },
     { type: 'Event Concept', text: `High-energy room montage tied to one ${a} insight and community proof.`, basis: 'SPARK (Authority Pattern)', learningCheck: 'Community proof', score: 7 },
-    { type: 'Campaign Concept', text: `The ${a} Reactor: founder video + static proof ad + member testimonial, sequenced cold → warm → apply.`, basis: 'OPUS (stacks highest-win formats)', learningCheck: 'Stacks the three highest-win formats', score: 9 },
+    { type: 'Campaign Concept', text: `The ${a} sequence: founder video + static proof ad + client testimonial, run cold → warm → apply.`, basis: 'OPUS (stacks the three strongest formats)', learningCheck: 'Stacks complementary formats', score: 9 },
   ]
   // Visual concepts carry a production brief — the platform plans before it renders.
   // Every concept carries a launch-ready Meta ad unit, same as the live agent.
   for (const c of pool) {
     if (/static|video|founder|testimonial|event|campaign/i.test(c.type) && /concept/i.test(c.type)) {
-      c.productionBrief = demoBrief(c.type, a, wantsMontage)
+      c.productionBrief = demoBrief(c.type, a, wantsMontage, demoAudience)
     }
-    c.adPackage = demoAdPackage(c.type, a)
+    c.adPackage = demoAdPackage(c.type, a, demoAudience)
   }
   sse(controller, {
     type: 'step',
@@ -1410,7 +1447,7 @@ async function runDemo(controller: ReadableStreamDefaultController, body: Reacto
         }`,
         learningCheck: 'Only the isolated axis differs across variants',
         score: 8,
-        adPackage: demoAdPackage(baseType, a),
+        adPackage: demoAdPackage(baseType, a, demoAudience),
         neuro: demoNeuroScore(8, baseType),
         taxonomy,
         testId,
@@ -1469,7 +1506,7 @@ async function runDemo(controller: ReadableStreamDefaultController, body: Reacto
           : {
               ...c,
               text: `${c.text} ${labels[k % labels.length]} — ${DEMO_VARIATION_TWISTS[method]}.`,
-              adPackage: demoAdPackage(c.type, a),
+              adPackage: demoAdPackage(c.type, a, demoAudience),
               neuro: demoNeuroScore(c.score, c.type),
             }
       if (count > 1 && demoTestId) {
@@ -1681,7 +1718,7 @@ export async function POST(request: NextRequest) {
         // ORACLE's memory lookup and the mandatory-layer briefing are
         // independent, so they run against the same wall clock instead of
         // queueing. Neither can fail the run.
-        const [winningConfigs, briefing] = await Promise.all([
+        const [winningConfigs, briefing, runLearnings] = await Promise.all([
           // ORACLE retrieves matching past winners and feeds them into OPUS's
           // reasoning — the Reactor reuses what worked instead of starting cold.
           retrieveWinningConfigs({
@@ -1720,7 +1757,12 @@ export async function POST(request: NextRequest) {
             body.builderId ?? null,
             Math.max(8_000, RUN_BUDGET_MS * PREFLIGHT_MAX_SHARE - elapsed()),
           ).catch(() => ''),
+          // What THIS account has learned, ahead of the craft floor. An
+          // independent read, so it runs against the same wall clock rather
+          // than queueing behind the briefing.
+          resolveCreativeLearnings().catch(() => [] as Learning[]),
         ])
+        const learningsRubric = formatLearnings(runLearnings)
         const oracleMemory = memoryBlock(winningConfigs)
 
         const angleClause =
@@ -2032,8 +2074,18 @@ export async function POST(request: NextRequest) {
             }
 
             if (tu.name === 'get_learnings') {
-              sse(controller, { type: 'step', text: 'ORACLE — loading the Creative Learnings rubric for self-critique…' })
-              return { type: 'tool_result', tool_use_id: tu.id, content: LEARNINGS_RUBRIC }
+              // Say how much of the rubric is this account's own record rather
+              // than craft: a builder reading the feed should be able to tell
+              // whether the platform is scoring on evidence or on principle.
+              const owned = runLearnings.length - learnings.length
+              sse(controller, {
+                type: 'step',
+                text:
+                  owned > 0
+                    ? `ORACLE — loading the Creative Learnings rubric · ${owned} learned from this account's own graded outcomes.`
+                    : 'ORACLE — loading the Creative Learnings rubric · craft principles (this account has no graded outcomes yet).',
+              })
+              return { type: 'tool_result', tool_use_id: tu.id, content: learningsRubric }
             }
 
             if (tu.name === 'generate_image') {
@@ -2265,7 +2317,7 @@ export async function POST(request: NextRequest) {
                 continue
               }
 
-              // Meta ad-unit compliance gate — Meta's placement limits + TPB's
+              // Meta ad-unit compliance gate — Meta's placement limits + the platform's
               // hard compliance phrases, enforced in code before anything ships.
               const compliance = adPackageFeedback(concepts)
               sse(controller, {

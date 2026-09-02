@@ -1,7 +1,7 @@
 import type { ImageModel } from './types'
 
 /**
- * The image model menu — TPB's still-creative equivalent of the video registry.
+ * The image model menu — the still-creative equivalent of the video registry.
  * Each model is a different provider; one key per provider unlocks it.
  *
  * Stills run through Muapi (one MUAPIAPP_API_KEY), fal.ai (one FAL_KEY unlocks
@@ -23,7 +23,7 @@ export const IMAGE_MODELS: ImageModel[] = [
   // leader. So whatever sits at the top is what actually renders.
   //
   // These are ranked by TEXT FIDELITY first, not raw image quality, because
-  // every TPB static carries a headline and a CTA. A model that renders a
+  // nearly every static ad carries a headline and a CTA. A model that renders a
   // gorgeous scene and a misspelled headline has produced an unusable ad.
   // Midjourney sits at the bottom for exactly that reason.
   //

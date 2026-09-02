@@ -7,6 +7,7 @@ import { getSupabaseAdmin } from '@/lib/supabase'
 import { ingestKnowledge } from '@/lib/knowledge'
 import type { AngleEvidence } from '@/lib/reactor-inputs'
 import type { CreativeTaxonomy } from '@/lib/taxonomy'
+import { learnings, type Learning } from '@/lib/reactor-data'
 
 export type Verdict = 'pending' | 'winner' | 'loser' | 'high_performer' | 'average' | 'unknown'
 
@@ -386,4 +387,71 @@ export async function patternConfidence(): Promise<PatternConfidence[]> {
       confidence: Math.round((wins / Math.max(total, 1)) * 100),
     }))
     .sort((a, b) => b.confidence - a.confidence || b.total - a.total)
+}
+
+/* --------------------------- Creative Learnings ---------------------------- */
+
+/**
+ * Enough graded creatives behind a pattern to say anything about it.
+ *
+ * Below this a "100% win rate" is one lucky ad, and stating it as a learning
+ * teaches the orchestrator to chase noise.
+ */
+const MIN_GRADED_FOR_LEARNING = 3
+
+/**
+ * The Creative Learnings rubric OPUS self-scores every concept against.
+ *
+ * Derived from THIS account's graded outcomes wherever there are enough of
+ * them, and stated with the count behind it so the orchestrator can weigh a
+ * learning drawn from four creatives differently from one drawn from forty.
+ * The craft floor in `lib/reactor-data.ts` fills whatever the account has not
+ * yet earned.
+ *
+ * Before this, the rubric was a fixed array of figures measured on one
+ * company's ad account and shipped to every deployment — every tenant scored
+ * their creative against another business's results.
+ *
+ * Never throws: a failed outcome read degrades to the floor, which is always
+ * true and never claims a measurement it does not have.
+ */
+export async function resolveCreativeLearnings(): Promise<Learning[]> {
+  let derived: Learning[] = []
+
+  try {
+    const [patterns, variations] = await Promise.all([
+      patternConfidence().catch(() => [] as PatternConfidence[]),
+      variationPerformance().catch(() => [] as VariationPerformance[]),
+    ])
+
+    for (const p of patterns.filter((x) => x.total >= MIN_GRADED_FOR_LEARNING).slice(0, 3)) {
+      derived.push({
+        insight: `"${p.pattern}" is winning on this account.`,
+        evidence: `${p.wins} of ${p.total} graded creatives on this pattern won (${p.confidence}%).`,
+        recommendation:
+          p.confidence >= 50
+            ? `Reach for the ${p.pattern} pattern before an untested one, and say in the concept's basis what it is carrying over.`
+            : `Treat ${p.pattern} as unproven here — use it only when the angle genuinely calls for it, and say why.`,
+      })
+    }
+
+    for (const v of variations.filter((x) => x.total >= MIN_GRADED_FOR_LEARNING).slice(0, 2)) {
+      derived.push({
+        insight: `Varying ${v.method} on "${v.label}" has a record on this account.`,
+        evidence: `${v.wins} of ${v.total} versions carrying that lever won (${v.confidence}%).`,
+        recommendation:
+          v.confidence >= 50
+            ? `That lever moves results here — keep testing it.`
+            : `That lever has not moved results here — isolate a different one.`,
+      })
+    }
+  } catch (err) {
+    console.error('Creative learnings lookup failed, using the craft floor:', err)
+    derived = []
+  }
+
+  // The floor is never dropped: an account with three months of outcomes still
+  // needs "a creative that could run for a competitor unchanged is not a
+  // campaign". Real learnings lead, because they are about this business.
+  return [...derived, ...learnings]
 }

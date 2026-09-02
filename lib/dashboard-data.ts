@@ -5,7 +5,7 @@
 // so the dashboard always renders meaningful, on-brand numbers.
 //
 // Design intent: nothing here is decorative. Each field powers a panel that
-// answers a real question for TPB — is the intelligence base compounding, are
+// answers a real question for the operator — is the intelligence base compounding, are
 // generated concepts winning, which systems are fueling the agent, what has the
 // reactor done lately.
 
