@@ -11,6 +11,50 @@ export const dynamic = 'force-dynamic'
 
 type TableProbe = { table: string; ok: boolean; error?: string }
 
+/**
+ * Has supabase/schema.tenancy.sql been applied?
+ *
+ * The application requires it: it queries `accounts` and `users`, and writes an
+ * `is_global` column on every knowledge chunk. Against an un-migrated project
+ * those fail one at a time, deep inside a scan or an ingest, as errors that read
+ * like the feature is broken rather than like the database is a version behind.
+ *
+ * So it is asked here, plainly, in the one place people look when something is
+ * wrong. Read-only: three head-count probes and one column check.
+ */
+async function probeTenancy(): Promise<{
+  applied: boolean
+  missing: string[]
+  hint?: string
+}> {
+  const missing: string[] = []
+
+  for (const table of ['accounts', 'users']) {
+    const probe = await probeTable(table)
+    if (!probe.ok) missing.push(`table ${table}`)
+  }
+
+  // `is_global` on knowledge_chunks — selecting a column that does not exist
+  // errors, which is exactly the signal wanted.
+  try {
+    const { error } = await getSupabaseAdmin()
+      .from('knowledge_chunks')
+      .select('is_global', { head: true })
+      .limit(1)
+    if (error) missing.push('column knowledge_chunks.is_global')
+  } catch {
+    missing.push('column knowledge_chunks.is_global')
+  }
+
+  return {
+    applied: missing.length === 0,
+    missing,
+    hint: missing.length
+      ? 'Run supabase/schema.tenancy.sql in the Supabase SQL editor. Until it is applied, connecting a website and every Vault write will fail.'
+      : undefined,
+  }
+}
+
 async function probeTable(table: string): Promise<TableProbe> {
   try {
     const { error } = await getSupabaseAdmin()
@@ -51,11 +95,16 @@ export async function GET() {
   let tables: TableProbe[] = []
   if (supabaseConfigured) {
     tables = await Promise.all(
-      ['campaign_outcomes', 'knowledge_chunks', 'builders'].map(probeTable),
+      ['campaign_outcomes', 'knowledge_chunks', 'accounts'].map(probeTable),
     )
   }
 
   const tablesOk = supabaseConfigured && tables.every((t) => t.ok)
+
+  // The migration state, reported before anything else that depends on it.
+  const tenancy = supabaseConfigured
+    ? await probeTenancy()
+    : { applied: false, missing: ['supabase not configured'], hint: undefined }
 
   // The outcome learning loop is fully live only when the DB write path works
   // and embeddings are configured to re-ingest winners as retrievable patterns.
@@ -80,8 +129,11 @@ export async function GET() {
   }
 
   return NextResponse.json({
-    ok: true,
+    // `ok` now means "this deployment can actually do its job", not merely
+    // "the route responded". A schema a version behind the code is not ok.
+    ok: !supabaseConfigured || tenancy.applied,
     timestamp: new Date().toISOString(),
+    tenancy,
     keys,
     display,
     supabaseConfigured,
