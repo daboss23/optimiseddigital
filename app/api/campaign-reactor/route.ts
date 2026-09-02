@@ -593,7 +593,7 @@ function buildTools(
     tools.push({
       name: 'generate_video',
       description:
-        'Generate a high-quality video clip for a visual concept (Video Concept, Founder Concept, Testimonial Concept). Two modes: text-to-video (describe the full scene — e.g. a real builder on-site, a person speaking to camera) needs only a prompt; image-to-video animates a still from generate_image (pass its imageUrl). Choose the model best suited to the shot. The clip renders asynchronously and appears on the concept card when ready.',
+        'Generate a high-quality video clip for a visual concept (Video Concept, Founder Concept, Testimonial Concept). Two modes: text-to-video (describe the full scene — a real person at work in this brand’s own environment, someone speaking to camera) needs only a prompt; image-to-video animates a still from generate_image (pass its imageUrl). Choose the model best suited to the shot. The clip renders asynchronously and appears on the concept card when ready.',
       input_schema: {
         type: 'object',
         properties: {
@@ -725,7 +725,8 @@ function buildTools(
  */
 const SINGLE_FRAME_RULE = `
 - A STILL IS ONE FRAME, NOT A SEQUENCE. For every image deliverable the frames describe ONE photograph: frame 1 is the whole composition (subject, setting, light, framing), and any further frames describe LAYERS of that same single image (where the headline sits, where the CTA sits) — never a second scene, never a before/after, never a story beat. Do not write "Frame 2: the turning point" or "Frame 3: the after" on a still: that renders as a multi-panel collage and the ad is unusable. Save narrative beats for video deliverables.
-- EVERY STILL CARRIES ITS HEADLINE. A photograph with no words is a stock image, not an ad — declare the headline in onImageText on every image concept.`
+- EVERY STILL CARRIES ITS HEADLINE. A photograph with no words is a stock image, not an ad — declare the headline in onImageText on every image concept.
+- LABEL THE SUBJECT FRAME BY WHAT IS IN IT, never by the copy sitting on it. "Hero shot — founder at the packing bench" is a subject; "Headline zone" is not. The platform strips copy-labelled frames out of the scene it sends the image model, so a brief whose frames are all named after copy arrives with a layout and no photograph, and the model invents one that has nothing to do with the business.`
 
 const ON_IMAGE_TEXT_RULE = `
 - ON-IMAGE COPY — the words burned into the creative: declare them in productionBrief.onImageText, never only inside the frame prose. AT MOST TWO entries: the headline and the CTA button label, roughly 95 characters across both. Image models mangle every letter once you ask for more, so a third line costs you the first two. NEVER ask the image for fine print, compliance lines, disclaimers, sub-paragraphs, logos or wordmarks — those are overlaid after the render and the platform strips them from the prompt. Write the frames as pure art direction (subject, setting, light, framing, where the type sits) and let onImageText carry the words.`
@@ -763,7 +764,7 @@ function coordinatorPrompt(
       ? ` The user has selected the "${caps.preferredVideoModel}" model — use it for every generate_video call unless a shot clearly needs a different capability.`
       : ''
   const videoLine = caps.video
-    ? `\n- For video output types (Video Concept, Founder Concept, Testimonial Concept): FIRST write a frame-by-frame production brief, THEN build the generate_video prompt FROM that brief, and attach the productionBrief to the submitted concept. Available models: ${caps.videoModels.join(', ')} — the generate_video tool description says what each one is for. Use text-to-video to direct a full scene (e.g. a real builder on-site, a member speaking to camera — whenever someone SPEAKS, pick a model with native audio or the ad ships silent; pick a cinematic-realism model for action and B-roll). Use image-to-video to animate a still from generate_image. Match conceptType to the concept you submit.${preferredLine}`
+    ? `\n- For video output types (Video Concept, Founder Concept, Testimonial Concept): FIRST write a frame-by-frame production brief, THEN build the generate_video prompt FROM that brief, and attach the productionBrief to the submitted concept. Available models: ${caps.videoModels.join(', ')} — the generate_video tool description says what each one is for. Use text-to-video to direct a full scene set in this business's own world (a real customer or operator at work, someone speaking to camera — whenever someone SPEAKS, pick a model with native audio or the ad ships silent; pick a cinematic-realism model for action and B-roll). Use image-to-video to animate a still from generate_image. Match conceptType to the concept you submit.${preferredLine}`
     : ''
 
   return `You are OPUS — the Master Strategist of ${tenant}'s Creative Intelligence Command Center. You direct an intelligence network and synthesize it into launch-ready creative.

@@ -57,6 +57,34 @@ export interface OnImageText {
   omittedReason?: string
 }
 
+/**
+ * Who the ad is FOR, as the image model needs to hear it.
+ *
+ * The reactor already resolves all of this to write the copy (the ON BRAND
+ * block, `lib/brand-context.ts`), but none of it used to reach the render: the
+ * compiler took a `brandName` no caller ever passed, so every still was
+ * composed from a pattern name, an audience label and a headline. That is not
+ * enough to determine a subject, and an image model handed an under-specified
+ * prompt does not fail — it invents a photograph. A generic premium stock
+ * scene with nothing to do with the business is the shape that invention
+ * takes, and it is indistinguishable from a working render until someone looks
+ * at it.
+ */
+export interface RenderBrand {
+  /** The connected company, e.g. "Optimised Digital". */
+  name?: string
+  /** What business it is in — the single strongest constraint on a subject. */
+  industry?: string
+  /** Who the ad talks to, in plain language. */
+  audience?: string
+  /** How the brand positions itself, when the scan established it. */
+  positioning?: string
+  /** Brand palette hexes, in priority order. */
+  palette?: string[]
+  /** True when a logo is composited after the render (so never draw one). */
+  hasLogo?: boolean
+}
+
 export interface CompiledRenderPrompt {
   /** The prompt to send to the image model. */
   prompt: string
@@ -228,6 +256,71 @@ const SINGLE_FRAME_RULE =
   'Render ONE single photographic frame — a single unified composition that fills the entire canvas edge to edge. This is NOT a storyboard, filmstrip, contact sheet, collage, grid, split-screen, before/after pair, or multi-panel layout. No panels, no strips, no borders, no dividing lines, no letterboxing, no stacked scenes.'
 
 /**
+ * The guard for a prompt that reached the model with no subject in it.
+ *
+ * This is the failure that shipped an ad with a woman surfing on it. A brief
+ * written zone by zone — "Headline zone", "Proof badge", "CTA button zone",
+ * which is exactly the shape `visualDirectionBlock` asks OPUS to write — has
+ * every one of its frames classified as copy, so every one is stripped out of
+ * the scene. What was left was a pattern name, an audience label, a headline,
+ * and the words "true to the scene described above" pointing at nothing. A
+ * diffusion model does not refuse that prompt; it fills the hole with the most
+ * generic premium photograph it knows.
+ *
+ * So the compiler now recovers a subject (see `compileRenderPrompt`), and when
+ * it genuinely cannot, it says so out loud and constrains the invention to the
+ * brand's own world instead of leaving it open.
+ */
+function noSceneRule(brand: RenderBrand | undefined): string {
+  const world = [
+    brand?.industry?.trim() ? `the world of ${brand.industry.trim()}` : '',
+    brand?.audience?.trim() ? `the working life of ${brand.audience.trim()}` : '',
+  ].filter(Boolean)
+
+  // Without a connected brand there is no "business above" to point at, and
+  // pointing at one that is not there is the same mistake in a new place. Say
+  // what IS known — the ad's own pattern, audience and headline sit in the
+  // prompt — and ban the decorative default outright.
+  const lead = world.length
+    ? `SUBJECT — the brief named no scene, so compose one from the business above: photograph something real and specific from ${world.join(
+        ' and ',
+      )} — a genuine person, place, tool, workspace or moment this audience would recognise as their own.`
+    : 'SUBJECT — the brief named no scene. Photograph something real and specific to the audience and message stated above: a genuine person, place, tool, workspace or moment they would recognise as their own.'
+
+  return `${lead} Do NOT fall back on decorative stock imagery: no beaches, no surfing, no sunsets, no mountain tops, no handshakes over a boardroom table, no abstract gradients, no models laughing at salad. An image with no connection to this business is a failed render even when it is beautiful.`
+}
+
+/**
+ * The ON BRAND header — who the ad is for, stated before anything else.
+ *
+ * Returns '' when nothing is known, so a render with no connected site is
+ * byte-for-byte what it was before rather than carrying a block of empty
+ * labels the model would try to interpret.
+ */
+export function renderBrandBlock(brand: RenderBrand | undefined): string {
+  if (!brand) return ''
+  const lines: string[] = []
+  const name = brand.name?.trim()
+  if (name) lines.push(`Business: ${name}`)
+  if (brand.industry?.trim()) lines.push(`Industry: ${brand.industry.trim()}`)
+  if (brand.audience?.trim()) lines.push(`Speaking to: ${brand.audience.trim()}`)
+  if (brand.positioning?.trim()) lines.push(`Positioning: ${brand.positioning.trim()}`)
+  const palette = (brand.palette ?? []).map((c) => c.trim()).filter(Boolean).slice(0, 6)
+  if (palette.length) lines.push(`Brand palette — compose around these hexes: ${palette.join(', ')}`)
+  if (brand.hasLogo) {
+    lines.push(
+      'The logo is composited after the render — never draw a wordmark, logo or brand lettering; leave clean space for it.',
+    )
+  }
+  if (!lines.length) return ''
+
+  return [
+    `THE AD IS FOR${name ? ` ${name.toUpperCase()}` : ' THIS BUSINESS'} — every element in the frame must belong to this business's real world.`,
+    ...lines,
+  ].join('\n')
+}
+
+/**
  * A headline good enough to burn into a still.
  *
  * Rejects anything past the character budget (long copy renders as mush) and
@@ -240,6 +333,30 @@ function usableHeadline(headline: string | undefined): string | undefined {
   if (t.length > MAX_RENDERED_TEXT_CHARS) return undefined
   if (/^(tbd|n\/?a|headline|untitled)$/i.test(t)) return undefined
   return t
+}
+
+/**
+ * Whether a string actually describes something to photograph.
+ *
+ * The concept's own text is a real subject ("Founder at a warehouse packing
+ * bench, late afternoon light"); the boilerplate wrapped around it is not
+ * ("Render as a premium Meta ad creative — photographic, high contrast"). A
+ * model handed only the boilerplate has nothing to compose from, so the two
+ * are told apart here rather than assumed.
+ */
+const RENDER_BOILERPLATE =
+  /render(ed)? as[^.]*\.?|premium[,\s]|meta ad creative|photographic|high[- ]contrast|leave (room|space)[^.]*\.?|room for (a )?text overlay|true to the brand[^.]*\.?|clean space[^.]*\.?/gi
+
+function usableScene(text: string | undefined): string | undefined {
+  const raw = (text ?? '').trim()
+  if (!raw) return undefined
+  const stripped = sceneOnly(raw)
+    .replace(RENDER_BOILERPLATE, ' ')
+    .replace(/[\s.,;—–-]{2,}/g, ' ')
+    .trim()
+  // Under ~30 characters there is no subject left — a couple of stray adjectives
+  // is not a scene, and treating it as one is what produced the empty prompt.
+  return stripped.length >= 30 ? raw : undefined
 }
 
 /** The ON-IMAGE TEXT section for a set of blocks the model must set exactly. */
@@ -278,15 +395,18 @@ export function enforceSingleFrame(prompt: string): string {
  * @param fallback prompt to use when there is no brief (raw concept text)
  * @param opts     `motion` keeps the full frame sequence (video); `headline` is
  *                 the concept's Meta headline, burned into a still when the
- *                 brief forgot to declare any on-image copy
+ *                 brief forgot to declare any on-image copy; `brand` is the
+ *                 connected business, which every render needs and none of
+ *                 them used to get
  */
 export function compileRenderPrompt(
   brief: ProductionBrief | undefined,
   fallback: string,
-  opts: { motion?: boolean; headline?: string; brandName?: string } = {},
+  opts: { motion?: boolean; headline?: string; brand?: RenderBrand } = {},
 ): CompiledRenderPrompt {
   const motion = opts.motion === true
   const headlineFallback = motion ? undefined : usableHeadline(opts.headline)
+  const brand = renderBrandBlock(opts.brand)
 
   if (!brief?.frames?.length) {
     // Even with no brief a still is an AD: if the concept shipped a Meta
@@ -294,8 +414,17 @@ export function compileRenderPrompt(
     const rescued = headlineFallback
       ? [{ role: 'Headline', text: headlineFallback, placement: 'upper third, over high-contrast negative space' }]
       : []
+    // The fallback IS the subject here — it is the concept's own description.
+    // It only needs the no-scene guard when it is too thin to be one.
+    const subject = usableScene(fallback)
     return {
-      prompt: [fallback, motion ? '' : SINGLE_FRAME_RULE, rescued.length ? textBlockFor(rescued) : NO_TEXT_AT_ALL_RULE]
+      prompt: [
+        brand,
+        fallback,
+        subject ? '' : noSceneRule(opts.brand),
+        motion ? '' : SINGLE_FRAME_RULE,
+        rescued.length ? textBlockFor(rescued) : NO_TEXT_AT_ALL_RULE,
+      ]
         .filter(Boolean)
         .join('\n\n'),
       rendered: rescued,
@@ -320,15 +449,48 @@ export function compileRenderPrompt(
     })
     .filter(Boolean) as { label: string; scene: string }[]
 
+  /* A brief can classify EVERY one of its frames as copy — "Headline zone",
+     "Proof badge", "CTA button zone" is idiomatic art direction and it is the
+     exact shape `visualDirectionBlock` asks OPUS to write. That left `allScenes`
+     empty and the render with no subject at all, which is how an ad for a
+     digital agency came back as a woman surfing. The subject is recovered here
+     rather than left to the model:
+       1. the concept's own description (`fallback`), which is a real subject;
+       2. failing that, the art direction from the copy frames, which at least
+          describes the field the type sits on;
+     and if neither yields anything, `noSceneRule` below names the business's
+     world and forbids decorative stock imagery outright. */
+  const recovered: string[] = []
+  let recoveredLayout = ''
+  if (!allScenes.length) {
+    const fromConcept = usableScene(fallback)
+    if (fromConcept) {
+      // The concept's own description names a subject. That is a scene.
+      recovered.push(fromConcept)
+    } else {
+      // The copy frames' art direction is NOT a subject — it describes how the
+      // type sits, not what is photographed. It is still worth sending, but as
+      // layout, and it never satisfies the subject requirement: passing it off
+      // as a scene is the same hole in a politer shape.
+      recoveredLayout = (brief.frames ?? [])
+        .map((f) => sceneOnly(f.description ?? ''))
+        .filter(Boolean)
+        .join(' ')
+        .trim()
+    }
+  }
+
   /* A still gets ONE beat. Handing a still model five numbered frames reads as
      a shot list and renders as five stacked panels — an ad that is a filmstrip
      is not an ad. The hero frame is the first scene beat: the brief opens on
      the image the ad is built around. The remaining beats belong to the video
      cut of the same concept. Frame labels are dropped too — "Frame 1:" is
      itself an instruction to number the output. */
-  const sceneFrames = motion
-    ? allScenes.map(({ label, scene }) => `${label}: ${scene}`)
-    : allScenes.slice(0, 1).map(({ scene }) => `SCENE: ${scene}`)
+  const sceneFrames = allScenes.length
+    ? motion
+      ? allScenes.map(({ label, scene }) => `${label}: ${scene}`)
+      : allScenes.slice(0, 1).map(({ scene }) => `SCENE: ${scene}`)
+    : recovered.map((scene) => `SCENE: ${scene}`)
 
   /* -- 2. Copy: prioritised, budgeted, and everything else set aside. ------- */
   const collected = collectText(brief)
@@ -380,14 +542,13 @@ export function compileRenderPrompt(
   }
 
   /* -- 3. Assemble. -------------------------------------------------------- */
-  // The brand is named only when the caller knows it. Hard-coding one company
-  // here put that company's name into every render prompt on every deployment —
-  // the model would compose for the wrong business before reading a word of the
-  // brief. The connected brand's real identity arrives via the ON BRAND block.
-  const brandName = opts.brandName?.trim()
-  const header = `${brief.creativeType} ad creative${
-    brandName ? ` for ${brandName}` : ''
-  }. Pattern: ${brief.pattern}. Audience: ${brief.audience}. Awareness: ${brief.awareness}.`
+  // The brand is never hard-coded here — that put one company's name into every
+  // render prompt on every deployment, and the model composed for the wrong
+  // business before reading a word of the brief. It arrives from the caller,
+  // resolved from the connected website, and it leads the prompt: an image
+  // model weights the opening of a prompt most heavily, and WHO the ad is for
+  // is the single strongest constraint on what belongs in the frame.
+  const header = `${brief.creativeType} ad creative. Pattern: ${brief.pattern}. Audience: ${brief.audience}. Awareness: ${brief.awareness}.`
 
   const textBlock = rendered.length ? textBlockFor(rendered) : NO_TEXT_AT_ALL_RULE
 
@@ -395,11 +556,29 @@ export function compileRenderPrompt(
   // which already describe the setting. Naming a fixed context here ("on-site
   // builder") dragged every render toward a construction site regardless of
   // what business the ad was for.
-  const look = rendered.length
-    ? 'Premium, photographic, true to the scene described above, high contrast behind every piece of type so it stays readable.'
-    : 'Premium, photographic, true to the scene described above, high contrast, clean space reserved for the text overlay.'
+  //
+  // "True to the scene described above" is only said when there IS a scene
+  // above. Pointing the model at a scene that is not there is what let it
+  // supply one of its own.
+  const hasScene = sceneFrames.length > 0
+  const look = hasScene
+    ? rendered.length
+      ? 'Premium, photographic, true to the scene described above, high contrast behind every piece of type so it stays readable.'
+      : 'Premium, photographic, true to the scene described above, high contrast, clean space reserved for the text overlay.'
+    : rendered.length
+      ? 'Premium, photographic, high contrast behind every piece of type so it stays readable.'
+      : 'Premium, photographic, high contrast, clean space reserved for the text overlay.'
 
-  const prompt = [header, sceneFrames.join('\n'), motion ? '' : SINGLE_FRAME_RULE, textBlock, look]
+  const prompt = [
+    brand,
+    header,
+    sceneFrames.join('\n'),
+    hasScene ? '' : noSceneRule(opts.brand),
+    recoveredLayout ? `LAYOUT: ${recoveredLayout}` : '',
+    motion ? '' : SINGLE_FRAME_RULE,
+    textBlock,
+    look,
+  ]
     .filter(Boolean)
     .join('\n\n')
 
@@ -425,6 +604,10 @@ export function briefToPrompt(brief: ProductionBrief | undefined, fallback: stri
  * A video model is being directed through beats over time, so the shot list is
  * exactly right there; it is only a STILL that has to collapse to one frame.
  */
-export function briefToVideoPrompt(brief: ProductionBrief | undefined, fallback: string): string {
-  return compileRenderPrompt(brief, fallback, { motion: true }).prompt
+export function briefToVideoPrompt(
+  brief: ProductionBrief | undefined,
+  fallback: string,
+  brand?: RenderBrand,
+): string {
+  return compileRenderPrompt(brief, fallback, { motion: true, brand }).prompt
 }

@@ -43,8 +43,14 @@ const KIND_INSTRUCTIONS: Record<string, string> = {
     'Write the ad’s primary-text body: the argument. 2–4 short paragraphs — mechanism, stakes, and one concrete proof point. Operator-to-operator voice, no fluff.',
   proof:
     'Write ONE proof block for the ad: a named, specific piece of evidence — a member result with concrete figures, a documented win, or a verifiable stat. One or two sentences. The result must be attributed to a named individual as THEIR result, never implied as typical.',
+  // Deliberately industry-neutral. "On-site builder context" was hard-coded
+  // here, so a node regenerated for a software company, a clinic or an agency
+  // came back directing a construction site. The business the ad is for is
+  // already named in the system prompt above — the direction takes it from
+  // there. The FIRST beat is the subject on purpose: a visual direction that
+  // only names copy zones leaves the image model with nothing to photograph.
   visual:
-    'Write a frame-by-frame visual direction for one ad creative (3–5 numbered beats, one line each). Premium, photographic, on-site builder context.',
+    'Write a frame-by-frame visual direction for one ad creative (3–5 numbered beats, one line each). Beat 1 is the SUBJECT — who or what is in shot, where, in what light, framed how — drawn from this business\'s own world; later beats place the copy on it. Premium and photographic, never decorative stock imagery.',
   scene:
     'Rewrite ONE scene of a multi-scene montage ad: a single vivid beat — what the camera sees plus a one-line on-screen caption or VO. Two sentences maximum.',
   cta: 'Write ONE Meta ad headline (max 40 characters) that converts the argument into the ask. Direct, specific, zero hype.',

@@ -77,6 +77,8 @@ import {
   type CanvasNodeKind,
 } from '@/lib/creative-canvas/graph'
 import { useBrandIdentity } from '@/components/reactor/BrandMark'
+import { useRenderBrand } from '@/components/reactor/useRenderBrand'
+import { renderBrandBlock } from '@/lib/render-prompt'
 
 /* -------------------------------------------------------------------------- */
 /*  Props + shared context                                                    */
@@ -518,6 +520,7 @@ interface CanvasInnerProps {
 
 function CanvasInner({ mode, concepts, active, strategy, imageModel, videoModel, onSendToStudio, onExit }: CanvasInnerProps) {
   const identity = useBrandIdentity()
+  const renderBrand = useRenderBrand()
   const { imageFor, videoFor, creativeStateFor } = useReactorRun()
 
   const [nodes, setNodes, onNodesChange] = useNodesState<CanvasRFNode>([])
@@ -921,12 +924,20 @@ function CanvasInner({ mode, concepts, active, strategy, imageModel, videoModel,
       manualMediaRef.current.add(id)
       setMedia((m) => ({ ...m, [id]: { status: 'rendering', source: 'canvas' } }))
       try {
-        // Industry-neutral on purpose: naming a company and an "on-site
+        // Industry-neutral on purpose: hard-coding a company and an "on-site
         // builder context" here composed every canvas render for one business,
-        // whatever the ad was actually for. The brand arrives via the node's
-        // own prompt and the ON BRAND block.
-        const brand = identity.branded ? ` for ${identity.name}` : ''
-        const prompt = `${node.data.prompt ?? node.data.text}\n\nRender as a premium Meta ad creative${brand} — photographic, true to the scene described, high contrast, room for text overlay.${strategy.angle ? ` Campaign angle: ${strategy.angle}.` : ''}`
+        // whatever the ad was actually for. The connected brand arrives as the
+        // SAME block the reactor's compiler emits — a bare name was not enough
+        // to tell a model what to photograph, which is how a node render came
+        // back as decorative stock imagery.
+        const prompt = [
+          renderBrandBlock(renderBrand),
+          `${node.data.prompt ?? node.data.text}\n\nRender as a premium Meta ad creative — photographic, true to the scene described, high contrast, room for text overlay.${
+            strategy.angle ? ` Campaign angle: ${strategy.angle}.` : ''
+          }`,
+        ]
+          .filter(Boolean)
+          .join('\n\n')
         const res = await fetch('/api/generate-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -947,7 +958,7 @@ function CanvasInner({ mode, concepts, active, strategy, imageModel, videoModel,
         setMedia((m) => ({ ...m, [id]: { status: 'error', error: 'Render failed' } }))
       }
     },
-    [nodes, aspectRatio, imageModel, strategy.angle, identity.branded, identity.name],
+    [nodes, aspectRatio, imageModel, strategy.angle, renderBrand],
   )
 
   const pollVideo = useCallback(async (id: string, requestId: string, model?: string, responseUrl?: string) => {
@@ -979,9 +990,18 @@ function CanvasInner({ mode, concepts, active, strategy, imageModel, videoModel,
       manualMediaRef.current.add(id)
       setMedia((m) => ({ ...m, [id]: { ...m[id], status: 'animating', source: 'canvas' } }))
       try {
+        // Animating an existing still needs motion direction only — the still
+        // already carries the brand. Generating a scene from nothing needs the
+        // same brand block a still render gets, or the video model invents a
+        // world of its own exactly as the image model did.
         const body = still
           ? { imageUrl: still, mode: 'image-to-video', model: videoModel, aspectRatio, prompt: node.data.text }
-          : { prompt: node.data.text, mode: 'text-to-video', model: videoModel, aspectRatio }
+          : {
+              prompt: [renderBrandBlock(renderBrand), node.data.text].filter(Boolean).join('\n\n'),
+              mode: 'text-to-video',
+              model: videoModel,
+              aspectRatio,
+            }
         const res = await fetch('/api/generate-video', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1003,7 +1023,7 @@ function CanvasInner({ mode, concepts, active, strategy, imageModel, videoModel,
         setMedia((m) => ({ ...m, [id]: { ...m[id], status: 'error', error: 'Animation failed' } }))
       }
     },
-    [nodes, media, videoModel, aspectRatio, pollVideo],
+    [nodes, media, videoModel, aspectRatio, pollVideo, renderBrand],
   )
 
   /* ---------------------------- Send to Studio ------------------------------ */

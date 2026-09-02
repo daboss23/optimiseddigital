@@ -19,7 +19,8 @@ import {
   removeFromLedger,
   type LedgerEntry,
 } from '@/lib/creative-ledger'
-import { briefToVideoPrompt, compileRenderPrompt } from '@/lib/render-prompt'
+import { briefToVideoPrompt, compileRenderPrompt, type RenderBrand } from '@/lib/render-prompt'
+import { useRenderBrand } from '@/components/reactor/useRenderBrand'
 import type { MetaAdPackage } from '@/lib/meta-ads'
 import { VARIATION_METHOD_LABEL, type VariationMethod } from '@/lib/variations'
 import type { CreativeTaxonomy } from '@/lib/taxonomy'
@@ -183,6 +184,21 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
   const [ledger, setLedger] = useState<LedgerEntry[]>([])
   // The brief the current run came from, stamped onto everything it produces.
   const runMetaRef = useRef<{ campaign?: string; angle?: string }>({})
+
+  /**
+   * Who the ads are FOR — read once from the connected website.
+   *
+   * Every render path in this provider compiles its prompt in the browser, so
+   * without this the image model was never told what business it was working
+   * for: it got a pattern name, an audience label and a headline, and filled
+   * the rest in itself. Mirrored into a ref because the render callbacks must
+   * see the current value WITHOUT taking it as a dependency — re-creating
+   * `generateCreative` when the brand lands would re-fire the Workbench's
+   * auto-render effect across concepts it had already rendered.
+   */
+  const renderBrand = useRenderBrand()
+  const brandRef = useRef<RenderBrand | undefined>(undefined)
+  brandRef.current = renderBrand
 
   // A single SSE chunk routinely carries several events (a delegate plus its
   // retrievals, a burst of concepts). Appending one line at a time meant one
@@ -405,7 +421,9 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            prompt: c.productionBrief ? briefToVideoPrompt(c.productionBrief, c.text) : c.text,
+            prompt: c.productionBrief
+              ? briefToVideoPrompt(c.productionBrief, c.text, brandRef.current)
+              : c.text,
             mode: 'text-to-video',
             model: videoModel,
             aspectRatio: aspectRatio ?? '9:16',
@@ -460,9 +478,14 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
             prompt: compileRenderPrompt(
               c.productionBrief,
               `${c.text}\n\nRender as a premium Meta ad creative — photographic, high contrast, true to the brand's own context, leave room for a text overlay.`,
-              // Floor, not an override: used only when the brief declared no
-              // on-image copy. A wordless still is a stock photo, not an ad.
-              { headline: c.adPackage?.headline },
+              {
+                // Floor, not an override: used only when the brief declared no
+                // on-image copy. A wordless still is a stock photo, not an ad.
+                headline: c.adPackage?.headline,
+                // Who the ad is for. Without it the model has no constraint on
+                // WHAT to photograph and invents a subject of its own.
+                brand: brandRef.current,
+              },
             ).prompt,
             aspectRatio: opts.aspectRatio ?? '1:1',
             model: opts.imageModel,

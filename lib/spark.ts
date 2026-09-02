@@ -154,12 +154,12 @@ function heuristicDNA(text: string): CreativeDNA {
               : 'Authority Builder'
   return {
     hook: firstLine,
-    opening: 'Pattern interrupt → relatable builder scene.',
+    opening: 'Pattern interrupt → a scene the audience recognises as their own.',
     storyStructure: 'Problem → turning point → transformation → proof.',
     ctaStructure: 'Soft qualifying CTA to the next step.',
     editingStyle: 'Fast-cut, captioned, mobile-first.',
     offerPresentation: 'Outcome-led, proof-backed.',
-    visualStyle: 'On-site, high-contrast, authentic.',
+    visualStyle: 'High-contrast, authentic, shot in the business\'s own environment.',
     patternType,
     creativeCategory: patternType,
     summary: firstLine,
@@ -211,7 +211,7 @@ function heuristicVisualDNA(measured: MeasuredSwatch[] = []): VisualDNA {
       { hex: '#f59e0b', role: 'Accent / CTA' },
     ],
     typography: 'Condensed bold headline, regular-weight supporting copy.',
-    imagery: 'Authentic on-site photography rather than stock.',
+    imagery: 'Authentic photography from the brand\'s own environment rather than stock.',
     focalFlow: 'Headline → subject → CTA.',
     textDensity: 'Roughly one third text, two thirds image.',
     contrastDevice: 'Bright accent against a dark, low-noise field.',

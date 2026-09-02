@@ -1,10 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { NextRequest, NextResponse } from 'next/server'
-import { getBrandMemory } from '@/lib/brand-memory'
+import { resolveBrandMemory } from '@/lib/brand-memory'
 import { getSkills } from '@/lib/skills'
 import { parseModelJson } from '@/lib/parse'
-import { getBuilder } from '@/lib/supabase'
-import { buildBrandContext } from '@/lib/brand-context'
 import { buildFrameworksContext } from '@/lib/frameworks'
 import type { CopyOutput } from '@/types'
 import { INTELLIGENCE_MODEL } from '@/lib/models'
@@ -24,21 +22,10 @@ export async function POST(request: NextRequest) {
 
     const { brief, builderId } = await request.json()
 
-    // Use the selected builder's profile, or fall back to the static brand file.
-    let brandMemory = ''
-    let brandName = 'Summit Build Co'
-    if (builderId) {
-      try {
-        const builder = await getBuilder(builderId)
-        brandMemory = buildBrandContext(builder)
-        brandName = builder.name
-      } catch (e) {
-        console.error('Builder load failed, using static brand memory:', e)
-        brandMemory = getBrandMemory()
-      }
-    } else {
-      brandMemory = getBrandMemory()
-    }
+    // The selected builder, else the CONNECTED WEBSITE, else the static file.
+    // Reaching straight for the file wrote every tenant's copy against one
+    // specific builder's brand memory — see `resolveBrandMemory`.
+    const { memory: brandMemory, brandName } = await resolveBrandMemory(builderId)
 
     const skills = getSkills(['meta-frameworks', 'hooks-library'])
     const dbFrameworks = await buildFrameworksContext(builderId ?? null)

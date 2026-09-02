@@ -378,9 +378,20 @@ export function isolationBlock(input: {
  * a different design, provided it says why in the concept's basis. Proven design
  * is the default, not a cage.
  */
-export function visualDirectionBlock(visual: VisualDNA): string {
+export function visualDirectionBlock(
+  visual: VisualDNA,
+  opts: { structureOnly?: boolean } = {},
+): string {
+  // A reference the strategist ATTACHED is a decision: they saw that ad and
+  // asked for it, subject and all. A reference the platform PULLED from the
+  // Vault is a suggestion about structure — and its subject belongs to whatever
+  // business it originally advertised. Handing that subject over as "proven
+  // direction" is how a campaign inherits someone else's photograph.
+  const structureOnly = opts.structureOnly === true
   const lines = [
-    'VISUAL REFERENCE — SPARK analyzed the actual winning ad. This is the DESIGN that earned the scroll-stop. Treat it as proven direction for the creative you produce.',
+    structureOnly
+      ? 'VISUAL REFERENCE (STRUCTURE ONLY) — SPARK analyzed this winning ad. Its LAYOUT is proven direction: the zones, the palette roles, the placement hierarchy and the contrast device. Its SUBJECT is not — that ad was for a different business, and what it photographed has no bearing on what this ad should photograph.'
+      : 'VISUAL REFERENCE — SPARK analyzed the actual winning ad. This is the DESIGN that earned the scroll-stop. Treat it as proven direction for the creative you produce.',
     `- Format: ${visual.format} · native ratio ${visual.aspectRatio}`,
     `- Layout archetype: ${visual.layout}`,
   ]
@@ -406,7 +417,12 @@ export function visualDirectionBlock(visual: VisualDNA): string {
 
   lines.push(
     `- Typography: ${visual.typography}`,
-    `- Imagery: ${visual.imagery}`,
+    // The one field that describes WHAT was photographed rather than how the
+    // frame was built. It transfers on an attached reference and never on a
+    // pulled one.
+    structureOnly
+      ? '- Imagery: DO NOT carry this reference\'s subject over. Photograph this brand\'s own world — its people, its work, its customers — and place it in the layout above.'
+      : `- Imagery: ${visual.imagery}`,
     `- Eye flow: ${visual.focalFlow}`,
     `- Text density: ${visual.textDensity}`,
     `- Contrast device (what makes it pop in-feed): ${visual.contrastDevice}`,
@@ -421,6 +437,7 @@ export function visualDirectionBlock(visual: VisualDNA): string {
   lines.push(
     'HOW TO USE THIS:',
     '1. Carry the layout, palette roles, element placement and contrast device into the productionBrief for every visual concept — name the zone each piece of copy occupies and what fills the rest of the frame. The brief is what the image model renders, so design detail left out of the brief does not reach the ad.',
+    '1a. THE FIRST FRAME OF EVERY VISUAL BRIEF IS THE SUBJECT — the photograph itself: who or what is in shot, where, in what light, framed how. Describing only the zones ("Headline zone", "CTA zone") leaves the image model with a layout and no picture to put in it, and it will invent one that has nothing to do with this business. Write the subject frame first, then the zones.',
     '2. Write the adPackage copy to FIT the placements above — headline length must survive the headline zone, the hook must land where the reference puts it.',
     '3. Never reproduce the reference\'s words, brand, or logo. Reproduce its STRUCTURE.',
     '4. You are the strategist: if the campaign angle, awareness stage or placement means a different design will perform better, use the better design and state the reason in that concept\'s basis. Proven design is the default, not a constraint.',
@@ -451,7 +468,7 @@ export function cloneBlock(reference: {
       }. This is the strongest banked ad design for this brief. Build the visual concepts on it unless the angle genuinely calls for a different design, in which case say why in that concept's basis.`,
     ]
     return reference.visual
-      ? [...header, '', visualDirectionBlock(reference.visual)].join('\n')
+      ? [...header, '', visualDirectionBlock(reference.visual, { structureOnly: true })].join('\n')
       : header.join('\n')
   }
 

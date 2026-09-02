@@ -15,12 +15,49 @@
  *   npx tsx scripts/reactor-selftest.ts
  *   BASE_URL=https://your-app.vercel.app npx tsx scripts/reactor-selftest.ts
  *
+ * The platform sits behind a login gate, so the suite signs in first and
+ * carries the session cookie on every call. Without that it 401s on its first
+ * request and reports "is the app running?" — a test that cannot reach the
+ * thing it tests guards nothing. Override the pair with PLATFORM_LOGIN_NAME /
+ * PLATFORM_LOGIN_PASSWORD when the deployment has set its own.
+ *
  * Exits non-zero on the first failed assertion set, so it works in CI.
  */
 
 import { INTELLIGENCE, INTELLIGENCE_IDS, type IntelligenceId } from '@/lib/agents'
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:3000'
+
+/** The signed session cookie, held for the life of the run. */
+let sessionCookie = ''
+
+/**
+ * Sign in and keep the cookie. Falls through silently when the deployment has
+ * no gate (an older build, or one with auth disabled) — the suite then runs
+ * exactly as it did before.
+ */
+async function signIn(): Promise<void> {
+  const body = {
+    name: process.env.PLATFORM_LOGIN_NAME ?? 'Bamik',
+    password: process.env.PLATFORM_LOGIN_PASSWORD ?? '1234',
+  }
+  try {
+    const res = await fetch(`${BASE_URL}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const raw = res.headers.get('set-cookie')
+    if (res.ok && raw) sessionCookie = raw.split(';')[0]
+  } catch {
+    /* no gate, or unreachable — the first real request reports it properly */
+  }
+}
+
+/** Request headers, with the session attached once it exists. */
+function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  return sessionCookie ? { ...extra, cookie: sessionCookie } : extra
+}
 
 /** Layers the platform guarantees on every build (see MANDATORY_LAYERS). */
 const MANDATORY: IntelligenceId[] = ['atlas', 'nova', 'spark', 'echo', 'oracle']
@@ -88,11 +125,15 @@ async function fireReactor(payload: Record<string, unknown>): Promise<RunResult>
   const started = Date.now()
   const res = await fetch(`${BASE_URL}/api/campaign-reactor`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(payload),
   })
   if (!res.ok || !res.body) {
-    throw new Error(`Reactor responded ${res.status} ${res.statusText}`)
+    throw new Error(
+      res.status === 401
+        ? 'Reactor responded 401 Unauthorized — the login pair did not open the gate. Set PLATFORM_LOGIN_NAME / PLATFORM_LOGIN_PASSWORD to this deployment\'s own.'
+        : `Reactor responded ${res.status} ${res.statusText}`,
+    )
   }
 
   const agents = INTELLIGENCE_IDS.reduce(
@@ -183,6 +224,7 @@ async function fireReactor(payload: Record<string, unknown>): Promise<RunResult>
 
 async function main() {
   console.log(bold(`\nCampaign Reactor self-test → ${BASE_URL}\n`))
+  await signIn()
 
   /* -- 1. Every mandatory layer activates and reports evidence -------------- */
   console.log(bold('1. Intelligence network activation'))

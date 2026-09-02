@@ -1,5 +1,7 @@
 import type { Builder } from '@/types'
 import type { WebsiteSummary } from '@/lib/website-intelligence'
+import type { RenderBrand } from '@/lib/render-prompt'
+import type { TenantProfile } from '@/lib/tenant'
 
 const UNKNOWN = 'Not confidently identified'
 
@@ -102,4 +104,49 @@ export function buildBrandContext(b: Builder): string {
   ]
 
   return sections.filter(Boolean).join('\n\n')
+}
+
+/**
+ * The same live brand intelligence, cut down to what an IMAGE model needs.
+ *
+ * `websiteBrandBrief` above is written for the orchestrator: voice, promises,
+ * proof, audience language — paragraphs a writer uses. An image model needs the
+ * opposite: who the business is, what world its pictures come from, which
+ * colours are its own, and whether to leave the logo alone. Sending it the copy
+ * brief would bury those four facts in text it cannot act on.
+ *
+ * This existed nowhere, which is why every still was composed from a pattern
+ * name and an audience label — enough to write a headline, nowhere near enough
+ * to choose a subject. The tenant profile fills whatever the site scan could
+ * not establish, so a partially-read site still renders on-brand.
+ */
+export function renderBrandFrom(
+  site: WebsiteSummary | null,
+  tenant?: TenantProfile | null,
+): RenderBrand {
+  const b = site?.profiles.brand
+  const a = site?.profiles.audience
+
+  const name = field(b?.companyName) || tenant?.companyName?.trim() || site?.domain || ''
+  const industry = field(b?.industry) || tenant?.industry?.trim() || ''
+  // The audience the PICTURES are for. Their own words describe the world they
+  // work in far better than a segment label does, so the primary audience leads
+  // and the language they use follows it.
+  const audience =
+    list(a?.primaryAudiences, 2) || tenant?.audienceDescriptor?.trim() || ''
+  const positioning = field(b?.positioning) || tenant?.positioning?.trim() || ''
+
+  return {
+    name: name || undefined,
+    industry: industry || undefined,
+    audience: audience || undefined,
+    positioning: positioning || undefined,
+    palette: (site?.brandAssets?.colors ?? []).map((c) => c.hex).filter(Boolean).slice(0, 6),
+    hasLogo: Boolean(site?.brandAssets?.logoUrl),
+  }
+}
+
+/** True when a resolved brand carries enough to steer a render at all. */
+export function renderBrandIsUsable(brand: RenderBrand): boolean {
+  return Boolean(brand.name || brand.industry || brand.audience || brand.palette?.length)
 }
