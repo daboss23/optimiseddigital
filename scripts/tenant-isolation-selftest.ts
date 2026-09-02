@@ -188,6 +188,45 @@ async function main() {
     )
   }
 
+  console.log('\nEvery table the code queries actually exists')
+
+  /* `schema.tenancy.sql` renames `builders` to `accounts`. Three queries in
+     lib/supabase.ts still named the old table after that migration was written,
+     so `getBuilder` — and the brand memory that depends on it — would have
+     failed the moment the migration ran. A rename is invisible to the compiler
+     and invisible to every test that does not touch a database, which is
+     exactly why it needs asserting here. */
+  // `exec` loops rather than `matchAll`: the project targets ES5 lib semantics
+  // for iterables, and iterating a matchAll result needs downlevelIteration.
+  const eachMatch = (re: RegExp, text: string, fn: (m: RegExpExecArray) => void) => {
+    const r = new RegExp(re.source, re.flags)
+    let m: RegExpExecArray | null
+    while ((m = r.exec(text)) !== null) fn(m)
+  }
+
+  const declared = new Set<string>()
+  for (const f of readdirSync(join(root, 'supabase')).filter((f) => f.endsWith('.sql'))) {
+    const src = sql(join(root, 'supabase', f))
+    eachMatch(/create table (?:if not exists )?([a-z_]+)/gi, src, (m) => declared.add(m[1]))
+    eachMatch(/alter table ([a-z_]+) rename to ([a-z_]+)/gi, src, (m) => {
+      declared.add(m[2])
+      declared.delete(m[1])
+    })
+  }
+
+  const queried = new Map<string, string[]>()
+  for (const f of [...libFiles, ...apiFiles]) {
+    eachMatch(/\.from\('([a-z_]+)'\)/g, code(f), (m) => {
+      queried.set(m[1], [...(queried.get(m[1]) ?? []), f.replace(`${root}/`, '')])
+    })
+  }
+  const missing = Array.from(queried.keys()).filter((t) => !declared.has(t))
+  check(
+    'no query names a table the schema does not define',
+    missing.length === 0,
+    missing.map((t) => `${t} (in ${queried.get(t)?.join(', ')})`).join(' · '),
+  )
+
   console.log('\nRow-level security is the backstop, not the plan')
 
   /* A policy is not automatically protection. The only one in the schema is

@@ -8,9 +8,26 @@
 -- was scoped to whatever the caller typed.
 --
 -- Safe to run on a fresh project and on an existing single-tenant one. Every
--- statement is idempotent, and the one destructive act (re-keying
--- platform_settings) assigns existing rows to the first account rather than
--- dropping them.
+-- statement is idempotent and NOTHING HERE DELETES A ROW.
+--
+-- Supabase will still warn that the query contains destructive operations, and
+-- it is right to: the migration renames a table, drops and recreates a primary
+-- key constraint, drops one policy, replaces one function, and enables RLS.
+-- Those are schema changes, not data loss. Specifically:
+--
+--   · `builders` is RENAMED to `accounts` — rows, indexes and every foreign key
+--     survive a rename; nothing is copied and nothing is dropped.
+--   · platform_settings' primary key changes from (key) to (account_id, key).
+--     The constraint is replaced; the rows are assigned, not deleted.
+--   · The `Allow anon read access` policy on creative_outputs is dropped. It
+--     granted the public browser key a read over every generated ad.
+--   · RLS is enabled on the tenant tables. The application reads and writes
+--     exclusively with the SERVICE ROLE key, which bypasses RLS by design — the
+--     anon client is constructed in lib/supabase.ts and never used for a single
+--     query — so this closes the public key without touching the app.
+--
+-- Take a snapshot first regardless. A rename is easy to reverse by hand; being
+-- able to restore is easier still.
 --
 -- Run AFTER schema.sql / schema.platform.sql / schema.reactor.sql /
 -- schema.settings.sql, in the Supabase SQL editor.
@@ -151,17 +168,27 @@ $$;
 
 alter table platform_settings add column if not exists account_id uuid references accounts(id) on delete cascade;
 
--- Existing rows predate tenancy. Assign them to the first account rather than
--- dropping them: on a single-tenant deployment being upgraded, they ARE that
--- account's settings, and deleting a logo the operator uploaded is rude.
-update platform_settings
-   set account_id = (select id from accounts order by created_at limit 1)
- where account_id is null
-   and exists (select 1 from accounts);
+-- Existing rows predate tenancy and belong to whoever has been using this
+-- deployment. They are ASSIGNED, never dropped.
+--
+-- An earlier draft deleted the rows that could not be assigned — the case where
+-- no account exists yet — which on a working single-tenant install would have
+-- thrown away the uploaded logo, the curated research sources and the stored
+-- Meta connection. That is a token with write access to an ad account, and
+-- re-connecting it is not a two-minute job. So the operator account is created
+-- FIRST when none exists, and every orphan row is assigned to it. Nothing in
+-- this migration deletes a row.
+insert into accounts (name, slug)
+select 'My brand', 'operator'
+where not exists (select 1 from accounts)
+  and exists (select 1 from platform_settings where account_id is null);
 
--- Rows with no account at all (no accounts exist yet) cannot be keyed. They are
--- unreachable under the new key anyway.
-delete from platform_settings where account_id is null;
+update platform_settings
+   set account_id = coalesce(
+         (select id from accounts where slug = 'operator' limit 1),
+         (select id from accounts order by created_at limit 1)
+       )
+ where account_id is null;
 
 alter table platform_settings alter column account_id set not null;
 
