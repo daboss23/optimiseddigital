@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getConnectedWebsite, disconnectWebsite } from '@/lib/website-intelligence'
-import { currentAccount, requireAccount } from '@/lib/account'
+import { currentAccount } from '@/lib/account'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -29,7 +29,7 @@ export async function DELETE(request: NextRequest) {
     if (!domain) {
       return NextResponse.json({ success: false, error: 'domain is required' }, { status: 400 })
     }
-    await disconnectWebsite(domain, await requireAccount())
+    await disconnectWebsite(domain, await currentAccount())
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error('Website disconnect error:', err)
