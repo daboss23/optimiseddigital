@@ -372,6 +372,27 @@ function textBlockFor(rendered: OnImageText[]): string {
 }
 
 /**
+ * The frames of a brief that actually describe something to PHOTOGRAPH.
+ *
+ * Exported because the submit gate has to agree with the renderer about what a
+ * subject is. The compiler strips copy-role frames out of the scene, so a gate
+ * that merely counted frames would pass a brief made entirely of "Headline
+ * zone" / "CTA zone" — which then reaches the model with a layout and no
+ * picture. One classifier, one answer, both ends of the pipe.
+ */
+export function briefSubjectFrames(brief: ProductionBrief | undefined): string[] {
+  return (brief?.frames ?? [])
+    .filter((f) => classifyFrame(f.label ?? '', f.description ?? '') === 'scene')
+    .map((f) => sceneOnly(f.description ?? ''))
+    .filter((d) => Boolean(usableScene(d)))
+}
+
+/** True when a brief names at least one subject the image model can compose. */
+export function briefHasSubject(brief: ProductionBrief | undefined): boolean {
+  return briefSubjectFrames(brief).length > 0
+}
+
+/**
  * Enforce the single-frame discipline on a prompt the compiler did not write.
  *
  * The orchestrator's `generate_image` tool takes a prompt OPUS composed itself,

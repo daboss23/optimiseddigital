@@ -12,6 +12,7 @@
  */
 
 import {
+  briefHasSubject,
   compileRenderPrompt,
   enforceSingleFrame,
   MAX_RENDERED_TEXT_BLOCKS,
@@ -245,6 +246,55 @@ check(
 check(
   'a brief that DOES describe a scene still says so',
   compileRenderPrompt(brief, 'fallback').prompt.includes('true to the scene described above'),
+)
+
+console.log('\nThe gate and the renderer agree on what a subject is')
+
+/* The submit gate asks `briefHasSubject` whether a brief can be rendered; the
+   compiler decides what actually reaches the model. If those two ever disagree,
+   the gate waves through a brief the renderer then strips to nothing — which is
+   the hole it was added to close, reopened one layer up. Same classifier, so
+   the assertion is that its answer and the compiled output always match. */
+const agrees = (brief: ProductionBrief, fallbackText: string) => {
+  const compiled = compileRenderPrompt(brief, fallbackText).prompt
+  return briefHasSubject(brief) === compiled.includes('SCENE:')
+}
+
+check(
+  'a zone-only brief is rejected by the gate and has no scene in the render',
+  !briefHasSubject(zonesOnly) && agrees(zonesOnly, ''),
+)
+check(
+  'a brief with a hero shot passes the gate and renders its scene',
+  briefHasSubject(brief) && agrees(brief, ''),
+)
+check(
+  'a brief with no frames at all is rejected',
+  !briefHasSubject({ ...zonesOnly, frames: [] }),
+)
+check(
+  'a frame labelled by its copy role never counts as a subject',
+  !briefHasSubject({
+    ...zonesOnly,
+    frames: [
+      {
+        label: 'Headline',
+        description: 'A founder at a warehouse packing bench, late afternoon light, shot on 35mm.',
+      },
+    ],
+  }),
+)
+check(
+  'the same words labelled by what is in shot do count',
+  briefHasSubject({
+    ...zonesOnly,
+    frames: [
+      {
+        label: 'Hero shot',
+        description: 'A founder at a warehouse packing bench, late afternoon light, shot on 35mm.',
+      },
+    ],
+  }),
 )
 
 console.log('\nThe ad knows whose it is')

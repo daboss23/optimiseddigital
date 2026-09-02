@@ -23,7 +23,7 @@ import {
   INTELLIGENCE_MODEL as TIER_INTELLIGENCE_MODEL,
 } from '@/lib/models'
 import { generateImageWith, imageConfigured, listImageModels, type AspectRatio } from '@/lib/image'
-import { enforceSingleFrame } from '@/lib/render-prompt'
+import { briefHasSubject, enforceSingleFrame } from '@/lib/render-prompt'
 import {
   startVideoJob,
   listVideoModels,
@@ -300,6 +300,84 @@ interface Concept {
    * axis also set `isolatedAxis`, the rest are attributable through this alone.
    */
   variationMethod?: VariationMethod
+}
+
+/* --------------------------- Production-brief gate ------------------------ */
+
+/**
+ * Which concepts render a picture, and therefore owe a production brief.
+ *
+ * Deliberately the same rule the Workbench auto-render uses to decide what to
+ * send to the image oven — a concept the client will try to render is a concept
+ * the gate must have checked.
+ */
+function isVisualConcept(type: string): boolean {
+  return /concept|creative/i.test(type) && !/hook|headline|primary text|angle|vsl/i.test(type)
+}
+
+/** A visual concept that renders a still (rather than motion) owes on-image copy. */
+function isStillConcept(type: string): boolean {
+  return isVisualConcept(type) && !/video|testimonial|ugc|montage/i.test(type)
+}
+
+/**
+ * The gate that makes the design brief load-bearing rather than advisory.
+ *
+ * `productionBrief` is optional in the submit schema and the orchestrator is
+ * merely TOLD to attach one. A prompt rule is not a guarantee: a truncated turn
+ * or a rushed fast-path submit ships a visual concept with no brief, and the
+ * renderer then falls back to the concept's own one-line text — which is a
+ * description of a strategy, not a photograph. That is the same hole as a brief
+ * made entirely of copy zones, and it produces the same result: an image model
+ * with nothing to compose from, inventing a subject of its own.
+ *
+ * Three things are checked, in the order they break:
+ *   1. the brief exists at all;
+ *   2. it names a SUBJECT — asked of `briefHasSubject`, the compiler's own
+ *      classifier, so the gate can never pass something the renderer strips;
+ *   3. a still declares its on-image copy, which is what the renderer sets.
+ *
+ * Shares the single bounded revision pass with NEURO and Meta compliance.
+ */
+function briefFeedback(
+  concepts: { type: string; productionBrief?: ProductionBrief }[],
+): { failingIndices: number[]; feedback: string } {
+  const lines: string[] = []
+  const failingIndices: number[] = []
+
+  concepts.forEach((c, i) => {
+    if (!isVisualConcept(c.type)) return
+    const brief = c.productionBrief
+
+    if (!brief?.frames?.length) {
+      failingIndices.push(i)
+      lines.push(
+        `- [${c.type}] has NO productionBrief. The platform renders this concept FROM the brief, so without one the image model receives only your one-line concept text and will invent a photograph that has nothing to do with this business.`,
+      )
+      return
+    }
+    if (!briefHasSubject(brief)) {
+      failingIndices.push(i)
+      lines.push(
+        `- [${c.type}] the brief names only copy zones (${brief.frames
+          .map((f) => f.label)
+          .filter(Boolean)
+          .join(', ')}) and no SUBJECT. Add a first frame describing the photograph itself — who or what is in shot, where, in what light, framed how — labelled by what is IN it ("Hero shot — …"), never by the copy that sits on it.`,
+      )
+      return
+    }
+    if (isStillConcept(c.type) && !brief.onImageText?.some((t) => t?.text?.trim())) {
+      failingIndices.push(i)
+      lines.push(
+        `- [${c.type}] the brief declares no onImageText. A still with no words is a stock photograph, not an ad — declare the headline (and the CTA label if it earns the space).`,
+      )
+    }
+  })
+
+  const feedback = `PRODUCTION BRIEF: ${failingIndices.length} visual concept(s) cannot be rendered as written:\n${lines.join(
+    '\n',
+  )}\n\nFix the briefs (keep the concepts and their ad packages) and call submit_concepts again with ALL concepts, including the ones that already passed.`
+  return { failingIndices, feedback }
 }
 
 /* ------------------------- Test-ID attribution ---------------------------- */
@@ -2329,6 +2407,22 @@ export async function POST(request: NextRequest) {
                 }`,
               })
 
+              // Production-brief gate — the brief IS the creative on every
+              // visual concept, so it is checked in code rather than trusted to
+              // the prompt that asked for it.
+              const briefs = briefFeedback(concepts)
+              const visualCount = concepts.filter((c) => isVisualConcept(c.type)).length
+              if (visualCount > 0) {
+                sse(controller, {
+                  type: 'step',
+                  text: `Validating production briefs · ${visualCount} visual concept(s)${
+                    briefs.failingIndices.length
+                      ? ` · ${briefs.failingIndices.length} missing a subject the image model can compose`
+                      : ' · every brief names its subject'
+                  }`,
+                })
+              }
+
               // NEURO — neural pre-test: estimate the predicted response of each
               // concept before it ships. Grounded in neuromarketing principles
               // (retrieved once, reused across any revision).
@@ -2365,7 +2459,10 @@ export async function POST(request: NextRequest) {
               // Compliance is a hard gate — a non-compliant ad unit cannot
               // ship at any score, so it always earns the turn. NEURO only
               // does when a concept is below the revision floor.
-              const needsRevision = broken.length > 0 || compliance.failingIndices.length > 0
+              const needsRevision =
+                broken.length > 0 ||
+                compliance.failingIndices.length > 0 ||
+                briefs.failingIndices.length > 0
               if (needsRevision && neuroRevisions < revisionBudget) {
                 // Step 5 — hand the weak scores / compliance failures back to
                 // OPUS so it revises (or drops), same as the rubric self-critique.
@@ -2382,19 +2479,26 @@ export async function POST(request: NextRequest) {
                 pendingConcepts = concepts
                 sse(controller, {
                   type: 'step',
-                  text: `${
+                  // Three gates share one revision pass, so the feed names
+                  // whichever actually fired rather than implying NEURO.
+                  text: `${[
                     broken.length
                       ? `NEURO flagged ${broken.length} concept(s) for weak scroll-stop / hook`
-                      : ''
-                  }${broken.length && compliance.failingIndices.length ? ' · ' : ''}${
+                      : '',
                     compliance.failingIndices.length
                       ? `${compliance.failingIndices.length} ad unit(s) non-compliant`
-                      : ''
-                  } — OPUS revising…`,
+                      : '',
+                    briefs.failingIndices.length
+                      ? `${briefs.failingIndices.length} production brief(s) with no subject to render`
+                      : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')} — OPUS revising…`,
                 })
                 const feedbackParts: string[] = []
                 if (broken.length > 0) feedbackParts.push(neuroFeedback(concepts, scores, broken))
                 if (compliance.failingIndices.length > 0) feedbackParts.push(compliance.feedback)
+                if (briefs.failingIndices.length > 0) feedbackParts.push(briefs.feedback)
                 results.push({
                   type: 'tool_result',
                   tool_use_id: tu.id,
