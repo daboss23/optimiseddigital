@@ -15,12 +15,12 @@ import { getSetting, settingsConfigured, SETTING_BRAND_LOGO } from '@/lib/settin
  * product lockup, because a branding lookup must not be able to break the
  * chrome that renders every page.
  */
-export async function getBrandIdentity(): Promise<BrandIdentity> {
+export async function getBrandIdentity(accountId: string | null): Promise<BrandIdentity> {
   try {
     const [site, tenant, uploaded] = await Promise.all([
-      getConnectedWebsite(),
-      getTenant(),
-      getSetting<{ dataUrl: string }>(SETTING_BRAND_LOGO),
+      getConnectedWebsite(accountId),
+      getTenant(accountId),
+      getSetting<{ dataUrl: string }>(SETTING_BRAND_LOGO, accountId),
     ])
     const canUploadLogo = settingsConfigured()
     const name = tenant.companyName?.trim() || site?.domain || ''

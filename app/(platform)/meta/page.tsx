@@ -1,6 +1,7 @@
 import { MetaIntelligenceClient } from '@/components/reactor/meta/MetaIntelligenceClient'
 import { resolveRange } from '@/lib/date-range'
 import { resolveMetaDashboard } from '@/lib/meta-graph'
+import { currentAccount } from '@/lib/account'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,7 +27,7 @@ export default async function MetaIntelligencePage({
     preset: first(params.preset),
     tz: first(params.tz),
   })
-  const data = await resolveMetaDashboard(range)
+  const data = await resolveMetaDashboard(await currentAccount(), range)
 
   return <MetaIntelligenceClient initialRange={range} initialData={data} />
 }

@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { analyzeWebsite, assertSafeUrl, type AnalyzeEvent } from '@/lib/website-intelligence'
+import { requireAccount } from '@/lib/account'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -31,7 +32,11 @@ export async function POST(request: NextRequest) {
         }
       }
       try {
-        await analyzeWebsite(url, send)
+        // The scan is scoped to the signed-in account: its chunks carry that
+        // account, and the re-scan clears only that account's previous site.
+        // `requireAccount` throws rather than letting an unscoped scan write
+        // rows every customer could retrieve, or clear rows that are not theirs.
+        await analyzeWebsite(url, send, await requireAccount())
       } catch (err) {
         send({
           type: 'error',

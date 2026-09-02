@@ -21,6 +21,7 @@ import { searchKnowledge } from '@/lib/knowledge'
 import { parseModelJson } from '@/lib/parse'
 import { NEURO_PASS_MARK, type NeuroScore } from '@/lib/reactor-inputs'
 import { getTenant, tenantShortName } from '@/lib/tenant'
+import { currentAccount } from '@/lib/account'
 
 /** A concept as it reaches the NEURO grader (only the fields it scores on). */
 interface ScorableConcept {
@@ -155,7 +156,7 @@ export async function scoreConceptsNeuro(
   if (concepts.length === 0) return []
 
   const list = concepts.map(conceptLine).join('\n')
-  const brand = tenantShortName(await getTenant())
+  const brand = tenantShortName(await getTenant(await currentAccount()))
   const system = `You are NEURO, the Predicted Response layer of ${brand}'s Creative Intelligence Command Center. You run a neural PRE-TEST on ad concepts: estimate how the human brain is likely to react to each one before any spend, using established neuromarketing principles. You are producing an ESTIMATE, not measured brain data — be calibrated and honest, not flattering.
 
 ${principles}

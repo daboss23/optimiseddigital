@@ -23,6 +23,7 @@ import { getTenant } from '@/lib/tenant'
 import { loadOperatorContext } from '@/lib/operator/ask/source'
 import { runOpenAsk, type AskEvent, type AskTurn } from '@/lib/operator/ask/agent'
 import type { Proposal } from '@/lib/operator/types'
+import { currentAccount } from '@/lib/account'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -70,8 +71,8 @@ export async function POST(request: NextRequest) {
         // The account's own today, not the browser's. A dashboard left open
         // across midnight in another timezone must not shift which days count
         // as complete.
-        const { evaluationDate, creatives, baselines, metadata } = await loadOperatorContext()
-        const tenant = await getTenant().catch(() => null)
+        const { evaluationDate, creatives, baselines, metadata } = await loadOperatorContext(await currentAccount())
+        const tenant = await getTenant(await currentAccount()).catch(() => null)
 
         await runOpenAsk(
           {

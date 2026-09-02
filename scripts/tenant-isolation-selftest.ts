@@ -56,6 +56,28 @@ function walk(dir: string, out: string[] = []): string[] {
   return out
 }
 
+/**
+ * Source with comments stripped.
+ *
+ * Used for every scan. Three separate checks here failed on a comment that
+ * documented the very bug being fixed — a test that cannot tell an explanation
+ * from a statement punishes writing down why the code looks the way it does.
+ */
+function sql(file: string): string {
+  return readFileSync(file, 'utf-8')
+    .split('\n')
+    .filter((line) => !/^\s*--/.test(line))
+    .join('\n')
+}
+
+function code(file: string): string {
+  return readFileSync(file, 'utf-8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n')
+    .map((line) => line.replace(/\/\/.*$/, ''))
+    .join('\n')
+}
+
 const root = process.cwd()
 const apiFiles = walk(join(root, 'app', 'api'))
 const libFiles = walk(join(root, 'lib'))
@@ -67,15 +89,6 @@ async function main() {
      out of a request the tenant itself sent. It is not authentication, it is a
      suggestion — and every scoped query built on it is scoped to whatever the
      caller typed. */
-  /** Source with comments removed — a check that cannot tell an explanation
-   *  from a statement fails on the very fix that documents the bug. */
-  const code = (file: string): string =>
-    readFileSync(file, 'utf-8')
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .split('\n')
-      .map((line) => line.replace(/\/\/.*$/, ''))
-      .join('\n')
-
   const bodyTenant: string[] = []
   for (const f of apiFiles) {
     const src = code(f)
@@ -95,7 +108,7 @@ async function main() {
     bodyTenant.length ? `client-declared tenant in: ${bodyTenant.join(', ')}` : '',
   )
 
-  const authSrc = readFileSync(join(root, 'lib', 'auth.ts'), 'utf-8')
+  const authSrc = code(join(root, 'lib', 'auth.ts'))
   check(
     'the session carries the account it belongs to',
     /accountId/.test(authSrc),
@@ -118,7 +131,7 @@ async function main() {
 
   console.log('\nNo tenant data is written or read without an account')
 
-  const knowledgeSrc = readFileSync(join(root, 'lib', 'knowledge.ts'), 'utf-8')
+  const knowledgeSrc = code(join(root, 'lib', 'knowledge.ts'))
   check(
     'an ingest with no account is refused rather than written as global',
     /accountId|requireAccount/.test(knowledgeSrc) &&
@@ -126,7 +139,7 @@ async function main() {
     'lib/knowledge.ts writes `builder_id: input.builderId ?? null` — an unscoped write becomes a row every tenant can retrieve',
   )
 
-  const websiteSrc = readFileSync(join(root, 'lib', 'website-intelligence.ts'), 'utf-8')
+  const websiteSrc = code(join(root, 'lib', 'website-intelligence.ts'))
   check(
     'the website scan stores its intelligence against an account',
     /accountId|builderId|builder_id/.test(websiteSrc),
@@ -138,7 +151,7 @@ async function main() {
     'getConnectedWebsite() returns the most recently scanned domain for the whole deployment',
   )
 
-  const reactorSql = readFileSync(join(root, 'supabase', 'schema.reactor.sql'), 'utf-8')
+  const reactorSql = sql(join(root, 'supabase', 'schema.reactor.sql'))
   check(
     'the retrieval function cannot return one tenant\'s rows to another',
     !/or\s+kc\.builder_id\s+is\s+null/i.test(reactorSql),
@@ -147,14 +160,14 @@ async function main() {
 
   console.log('\nNothing tenant-shaped is cached or keyed globally')
 
-  const tenantSrc = readFileSync(join(root, 'lib', 'tenant.ts'), 'utf-8')
+  const tenantSrc = code(join(root, 'lib', 'tenant.ts'))
   check(
     'the resolved tenant is not held in module memory across requests',
     !/^let cached/m.test(tenantSrc),
     'lib/tenant.ts caches one profile in module scope — a serverless instance serves it to whichever customer lands there next',
   )
 
-  const settingsSql = readFileSync(join(root, 'supabase', 'schema.settings.sql'), 'utf-8')
+  const settingsSql = sql(join(root, 'supabase', 'schema.settings.sql'))
   check(
     'settings are keyed per account',
     /account_id|builder_id/.test(settingsSql),
@@ -163,7 +176,7 @@ async function main() {
 
   const metaCreds = libFiles.find((f) => f.endsWith('meta-credentials.ts'))
   if (metaCreds) {
-    const src = readFileSync(metaCreds, 'utf-8')
+    const src = code(metaCreds)
     /* `accountId` in this module means the META AD ACCOUNT, not the tenant —
        matching on the bare word passed this check while the credentials were
        still one shared env pair. The question is whether the RESOLVER is given
@@ -190,10 +203,7 @@ async function main() {
     // Strip `--` comments first. A schema file that DOCUMENTS the dangerous
     // policy it removed still contains the words, and a check that cannot tell
     // an explanation from a statement fails on the fix.
-    const src = readFileSync(join(root, 'supabase', f), 'utf-8')
-      .split('\n')
-      .filter((line) => !/^\s*--/.test(line))
-      .join('\n')
+    const src = sql(join(root, 'supabase', f))
     const policies = src.match(/create policy[\s\S]*?;/gi) ?? []
     for (const p of policies) {
       if (/\b(?:account_id|builder_id|tenant_id)\b/.test(p)) scopedPolicies += 1

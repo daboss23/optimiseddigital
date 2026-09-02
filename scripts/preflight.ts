@@ -81,7 +81,10 @@ async function checkExtraction(url: string): Promise<void> {
       console.log(dim(`      ${e.message}`))
     }
     if (e.type === 'error') console.log(red(`      ${e.message}`))
-  }).catch((err: unknown) => {
+  // A preflight scan belongs to no account — it exercises the fetch and the
+  // extraction, and deliberately persists nothing (an unscoped write is refused
+  // by ingestKnowledge, which is the behaviour this run should see).
+  }, null).catch((err: unknown) => {
     fail(`the scan threw: ${err instanceof Error ? err.message : String(err)}`)
     return null
   })

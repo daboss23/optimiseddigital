@@ -89,14 +89,34 @@ export function tenantFromWebsite(w: WebsiteSummary): TenantProfile {
 // freshly connected website still takes effect without a redeploy.
 
 const TTL_MS = 60_000
-let cached: { at: number; profile: TenantProfile } | null = null
 
-export async function getTenant(): Promise<TenantProfile> {
-  if (cached && Date.now() - cached.at < TTL_MS) return cached.profile
+/**
+ * Resolved identities, KEYED BY ACCOUNT.
+ *
+ * This was a single `cached` profile in module scope. A serverless instance
+ * serves many requests, so whichever customer warmed it handed their company
+ * name, industry, audience and positioning to whoever landed on that instance
+ * next — into the orchestrator prompt, the render prompt and the shell. A cache
+ * that cannot say WHOSE entry it holds is not a cache on a multi-tenant
+ * deployment, it is a leak with a TTL.
+ *
+ * Bounded, because an unbounded map keyed by tenant is a slow memory leak on an
+ * instance that serves a thousand accounts.
+ */
+const MAX_CACHED_TENANTS = 64
+const cache = new Map<string, { at: number; profile: TenantProfile }>()
+
+export async function getTenant(accountId: string | null): Promise<TenantProfile> {
+  // No account: the env override or the neutral fallback, never another
+  // customer's identity and never a cached one.
+  if (!accountId) return fromEnv() ?? NEUTRAL_TENANT
+
+  const hit = cache.get(accountId)
+  if (hit && Date.now() - hit.at < TTL_MS) return hit.profile
 
   let profile = fromEnv() ?? NEUTRAL_TENANT
   try {
-    const site = await getConnectedWebsite()
+    const site = await getConnectedWebsite(accountId)
     if (site) {
       const fromSite = tenantFromWebsite(site)
       // The site wins, but only for fields it actually established — an env
@@ -115,13 +135,22 @@ export async function getTenant(): Promise<TenantProfile> {
     console.error('Tenant resolution failed, using fallback:', err)
   }
 
-  cached = { at: Date.now(), profile }
+  if (cache.size >= MAX_CACHED_TENANTS) {
+    // Oldest insertion first — Map preserves insertion order.
+    const oldest = cache.keys().next()
+    if (!oldest.done) cache.delete(oldest.value)
+  }
+  cache.set(accountId, { at: Date.now(), profile })
   return profile
 }
 
 /** Drop the cache — call after a website scan so the new identity is live. */
-export function invalidateTenant(): void {
-  cached = null
+export function invalidateTenant(accountId?: string | null): void {
+  // One account's scan invalidates that account's identity. Clearing the whole
+  // map would be correct but wasteful; clearing nothing would leave a customer
+  // looking at their previous brand for a minute after connecting a new site.
+  if (accountId) cache.delete(accountId)
+  else cache.clear()
 }
 
 /* ------------------------------ Prompt helpers ---------------------------- */

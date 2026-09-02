@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { metaIngestStatus, syncMetaPerformance } from '@/lib/meta-ingest'
+import { currentAccount, requireAccount } from '@/lib/account'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120
@@ -10,11 +11,11 @@ export const maxDuration = 120
 // Vault automatically. GET reports readiness; POST runs a sync.
 
 export async function GET() {
-  const status = await metaIngestStatus()
+  const status = await metaIngestStatus(await currentAccount())
   return NextResponse.json(status)
 }
 
 export async function POST() {
-  const summary = await syncMetaPerformance()
+  const summary = await syncMetaPerformance(await requireAccount())
   return NextResponse.json(summary, { status: summary.ok ? 200 : 503 })
 }

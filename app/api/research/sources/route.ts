@@ -18,6 +18,7 @@ import { getConnectedWebsite } from '@/lib/website-intelligence'
 import { getSetting, setSetting, settingsConfigured } from '@/lib/settings'
 import { SETTING_RESEARCH_SOURCES } from '@/lib/settings'
 import type { DerivedResearchSource } from '@/lib/strategy-derive'
+import { currentAccount } from '@/lib/account'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -36,7 +37,7 @@ function key(s: { kind: string; label: string }): string {
 }
 
 async function readManual(): Promise<DerivedResearchSource[]> {
-  const stored = await getSetting<StoredSources>(SETTING_RESEARCH_SOURCES)
+  const stored = await getSetting<StoredSources>(SETTING_RESEARCH_SOURCES, await currentAccount())
   return Array.isArray(stored?.sources) ? stored.sources : []
 }
 
@@ -44,7 +45,7 @@ export async function GET() {
   const manual = await readManual()
   let derived: DerivedResearchSource[] = []
   try {
-    derived = (await getConnectedWebsite())?.strategyOptions?.researchSources ?? []
+    derived = (await getConnectedWebsite(await currentAccount()))?.strategyOptions?.researchSources ?? []
   } catch (error) {
     console.error('Derived research sources unavailable:', error)
   }
@@ -105,7 +106,7 @@ export async function POST(request: NextRequest) {
 
     const manual = await readManual()
     const next = [entry, ...manual.filter((s) => key(s) !== key(entry))]
-    const stored = await setSetting(SETTING_RESEARCH_SOURCES, { sources: next })
+    const stored = await setSetting(SETTING_RESEARCH_SOURCES, { sources: next }, await currentAccount())
     if (!stored) {
       return NextResponse.json(
         { success: false, error: 'Supabase is not configured, so this source cannot be saved.' },
@@ -133,7 +134,7 @@ export async function DELETE(request: NextRequest) {
     }
     const manual = await readManual()
     const next = manual.filter((s) => key(s) !== key({ kind, label }))
-    await setSetting(SETTING_RESEARCH_SOURCES, { sources: next })
+    await setSetting(SETTING_RESEARCH_SOURCES, { sources: next }, await currentAccount())
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Remove research source failed:', error)

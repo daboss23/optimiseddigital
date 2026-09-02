@@ -23,6 +23,7 @@ import { NextResponse } from 'next/server'
 import { renderBrandFrom } from '@/lib/brand-context'
 import { getTenant } from '@/lib/tenant'
 import { getConnectedWebsite } from '@/lib/website-intelligence'
+import { currentAccount } from '@/lib/account'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -33,8 +34,8 @@ export async function GET() {
     // read in practice. It is still worth asking for both: the tenant carries
     // an env override for deployments that name their business without a scan.
     const [site, tenant] = await Promise.all([
-      getConnectedWebsite().catch(() => null),
-      getTenant().catch(() => null),
+      getConnectedWebsite(await currentAccount()).catch(() => null),
+      getTenant(await currentAccount()).catch(() => null),
     ])
     return NextResponse.json({ success: true, data: renderBrandFrom(site, tenant) })
   } catch (error) {

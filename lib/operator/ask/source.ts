@@ -46,10 +46,10 @@ export function configuredOrigin(): SourceOrigin {
  * would triple the Graph work for the same payload, and worse, could return
  * three views of an account that moved between them.
  */
-function metaSource(): DataSource {
+function metaSource(accountId: string | null): DataSource {
   let payload: ReturnType<typeof fetchOperatorSource> | null = null
   const load = () => {
-    if (!payload) payload = fetchOperatorSource()
+    if (!payload) payload = fetchOperatorSource(accountId)
     return payload
   }
   return {
@@ -59,8 +59,8 @@ function metaSource(): DataSource {
   }
 }
 
-export function serverDataSource(evaluationDate: string): DataSource {
-  return configuredOrigin() === 'meta' ? metaSource() : createSeededSource({ evaluationDate })
+export function serverDataSource(evaluationDate: string, accountId: string | null): DataSource {
+  return configuredOrigin() === 'meta' ? metaSource(accountId) : createSeededSource({ evaluationDate })
 }
 
 /* ------------------------------ the bootstrap ------------------------------ */
@@ -88,9 +88,9 @@ export interface OperatorContext {
  * declares its timezone as a constant, because a fixture that had to be built
  * before it could say where it lived would have the same problem.
  */
-export async function loadOperatorContext(): Promise<OperatorContext> {
+export async function loadOperatorContext(accountId: string | null): Promise<OperatorContext> {
   if (configuredOrigin() === 'meta') {
-    const payload = await fetchOperatorSource()
+    const payload = await fetchOperatorSource(accountId)
     return {
       evaluationDate: payload.evaluationDate,
       creatives: payload.creatives,

@@ -365,11 +365,11 @@ function buildBaselines(
  * Pull the account and shape it into the operator's DataSource contract.
  * Throws MetaSourceError on any failure — partial data never crosses this seam.
  */
-export async function fetchOperatorSource(): Promise<OperatorSourcePayload> {
+export async function fetchOperatorSource(tenantId: string | null): Promise<OperatorSourcePayload> {
   // The stored connection (Meta Intelligence settings screen) wins; the
   // META_ACCESS_TOKEN env var is the fallback. Neither → the loud throw the
   // client surface renders as its disconnected state.
-  const credentials = await resolveMetaCredentials()
+  const credentials = await resolveMetaCredentials(tenantId)
   if (!credentials) {
     throw new MetaSourceError(
       'Meta is not connected — add a System User token on Meta Intelligence or set META_ACCESS_TOKEN.',

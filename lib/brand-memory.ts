@@ -59,11 +59,11 @@ export interface ResolvedBrandMemory {
  * Never throws: every step degrades to the next.
  */
 export async function resolveBrandMemory(
-  builderId?: string | null,
+  accountId?: string | null,
 ): Promise<ResolvedBrandMemory> {
-  if (builderId) {
+  if (accountId) {
     try {
-      const builder = await getBuilder(builderId)
+      const builder = await getBuilder(accountId)
       return { memory: buildBrandContext(builder), brandName: builder.name, source: 'builder' }
     } catch (err) {
       console.error('Builder load failed, falling back to connected website:', err)
@@ -71,13 +71,13 @@ export async function resolveBrandMemory(
   }
 
   try {
-    const site = await getConnectedWebsite()
+    const site = await getConnectedWebsite(accountId ?? null)
     if (site) {
       const brief = websiteBrandBrief(site)
       // An empty brief means the scan indexed pages but derived no profiles
       // (usually a missing ANTHROPIC_API_KEY at scan time). The site is still
       // the right IDENTITY even when the profiles are thin, so keep the name.
-      const tenant = await getTenant().catch(() => null)
+      const tenant = await getTenant(accountId ?? null).catch(() => null)
       const brandName = tenant?.companyName?.trim() || site.domain
       if (brief) return { memory: brief, brandName, source: 'website' }
     }
@@ -88,7 +88,7 @@ export async function resolveBrandMemory(
   // Nothing connected. The file ships blank (see brand/BRAND_MEMORY.md), so
   // this is genuinely "write to the brief alone" — and the name comes from the
   // tenant profile or an env override, never a company hard-coded here.
-  const tenant = await getTenant().catch(() => null)
+  const tenant = await getTenant(accountId ?? null).catch(() => null)
   return {
     memory: getBrandMemory(),
     brandName: tenant?.companyName?.trim() || 'the brand',

@@ -23,6 +23,7 @@ import type { AdImage } from '@/lib/ad-image'
 // lib/taxonomy.ts (which imports VisualDNA from here the same way).
 import type { CreativeTaxonomy } from '@/lib/taxonomy'
 import { getTenant, tenantDescriptor, type TenantProfile } from '@/lib/tenant'
+import { currentAccount } from '@/lib/account'
 
 const MODEL = INTELLIGENCE_MODEL
 
@@ -403,7 +404,7 @@ export async function extractCreativeDNA(text: string): Promise<CreativeDNA> {
     const response = await anthropic.messages.create({
       model: MODEL,
       max_tokens: 700,
-      system: `${sparkSystemBase(await getTenant())} Study the winning creative below and extract its repeatable Creative DNA — the structure, not the words. Classify patternType as ONE of: ${CREATIVE_PATTERNS.join(', ')}. Reply with ONLY a JSON object, no prose.`,
+      system: `${sparkSystemBase(await getTenant(await currentAccount()))} Study the winning creative below and extract its repeatable Creative DNA — the structure, not the words. Classify patternType as ONE of: ${CREATIVE_PATTERNS.join(', ')}. Reply with ONLY a JSON object, no prose.`,
       messages: [
         {
           role: 'user',
@@ -516,7 +517,7 @@ export async function extractVisualDNA(
       model: VISION_MODEL,
       // Scales with how many ads a sheet can hold — a 12-ad teardown is long.
       max_tokens: 8000,
-      system: visionSystemPrompt(images.length, measured.length > 0, await getTenant()),
+      system: visionSystemPrompt(images.length, measured.length > 0, await getTenant(await currentAccount())),
       messages: [{ role: 'user', content }],
     })
 

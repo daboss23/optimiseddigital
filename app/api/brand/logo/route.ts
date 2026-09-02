@@ -12,6 +12,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { clearSetting, getSetting, setSetting, SETTING_BRAND_LOGO } from '@/lib/settings'
+import { currentAccount } from '@/lib/account'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -28,7 +29,7 @@ export interface StoredLogo {
 }
 
 export async function GET() {
-  const logo = await getSetting<StoredLogo>(SETTING_BRAND_LOGO)
+  const logo = await getSetting<StoredLogo>(SETTING_BRAND_LOGO, await currentAccount())
   return NextResponse.json({ success: true, data: logo })
 }
 
@@ -60,7 +61,7 @@ export async function POST(request: NextRequest) {
     const stored = await setSetting(SETTING_BRAND_LOGO, {
       dataUrl,
       updatedAt: new Date().toISOString(),
-    } satisfies StoredLogo)
+    } satisfies StoredLogo, await currentAccount())
     if (!stored) {
       return NextResponse.json(
         { success: false, error: 'Supabase is not configured, so the logo cannot be saved.' },
@@ -75,6 +76,6 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE() {
-  await clearSetting(SETTING_BRAND_LOGO)
+  await clearSetting(SETTING_BRAND_LOGO, await currentAccount())
   return NextResponse.json({ success: true })
 }

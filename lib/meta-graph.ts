@@ -558,13 +558,14 @@ function aggregate(rows: InsightRow[]): InsightRow {
  * UI shows, rather than pretending seeded numbers are live ones.
  */
 export async function resolveMetaDashboard(
+  accountId: string | null,
   range: DateRange = rangeFromPreset(DEFAULT_PRESET),
 ): Promise<MetaDashboard> {
   // With demo data off, "not connected" must read as an empty account rather
   // than another company's spend and campaign names.
   const demo = demoDataEnabled() ? buildDemoDashboard(range) : buildEmptyDashboard(range)
   // The stored connection wins; the env token is the fallback. Neither → demo.
-  const credentials = await resolveMetaCredentials()
+  const credentials = await resolveMetaCredentials(accountId)
   if (!credentials) return demo
   const token = credentials.token
 
@@ -661,14 +662,14 @@ export async function resolveMetaDashboard(
 }
 
 /** Lightweight connectivity check for the status endpoint. Never throws. */
-export async function metaApiStatus(): Promise<{
+export async function metaApiStatus(accountId: string | null): Promise<{
   configured: boolean
   connected: boolean
   accountCount: number
   liveMinSpend: number
   error?: string
 }> {
-  const credentials = await resolveMetaCredentials()
+  const credentials = await resolveMetaCredentials(accountId)
   if (!credentials) {
     return { configured: false, connected: false, accountCount: 0, liveMinSpend: liveMinSpend() }
   }

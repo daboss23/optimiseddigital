@@ -1121,7 +1121,7 @@ async function runIntelligence(
     ? hits.map((h) => `[${h.system}] ${h.title}: ${h.content}`).join('\n\n')
     : 'No stored knowledge yet — reason from first principles about this business and its market.'
 
-  const tenantName = tenantDescriptor(await getTenant())
+  const tenantName = tenantDescriptor(await getTenant(await currentAccount()))
 
   const response = await withRetry(
     () =>
@@ -1440,7 +1440,7 @@ async function runDemo(controller: ReadableStreamDefaultController, body: Reacto
   const demoAudience =
     demoRi?.audienceType && demoRi.audienceType !== 'No Preference'
       ? demoRi.audienceType.toLowerCase()
-      : (await getTenant().catch(() => null))?.audienceDescriptor?.trim().toLowerCase() || 'operators'
+      : (await getTenant(await currentAccount()).catch(() => null))?.audienceDescriptor?.trim().toLowerCase() || 'operators'
   const demoQuery = [
     demoAngle,
     demoRi?.audienceType && demoRi.audienceType !== 'No Preference' ? demoRi.audienceType : '',
@@ -1780,7 +1780,7 @@ export async function POST(request: NextRequest) {
         let brandBlock = ''
         if (body.reactorInputs?.onBrandEnabled) {
           try {
-            const site = await getConnectedWebsite()
+            const site = await getConnectedWebsite(await currentAccount())
             if (site) {
               const brief = websiteBrandBrief(site)
               if (brief) {
@@ -1926,7 +1926,7 @@ export async function POST(request: NextRequest) {
             imageModels: availableImageModels,
             preferredVideoModel: body.videoModel ?? null,
             preferredImageModel: body.imageModel ?? null,
-          }, tenantDescriptor(await getTenant())) + inputBlocks + brandBlock + oracleMemory + cloneClause + isolationClause
+          }, tenantDescriptor(await getTenant(await currentAccount()))) + inputBlocks + brandBlock + oracleMemory + cloneClause + isolationClause
 
         // One test ID per run — stamped onto every submitted concept so outcomes
         // attribute back to which single variable was under test. Minted for an

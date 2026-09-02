@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { metaApiStatus } from '@/lib/meta-graph'
+import { currentAccount } from '@/lib/account'
 
 export const dynamic = 'force-dynamic'
 
@@ -8,6 +9,6 @@ export const dynamic = 'force-dynamic'
 // Graph API, how many ad accounts it sees, and the spend threshold the
 // dashboard must clear before it swaps from demo to live numbers.
 export async function GET() {
-  const status = await metaApiStatus()
+  const status = await metaApiStatus(await currentAccount())
   return NextResponse.json(status)
 }

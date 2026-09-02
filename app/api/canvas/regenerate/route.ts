@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { INTELLIGENCE_MODEL } from '@/lib/models'
 import { parseModelJson } from '@/lib/parse'
 import { getTenant, tenantDescriptor } from '@/lib/tenant'
+import { currentAccount } from '@/lib/account'
 
 export const runtime = 'nodejs'
 
@@ -101,7 +102,7 @@ export async function POST(request: NextRequest) {
       model: INTELLIGENCE_MODEL,
       max_tokens: 500,
       system:
-        `You are the copy chief for ${tenantDescriptor(await getTenant())}. You regenerate exactly ONE part of an ad concept while every other part stays fixed — the rewrite must remain coherent with the strategy constraints and the kept parts. Voice: confident, specific, native to this business and its audience, operator to operator; concrete numbers and named proof over adjectives; no hype, no guru clichés. Never use: "guaranteed", "you will make", "passive income", "get rich", "earn from home". Reply with ONLY a JSON object: {"text":"..."}`,
+        `You are the copy chief for ${tenantDescriptor(await getTenant(await currentAccount()))}. You regenerate exactly ONE part of an ad concept while every other part stays fixed — the rewrite must remain coherent with the strategy constraints and the kept parts. Voice: confident, specific, native to this business and its audience, operator to operator; concrete numbers and named proof over adjectives; no hype, no guru clichés. Never use: "guaranteed", "you will make", "passive income", "get rich", "earn from home". Reply with ONLY a JSON object: {"text":"..."}`,
       messages: [
         {
           role: 'user',

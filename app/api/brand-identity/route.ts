@@ -9,13 +9,14 @@
 import { NextResponse } from 'next/server'
 import { DEFAULT_IDENTITY } from '@/lib/brand-identity'
 import { getBrandIdentity } from '@/lib/brand-identity.server'
+import { currentAccount } from '@/lib/account'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
-    return NextResponse.json({ success: true, data: await getBrandIdentity() })
+    return NextResponse.json({ success: true, data: await getBrandIdentity(await currentAccount()) })
   } catch (error) {
     console.error('Brand identity route failed:', error)
     return NextResponse.json({ success: true, data: DEFAULT_IDENTITY })

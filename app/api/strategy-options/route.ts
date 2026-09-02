@@ -16,6 +16,7 @@ import { offerOptions } from '@/lib/reactor-inputs'
 import { winningAngles } from '@/lib/reactor-data'
 import { getConnectedWebsite } from '@/lib/website-intelligence'
 import { toMenuOption, type StrategyMenu, type StrategyMenuOption } from '@/lib/strategy-menu'
+import { currentAccount } from '@/lib/account'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -35,7 +36,7 @@ export async function GET() {
   }
 
   try {
-    const site = await getConnectedWebsite()
+    const site = await getConnectedWebsite(await currentAccount())
     const derived = site?.strategyOptions
     if (derived) {
       if (derived.angles.length) {

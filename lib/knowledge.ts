@@ -83,7 +83,24 @@ export interface IngestInput {
   title: string
   content: string
   category?: string | null
+  /**
+   * The account this knowledge belongs to. Required for customer content.
+   *
+   * It used to be optional and written as `builder_id: input.builderId ?? null`
+   * — and `match_knowledge` returned null-tenant rows to EVERY tenant, so a
+   * caller that forgot to pass one did not write a private row, it published
+   * one. The two callers that could not supply an account were the website
+   * scan and the vault ingest: exactly the two that carry a customer's own
+   * brand intelligence.
+   */
   builderId?: string | null
+  /**
+   * Platform-owned knowledge, deliberately readable by every account (shared
+   * craft, never a customer's material). Must be set explicitly — the intent
+   * can no longer be inferred from an absent tenant, because "global" and
+   * "somebody forgot" looked identical and one of them is a leak.
+   */
+  isGlobal?: boolean
   metadata?: Record<string, unknown>
 }
 
@@ -101,13 +118,30 @@ export async function ingestKnowledge(input: IngestInput): Promise<IngestResult>
     return { ok: true, chunks: chunks.length, stored: false, reason: 'Vector store not configured' }
   }
 
+  // Refused rather than written unscoped. A row with no account and no explicit
+  // global flag is retrievable by nobody under the new match function and was
+  // retrievable by everybody under the old one; neither is what the caller
+  // meant, and guessing which is not this function's job.
+  const accountId = input.builderId ?? null
+  const isGlobal = input.isGlobal === true
+  if (!accountId && !isGlobal) {
+    return {
+      ok: false,
+      chunks: chunks.length,
+      stored: false,
+      reason:
+        'Refused: knowledge must belong to an account. Pass builderId (the signed-in account), or isGlobal for platform-owned craft.',
+    }
+  }
+
   const vectors = await embed(chunks, 'document')
   const rows = chunks.map((content, i) => ({
     system: input.system,
     category: input.category ?? null,
     title: input.title,
     content,
-    builder_id: input.builderId ?? null,
+    builder_id: accountId,
+    is_global: isGlobal,
     metadata: input.metadata ?? {},
     embedding: vectors[i],
   }))

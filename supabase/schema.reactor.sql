@@ -8,7 +8,8 @@ create extension if not exists vector;
 create table if not exists knowledge_chunks (
   id uuid default gen_random_uuid() primary key,
   created_at timestamptz default now(),
-  builder_id uuid,                 -- null = global TPB knowledge
+  builder_id uuid,                 -- the account this belongs to. NEVER null for customer content.
+  is_global boolean not null default false,  -- platform-owned knowledge, readable by every account
   system text not null,            -- which intelligence system: vault | research | transformation | creative | copy | pattern | learning
   category text,                   -- e.g. "Winning Ads", "Hooks", "Hook Frameworks"
   title text not null,
@@ -24,7 +25,8 @@ create index if not exists knowledge_chunks_embedding_idx
 create index if not exists knowledge_chunks_system_idx on knowledge_chunks (system);
 
 -- Cosine-similarity retrieval. Returns the closest chunks to a query embedding,
--- optionally scoped to a builder (plus global) and/or a single intelligence system.
+-- scoped to one account (plus explicitly global platform knowledge) and
+-- optionally to a single intelligence system.
 create or replace function match_knowledge (
   query_embedding vector(1024),
   match_count int default 8,
@@ -52,7 +54,14 @@ as $$
     1 - (kc.embedding <=> query_embedding) as similarity
   from knowledge_chunks kc
   where (filter_system is null or kc.system = filter_system)
-    and (filter_builder is null or kc.builder_id = filter_builder or kc.builder_id is null)
+    -- A null tenant filter returns GLOBAL rows only. It used to return every
+    -- row in the table, so an unscoped call was the widest possible query
+    -- rather than the narrowest — and `or kc.builder_id is null` handed any
+    -- write that forgot its tenant to every other customer.
+    and (
+      kc.is_global
+      or (filter_builder is not null and kc.builder_id = filter_builder)
+    )
   order by kc.embedding <=> query_embedding
   limit match_count;
 $$;

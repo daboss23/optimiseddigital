@@ -2,6 +2,7 @@ import crypto from 'crypto'
 import { ctaLabel, META_CTA_OPTIONS, type MetaAdPackage, type MetaCta } from '@/lib/meta-ads'
 import { getTenant } from '@/lib/tenant'
 import { getConnectedWebsite } from '@/lib/website-intelligence'
+import { currentAccount } from '@/lib/account'
 
 /**
  * Push Creative to Meta — direct Graph API publishing of a configured Studio ad.
@@ -67,7 +68,7 @@ function apiVersion(): string {
 async function linkUrl(): Promise<string> {
   const explicit = process.env.META_LINK_URL?.trim()
   if (explicit) return explicit
-  const site = await getConnectedWebsite().catch(() => null)
+  const site = await getConnectedWebsite(await currentAccount()).catch(() => null)
   return site?.url?.trim() || ''
 }
 
@@ -157,7 +158,7 @@ export async function publishCreativeToMeta(input: PublishInput): Promise<Publis
   // made, and it is what the performance ingest reads back. It carried one
   // company's initials on every deployment; it now carries the connected
   // business's, or nothing at all.
-  const tenant = await getTenant().catch(() => null)
+  const tenant = await getTenant(await currentAccount()).catch(() => null)
   const prefix = tenant?.companyName?.trim() ? `${tenant.companyName.trim()} Reactor` : 'Reactor'
   const name = input.name?.trim() || `${prefix} — ${pkg.headline || 'Studio ad'}`.slice(0, 90)
 
