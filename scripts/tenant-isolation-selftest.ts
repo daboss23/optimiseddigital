@@ -129,6 +129,24 @@ async function main() {
     'expected lib/account.ts — the single place the tenant is resolved, from the session',
   )
 
+  // A deployment handed to ONE brand gets an account without provisioning one:
+  // a signed-in session with no account resolves the operator account so the
+  // first thing anybody does — connect a website — works. That convenience must
+  // stay welded to "this deployment has no customers". The moment a user row
+  // exists it is a shared deployment, and a session that names no account must
+  // get no account.
+  const accountSrc = hasAccountModule ? code(join(root, 'lib', 'account.ts')) : ''
+  check(
+    'the single-brand fallback is gated on the deployment having no users',
+    /hasUsers\(\)\)\s*\?\s*null\s*:\s*(await\s+)?resolveOperatorAccount/.test(accountSrc),
+    'lib/account.ts hands out the operator account without checking hasUsers() — on a deployment with real customers, a session that names no tenant would be given one',
+  )
+  check(
+    'an unauthenticated request still resolves no account',
+    /if\s*\(!session\)\s*return null/.test(accountSrc),
+    'lib/account.ts resolves an account for a request carrying no session at all',
+  )
+
   console.log('\nNo tenant data is written or read without an account')
 
   const knowledgeSrc = code(join(root, 'lib', 'knowledge.ts'))
@@ -149,6 +167,11 @@ async function main() {
     'the connected website is resolved per account, not per deployment',
     !/most recently scanned domain/i.test(websiteSrc),
     'getConnectedWebsite() returns the most recently scanned domain for the whole deployment',
+  )
+  check(
+    'a scan with no account is held, not written unscoped',
+    /persistConfigured\(\)\s*&&\s*accountId/.test(websiteSrc),
+    'the scan ingests without first establishing an account — the rows land with no tenant on them',
   )
 
   const reactorSql = sql(join(root, 'supabase', 'schema.reactor.sql'))

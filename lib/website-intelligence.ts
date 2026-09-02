@@ -1613,7 +1613,22 @@ export async function analyzeWebsite(
   let stored = false
   let pagesIndexed = 0
 
-  if (persistConfigured()) {
+  // Persisting needs BOTH a vector store and an account to file the rows under.
+  // Without an account the scan is still a complete, usable scan — it is held in
+  // memory for this session (below) exactly as demo mode is. It used to throw
+  // here instead, which threw away a finished read of the site and put a
+  // tenancy error in front of somebody whose only mistake was connecting a
+  // website, so the platform's first screen dead-ended.
+  const canPersist = persistConfigured() && accountId !== null
+  if (persistConfigured() && !canPersist) {
+    emit({
+      type: 'progress',
+      message:
+        'No workspace on this session — holding this profile for the session instead of writing it to the Vault.',
+    })
+  }
+
+  if (canPersist) {
     // Clear any previously connected website first, then re-ingest this scan.
     // A new domain replaces the old company; a re-scan of the same domain is a
     // clean refresh. Runs only after the scan succeeded, so a failed fetch can
@@ -1756,11 +1771,13 @@ export async function getConnectedWebsite(
   accountId: string | null,
 ): Promise<WebsiteSummary | null> {
   if (!persistConfigured()) return lastUnpersistedScan
-  // No account, no site. This used to read the whole table and return whichever
-  // domain was scanned most recently ANYWHERE on the deployment, so customer 2
-  // connecting their site silently became customer 1's brand — in the copy, in
-  // the render prompt, and in the shell's own logo.
-  if (!accountId) return null
+  // No account, no stored site. This used to read the whole table and return
+  // whichever domain was scanned most recently ANYWHERE on the deployment, so
+  // customer 2 connecting their site silently became customer 1's brand — in
+  // the copy, in the render prompt, and in the shell's own logo. The one thing
+  // such a session may see is the scan it ran itself, which was never written
+  // to any account precisely because there was no account to write it to.
+  if (!accountId) return lastUnpersistedScan
   const { data, error } = await getSupabaseAdmin()
     .from('knowledge_chunks')
     .select('category, title, created_at, metadata')
@@ -1887,9 +1904,12 @@ export async function disconnectWebsite(
     return
   }
   if (!accountId) {
-    throw new Error(
-      'Refusing to disconnect a website with no account — an unscoped delete would remove every customer\'s rows for that domain.',
-    )
+    // Nothing in the Vault can belong to a session with no account, so there is
+    // nothing of theirs to delete — and an unscoped delete would remove every
+    // customer's rows for that domain. Drop the session-held scan and stop:
+    // that is the whole of what this session owns.
+    lastUnpersistedScan = null
+    return
   }
   const root = rootDomain(domain)
   const { error } = await getSupabaseAdmin()

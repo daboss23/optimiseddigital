@@ -272,7 +272,7 @@ export function WebsiteLinkInput({ onChanged }: { onChanged: (summary?: WebsiteS
         )}
         {!summary.stored && (
           <p className="mt-3 text-[11px] text-white/40">
-            Captured in demo mode — configure Supabase + Voyage to persist this website to the Vault.
+            Held for this session — connect Supabase + Voyage to keep this profile in the Vault.
           </p>
         )}
 

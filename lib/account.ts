@@ -22,7 +22,7 @@
  */
 
 import { cookies } from 'next/headers'
-import { readSessionToken, SESSION_COOKIE, verifyPassword } from '@/lib/auth'
+import { expectedCredentials, readSessionToken, SESSION_COOKIE, verifyPassword } from '@/lib/auth'
 import { getSupabaseAdmin, supabaseUrl } from '@/lib/supabase'
 
 /** A resolved tenant. Opaque on purpose — callers pass it, they don't parse it. */
@@ -46,21 +46,56 @@ function ready(): boolean {
 /**
  * The account this request may act for, or null.
  *
- * Null is a real answer with a real meaning: the single-operator gate is open
- * (a session with no account), or nobody is signed in. Callers must treat it as
- * "no customer data", never as "all customer data" — which is exactly the
- * mistake `match_knowledge` used to make, returning every row when handed a
- * null filter.
+ * Null is a real answer with a real meaning: nobody is signed in, or this is a
+ * multi-customer deployment and the session names no customer. Callers must
+ * treat it as "no customer data", never as "all customer data" — which is
+ * exactly the mistake `match_knowledge` used to make, returning every row when
+ * handed a null filter.
+ *
+ * One case is NOT null: a signed-in session with no account on a deployment
+ * that has no user rows. That is a single brand testing the platform, and it
+ * gets the operator account (found or created) rather than a refusal.
  */
 export async function currentAccount(): Promise<AccountId | null> {
   try {
     const jar = await cookies()
     const session = await readSessionToken(jar.get(SESSION_COOKIE)?.value)
-    return session?.accountId ?? null
+    if (!session) return null
+    if (session.accountId) return session.accountId
+    // A signed-in session with no account. On a SINGLE-BRAND deployment that is
+    // a session issued before the operator account existed, or issued while the
+    // tenancy migration had not run — not a tenant to refuse. Heal it here, at
+    // the point of use, so the operator does not have to sign out and back in
+    // to connect a website. Only ever resolves when the deployment has no user
+    // rows: the moment real customers exist, a session with no account gets no
+    // customer data, exactly as before.
+    return operatorFallbackAccount()
   } catch {
     // Called outside a request scope (a script, a build-time evaluation).
     return null
   }
+}
+
+/**
+ * The single-brand deployment's one account, memoized.
+ *
+ * Two reads back this: "does this deployment have real users" and "which row is
+ * the operator account". Both are stable for the life of a deployment, and this
+ * sits on the hot path of every scoped read, so the answer is cached for a
+ * minute — short enough that provisioning the first real customer closes the
+ * fallback on its own, long enough that a page of ten scoped reads costs one
+ * round trip rather than twenty.
+ */
+const FALLBACK_TTL_MS = 60_000
+let fallbackCache: { id: AccountId | null; at: number } | null = null
+
+async function operatorFallbackAccount(): Promise<AccountId | null> {
+  if (!ready()) return null
+  const now = Date.now()
+  if (fallbackCache && now - fallbackCache.at < FALLBACK_TTL_MS) return fallbackCache.id
+  const id = (await hasUsers()) ? null : await resolveOperatorAccount(expectedCredentials().name)
+  fallbackCache = { id, at: now }
+  return id
 }
 
 /**
@@ -139,26 +174,55 @@ export const OPERATOR_ACCOUNT_SLUG = 'operator'
 
 export async function resolveOperatorAccount(name: string): Promise<AccountId | null> {
   if (!ready()) return null
+  const admin = getSupabaseAdmin()
+  const accountName = name.trim() || 'My brand'
+
+  // `slug` arrives with the tenancy migration. A deployment that has run
+  // schema.tenancy.sql is addressed by slug — unambiguous, and unaffected by
+  // renaming the account. One that has not still gets an account: the slug
+  // lookup fails on an unknown column, and the fall-through addresses the row
+  // by name instead. Refusing until a migration runs is what left the operator
+  // signed in with nothing they could connect.
   try {
-    const admin = getSupabaseAdmin()
-    const { data: found, error: findErr } = await admin
+    const { data, error } = await admin
       .from('accounts')
       .select('id')
       .eq('slug', OPERATOR_ACCOUNT_SLUG)
       .maybeSingle()
-    if (findErr) throw findErr
-    if (found?.id) return String(found.id)
+    if (!error && data?.id) return String(data.id)
+    if (!error) {
+      const { data: created, error: createErr } = await admin
+        .from('accounts')
+        .insert({ name: accountName, slug: OPERATOR_ACCOUNT_SLUG })
+        .select('id')
+        .single()
+      if (!createErr && created?.id) return String(created.id)
+    }
+  } catch {
+    /* fall through to the slugless path */
+  }
+
+  try {
+    const { data, error } = await admin
+      .from('accounts')
+      .select('id')
+      .eq('name', accountName)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+    if (error) throw error
+    if (data?.id) return String(data.id)
 
     const { data: created, error: createErr } = await admin
       .from('accounts')
-      .insert({ name: name.trim() || 'My brand', slug: OPERATOR_ACCOUNT_SLUG })
+      .insert({ name: accountName })
       .select('id')
       .single()
     if (createErr) throw createErr
     return String(created.id)
   } catch (err) {
-    // A deployment whose accounts table has not been migrated yet still signs
-    // in; it simply has no account until the migration runs.
+    // No accounts table at all. The deployment still signs in and still works —
+    // the scan runs and is held in memory rather than written to the Vault.
     console.error('Operator account resolution failed:', err)
     return null
   }
