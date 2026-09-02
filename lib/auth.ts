@@ -1,10 +1,22 @@
 /**
  * Platform access — the gate in front of the command center.
  *
- * This is a single-operator demo gate, not a user system: one name, one
- * password, one signed cookie. It exists so a deployment can be handed to
- * somebody for the afternoon without the whole Reactor being open to the
- * internet, and so Mike knows WHO just walked in.
+ * The session establishes TWO things: that this browser passed a credential,
+ * and WHICH ACCOUNT it belongs to. The second is the one that matters on a
+ * multi-tenant deployment, and it did not used to exist: the session carried a
+ * name, so there was nothing to check a tenant claim against, and every route
+ * that needed a tenant took it from the request body — the client naming
+ * itself, which is a suggestion rather than an identity.
+ *
+ * Two credential paths, deliberately:
+ *
+ *   · A real user row (`users` table), authenticated by PBKDF2 hash. This is
+ *     the SaaS path — many customers, one deployment, each session bound to
+ *     the account its user belongs to.
+ *   · The single-operator gate below, for a deployment handed to somebody for
+ *     an afternoon. It issues a session with NO account, which now means
+ *     exactly what it says: such a session can open the shell and can touch no
+ *     customer data, because every scoped read requires an account.
  *
  * Everything here is Web-standard — `crypto.subtle`, `btoa`/`atob`, no Node
  * imports — because the same module is read by the edge middleware, by a route
@@ -75,6 +87,74 @@ export function checkCredentials(name: unknown, password: unknown): boolean {
   )
 }
 
+/* ------------------------------ password hashing --------------------------- */
+
+/**
+ * PBKDF2-SHA256, encoded as `pbkdf2$<iterations>$<salt>$<hash>`.
+ *
+ * Web Crypto rather than bcrypt/argon2 on purpose: this module is read by the
+ * edge middleware, and a native dependency breaks that build. PBKDF2 with a
+ * high iteration count is the strongest thing available in every runtime the
+ * app touches, and it is a great deal stronger than the shared password it
+ * replaces for real customer accounts.
+ */
+const PBKDF2_ITERATIONS = 210_000
+
+function toHex(bytes: Uint8Array): string {
+  let out = ''
+  for (let i = 0; i < bytes.length; i += 1) out += bytes[i].toString(16).padStart(2, '0')
+  return out
+}
+
+function fromHex(hex: string): Uint8Array<ArrayBuffer> {
+  const out = new Uint8Array(new ArrayBuffer(hex.length / 2))
+  for (let i = 0; i < out.length; i += 1) out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16)
+  return out
+}
+
+async function pbkdf2(
+  password: string,
+  salt: Uint8Array<ArrayBuffer>,
+  iterations: number,
+): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits'],
+  )
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' },
+    key,
+    256,
+  )
+  return toHex(new Uint8Array(bits))
+}
+
+/** Hash a new password for storage. */
+export async function hashPassword(password: string): Promise<string> {
+  const salt = crypto.getRandomValues(new Uint8Array(new ArrayBuffer(16)))
+  const hash = await pbkdf2(password, salt, PBKDF2_ITERATIONS)
+  return `pbkdf2$${PBKDF2_ITERATIONS}$${toHex(salt)}$${hash}`
+}
+
+/**
+ * Check a password against a stored hash. Never throws — a malformed stored
+ * value is a failed login, not a 500, and it must not be distinguishable from
+ * a wrong password.
+ */
+export async function verifyPassword(password: string, stored: string): Promise<boolean> {
+  try {
+    const [scheme, iterations, salt, hash] = (stored ?? '').split('$')
+    if (scheme !== 'pbkdf2' || !iterations || !salt || !hash) return false
+    const computed = await pbkdf2(password, fromHex(salt), Number(iterations))
+    return sameSignature(computed, hash)
+  } catch {
+    return false
+  }
+}
+
 /* --------------------------------- signing --------------------------------- */
 
 function secret(): string {
@@ -132,10 +212,27 @@ function sameSignature(a: string, b: string): boolean {
 export interface Session {
   name: string
   issuedAt: number
+  /**
+   * The account this session may act for. Absent on the single-operator gate,
+   * which is why it is optional here and REQUIRED by everything that reads
+   * tenant data (see `lib/account.ts`).
+   */
+  accountId?: string
+  /** The signed-in user, when the session came from a real user row. */
+  userId?: string
 }
 
-export async function createSessionToken(name: string): Promise<string> {
-  const payload = encode(JSON.stringify({ name, issuedAt: Date.now() } satisfies Session))
+export async function createSessionToken(
+  name: string,
+  identity: { accountId?: string; userId?: string } = {},
+): Promise<string> {
+  const session: Session = {
+    name,
+    issuedAt: Date.now(),
+    ...(identity.accountId ? { accountId: identity.accountId } : {}),
+    ...(identity.userId ? { userId: identity.userId } : {}),
+  }
+  const payload = encode(JSON.stringify(session))
   return `${payload}.${await sign(payload)}`
 }
 
@@ -156,7 +253,14 @@ export async function readSessionToken(token: string | undefined): Promise<Sessi
     const session = JSON.parse(json) as Partial<Session>
     if (typeof session.name !== 'string' || typeof session.issuedAt !== 'number') return null
     if (Date.now() - session.issuedAt > SESSION_MAX_AGE * 1000) return null
-    return { name: session.name, issuedAt: session.issuedAt }
+    // The account rides inside the SIGNED payload, so it cannot be edited in
+    // devtools the way a client-supplied tenant id could.
+    return {
+      name: session.name,
+      issuedAt: session.issuedAt,
+      ...(typeof session.accountId === 'string' ? { accountId: session.accountId } : {}),
+      ...(typeof session.userId === 'string' ? { userId: session.userId } : {}),
+    }
   } catch {
     return null
   }

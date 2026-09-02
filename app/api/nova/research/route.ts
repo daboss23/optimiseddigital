@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { runNovaResearch, type NovaEvent, type NovaResearchInput, type NovaSourceType } from '@/lib/market-intelligence'
+import { requireAccount } from '@/lib/account'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120
@@ -25,7 +26,7 @@ export async function POST(request: NextRequest) {
       query: typeof body.query === 'string' ? body.query : undefined,
       text: typeof body.text === 'string' ? body.text : undefined,
       title: typeof body.title === 'string' ? body.title : undefined,
-      builderId: body.builderId ?? null,
+      builderId: await requireAccount(),
     }
   } catch (err) {
     return new Response(

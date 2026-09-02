@@ -7,13 +7,30 @@ import {
   createSessionToken,
   expectedCredentials,
 } from '@/lib/auth'
+import { authenticateUser, hasUsers } from '@/lib/account'
+
+export const runtime = 'nodejs'
 
 /**
  * Sign in.
  *
+ * Two paths, tried in that order:
+ *
+ *   1. A real user of a real account (`users` table). The session it issues
+ *      CARRIES THAT ACCOUNT, which is what makes every downstream query
+ *      scopeable — the tenant is established here, once, from a credential,
+ *      instead of being taken on trust from each request body later.
+ *   2. The single-operator gate: one name, one password, for a deployment
+ *      handed to somebody for an afternoon. It issues a session with no
+ *      account, so the shell opens and no customer data is reachable.
+ *
+ * Once a deployment has users, the operator gate stops accepting logins
+ * entirely. Leaving it live alongside real customers would be a second door
+ * into the building with a password printed on the login page.
+ *
  * Sets two cookies: the signed session (httpOnly — the browser never reads it)
  * and the operator's name (readable, because the greeting is rendered client
- * side by Mike's own provider). A wrong password returns one generic message;
+ * side by Mike's own provider). A wrong credential returns one generic message;
  * saying WHICH half was wrong is free intelligence for anyone guessing.
  */
 export async function POST(request: Request) {
@@ -24,22 +41,43 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, error: 'Invalid request' }, { status: 400 })
   }
 
-  const { name, password } = (body ?? {}) as { name?: unknown; password?: unknown }
-
-  if (!checkCredentials(name, password)) {
-    return NextResponse.json(
-      { success: false, error: 'That name and password do not match.' },
-      { status: 401 },
-    )
+  const { name, email, password } = (body ?? {}) as {
+    name?: unknown
+    email?: unknown
+    password?: unknown
   }
 
-  // Store the canonical spelling, not whatever casing was typed — Mike greets
-  // "Bamik", never "bamik".
-  const operator = expectedCredentials().name
+  const rejected = NextResponse.json(
+    { success: false, error: 'Those details do not match an account.' },
+    { status: 401 },
+  )
+
+  // The login form sends one identifier field; an address is a user login,
+  // anything else is the operator name.
+  const identifier = typeof email === 'string' && email.trim() ? email : name
+  const looksLikeEmail = typeof identifier === 'string' && identifier.includes('@')
+
+  let operator: string
+  let identity: { accountId?: string; userId?: string } = {}
+
+  if (looksLikeEmail) {
+    const user = await authenticateUser(identifier, password)
+    if (!user) return rejected
+    operator = user.name?.trim() || user.email.split('@')[0]
+    identity = { accountId: user.accountId, userId: user.id }
+  } else {
+    // The operator gate closes as soon as real accounts exist.
+    if (await hasUsers()) return rejected
+    if (!checkCredentials(identifier, password)) return rejected
+    // Store the canonical spelling, not whatever casing was typed — Mike greets
+    // "Bamik", never "bamik".
+    operator = expectedCredentials().name
+  }
+
   const response = NextResponse.json({ success: true, name: operator })
   const secure = process.env.NODE_ENV === 'production'
 
-  response.cookies.set(SESSION_COOKIE, await createSessionToken(operator), {
+  response.cookies.set(SESSION_COOKIE, await createSessionToken(operator, identity), {
     httpOnly: true,
     sameSite: 'lax',
     secure,

@@ -5,6 +5,7 @@ import { getSkills } from '@/lib/skills'
 import { parseModelJson } from '@/lib/parse'
 import { buildFrameworksContext } from '@/lib/frameworks'
 import type { CopyOutput } from '@/types'
+import { currentAccount } from '@/lib/account'
 
 export const runtime = 'nodejs'
 
@@ -16,14 +17,17 @@ export async function POST(request: NextRequest) {
   try {
     const openai = getOpenAI()
 
-    const { brief, builderId } = await request.json()
+    const { brief } = await request.json()
+    // The tenant comes from the signed session, never from the body — a
+    // client-declared tenant is a suggestion, not an identity.
+    const accountId = await currentAccount()
 
     // Same resolution order as the Claude route — the two are compared against
     // each other, so they must be written for the same brand.
-    const { memory: brandMemory, brandName } = await resolveBrandMemory(builderId)
+    const { memory: brandMemory, brandName } = await resolveBrandMemory(accountId)
 
     const skills = getSkills(['meta-frameworks', 'hooks-library'])
-    const dbFrameworks = await buildFrameworksContext(builderId ?? null)
+    const dbFrameworks = await buildFrameworksContext(accountId)
     const frameworksSection = [skills, dbFrameworks].filter(Boolean).join('\n\n---\n\n')
 
     const systemPrompt = `${brandMemory}

@@ -6,6 +6,7 @@ import { parseModelJson } from '@/lib/parse'
 import { buildFrameworksContext } from '@/lib/frameworks'
 import type { CopyOutput } from '@/types'
 import { INTELLIGENCE_MODEL } from '@/lib/models'
+import { currentAccount } from '@/lib/account'
 
 export const runtime = 'nodejs'
 
@@ -20,15 +21,18 @@ export async function POST(request: NextRequest) {
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-    const { brief, builderId } = await request.json()
+    const { brief } = await request.json()
+    // The tenant comes from the signed session, never from the body — a
+    // client-declared tenant is a suggestion, not an identity.
+    const accountId = await currentAccount()
 
     // The selected builder, else the CONNECTED WEBSITE, else the static file.
     // Reaching straight for the file wrote every tenant's copy against one
     // specific builder's brand memory — see `resolveBrandMemory`.
-    const { memory: brandMemory, brandName } = await resolveBrandMemory(builderId)
+    const { memory: brandMemory, brandName } = await resolveBrandMemory(accountId)
 
     const skills = getSkills(['meta-frameworks', 'hooks-library'])
-    const dbFrameworks = await buildFrameworksContext(builderId ?? null)
+    const dbFrameworks = await buildFrameworksContext(accountId)
     const frameworksSection = [skills, dbFrameworks].filter(Boolean).join('\n\n---\n\n')
 
     const systemPrompt = `${brandMemory}

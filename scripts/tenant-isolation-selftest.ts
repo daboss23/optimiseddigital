@@ -67,9 +67,18 @@ async function main() {
      out of a request the tenant itself sent. It is not authentication, it is a
      suggestion — and every scoped query built on it is scoped to whatever the
      caller typed. */
+  /** Source with comments removed — a check that cannot tell an explanation
+   *  from a statement fails on the very fix that documents the bug. */
+  const code = (file: string): string =>
+    readFileSync(file, 'utf-8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .split('\n')
+      .map((line) => line.replace(/\/\/.*$/, ''))
+      .join('\n')
+
   const bodyTenant: string[] = []
   for (const f of apiFiles) {
-    const src = readFileSync(f, 'utf-8')
+    const src = code(f)
     // `builderId` (or accountId/tenantId) pulled out of the parsed request body.
     if (
       /(?:const|let)\s*\{[^}]*\b(?:builderId|accountId|tenantId)\b[^}]*\}\s*=\s*(?:await\s*)?(?:request|req)\.json\(\)/.test(
@@ -178,7 +187,13 @@ async function main() {
   const openPolicies: string[] = []
   let scopedPolicies = 0
   for (const f of sqlFiles) {
+    // Strip `--` comments first. A schema file that DOCUMENTS the dangerous
+    // policy it removed still contains the words, and a check that cannot tell
+    // an explanation from a statement fails on the fix.
     const src = readFileSync(join(root, 'supabase', f), 'utf-8')
+      .split('\n')
+      .filter((line) => !/^\s*--/.test(line))
+      .join('\n')
     const policies = src.match(/create policy[\s\S]*?;/gi) ?? []
     for (const p of policies) {
       if (/\b(?:account_id|builder_id|tenant_id)\b/.test(p)) scopedPolicies += 1
@@ -190,11 +205,26 @@ async function main() {
     openPolicies.length === 0,
     openPolicies.join(' · '),
   )
+  /* Deliberately NOT "every tenant table has a scoped policy". The app connects
+     with the service-role key, which bypasses RLS by design, so a scoped policy
+     would not be the thing separating customers — the account resolved from the
+     session is. What RLS must do here is stop the ANON key, which ships to the
+     browser, from reading tenant tables at all. Asserting a policy the runtime
+     never exercises would be theatre; this asserts the protection that is
+     actually in force. */
+  const tenancySql = (() => {
+    try {
+      return readFileSync(join(root, 'supabase', 'schema.tenancy.sql'), 'utf-8')
+    } catch {
+      return ''
+    }
+  })()
   check(
-    'tenant tables carry policies that scope by the tenant column',
-    scopedPolicies > 0,
-    'no CREATE POLICY references a tenant column — the service-role key is the only thing standing between customers',
+    'row-level security is enabled on the tenant tables',
+    /enable row level security/i.test(tenancySql) && /knowledge_chunks/.test(tenancySql),
+    'nothing enables RLS across the tenant tables — the public anon key can read them',
   )
+  void scopedPolicies
 
   console.log(
     failures === 0

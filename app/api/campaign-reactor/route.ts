@@ -63,6 +63,7 @@ import { bestVisualReferenceFor } from '@/lib/visual-library'
 import { getConnectedWebsite } from '@/lib/website-intelligence'
 import { websiteBrandBrief } from '@/lib/brand-context'
 import { getTenant, tenantDescriptor } from '@/lib/tenant'
+import { currentAccount } from '@/lib/account'
 
 // ORACLE strategic memory injected into OPUS at fire time — past winning
 // configurations matching the brief, so generation reuses what worked.
@@ -265,7 +266,6 @@ interface ReactorRequest {
   angle: string
   inputs?: string[]
   outputs?: string[]
-  builderId?: string | null
   videoModel?: string | null
   imageModel?: string | null
   metaProvider?: MetaProvider | null
@@ -1084,7 +1084,7 @@ async function runIntelligence(
   controller: ReadableStreamDefaultController,
   id: IntelligenceId,
   question: string,
-  builderId: string | null,
+  accountId: string | null,
 ): Promise<string> {
   const agent = INTELLIGENCE[id]
   sse(controller, {
@@ -1099,7 +1099,7 @@ async function runIntelligence(
   // Gather scoped evidence across this layer's knowledge systems.
   const hits = (
     await Promise.all(
-      agent.systems.map((system) => searchKnowledge(question, { system, k: 4, builderId })),
+      agent.systems.map((system) => searchKnowledge(question, { system, k: 4, builderId: accountId })),
     )
   ).flat()
   // Every retrieval names the layer that made it. OPUS is told to batch
@@ -1272,7 +1272,7 @@ async function preflightBriefing(
   anthropic: Anthropic,
   controller: ReadableStreamDefaultController,
   ctx: PreflightContext,
-  builderId: string | null,
+  accountId: string | null,
   /**
    * Hard cap on the briefing. The briefing is research, not output — a layer
    * still thinking when this expires is abandoned so the run can spend what is
@@ -1285,7 +1285,7 @@ async function preflightBriefing(
       const question = preflightQuestion(id, ctx)
       try {
         const findings = await Promise.race([
-          runIntelligence(anthropic, controller, id, question, builderId),
+          runIntelligence(anthropic, controller, id, question, accountId),
           new Promise<null>((resolve) => setTimeout(() => resolve(null), deadlineMs)),
         ])
         if (findings === null) {
@@ -1683,6 +1683,14 @@ export async function POST(request: NextRequest) {
   const body = (await request.json()) as ReactorRequest
   const outputs = body.outputs ?? ['Hook', 'Headline', 'Campaign Concept']
 
+  /* The account this whole run belongs to, resolved ONCE from the signed
+     session before a single retrieval happens. It used to arrive as
+     `body.builderId` — the client naming its own tenant, which every scoped
+     search then trusted. Resolved here, it is the same value for the preflight
+     briefing, every consult, the NEURO retrieval and the outcome write, so no
+     part of a run can be scoped to a different customer than another part. */
+  const runAccount = await currentAccount()
+
   const stream = new ReadableStream({
     async start(controller) {
       // Budget clock starts HERE — the moment the run begins — not after the
@@ -1872,7 +1880,7 @@ export async function POST(request: NextRequest) {
               brief: ri?.brief,
               variationDemands: variationDemands(runVariations),
             },
-            body.builderId ?? null,
+            runAccount,
             Math.max(8_000, RUN_BUDGET_MS * PREFLIGHT_MAX_SHARE - elapsed()),
           ).catch(() => ''),
           // What THIS account has learned, ahead of the craft floor. An
@@ -1959,7 +1967,7 @@ export async function POST(request: NextRequest) {
         // parallel with the agent's intelligence loop + copy generation instead
         // of adding a serial wait at submit time. It's cached across runs too, so
         // repeat fires resolve instantly. Errors are swallowed inside the helper.
-        const neuroPrinciplesPromise = retrieveNeuroPrinciples(body.angle ?? '', body.builderId ?? null)
+        const neuroPrinciplesPromise = retrieveNeuroPrinciples(body.angle ?? '', runAccount)
         let neuroRevisions = 0
         // One top-up round at most. A second would compound against the wall
         // clock for diminishing returns — if OPUS came back short twice, the
@@ -2186,7 +2194,7 @@ export async function POST(request: NextRequest) {
                 controller,
                 layer,
                 question,
-                body.builderId ?? null,
+                runAccount,
               )
               return { type: 'tool_result', tool_use_id: tu.id, content: findings }
             }
@@ -2287,7 +2295,7 @@ export async function POST(request: NextRequest) {
                 })
               }
               await logGeneration({
-                builder_id: body.builderId ?? null,
+                builder_id: runAccount,
                 model_id: started.modelId,
                 provider: started.provider,
                 mode,
