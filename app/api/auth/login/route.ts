@@ -7,7 +7,7 @@ import {
   createSessionToken,
   expectedCredentials,
 } from '@/lib/auth'
-import { authenticateUser, hasUsers } from '@/lib/account'
+import { authenticateUser, hasUsers, resolveOperatorAccount } from '@/lib/account'
 
 export const runtime = 'nodejs'
 
@@ -72,6 +72,12 @@ export async function POST(request: Request) {
     // Store the canonical spelling, not whatever casing was typed — Mike greets
     // "Bamik", never "bamik".
     operator = expectedCredentials().name
+    // The gate works IN an account rather than outside every account. Without
+    // this a single-brand deployment signs in successfully and then cannot
+    // connect a website, ingest anything, or save an ad — every scoped write
+    // refusing, correctly, for want of a tenant that was never created.
+    const operatorAccount = await resolveOperatorAccount(operator)
+    if (operatorAccount) identity = { accountId: operatorAccount }
   }
 
   const response = NextResponse.json({ success: true, name: operator })

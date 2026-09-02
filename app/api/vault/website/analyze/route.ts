@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { analyzeWebsite, assertSafeUrl, type AnalyzeEvent } from '@/lib/website-intelligence'
-import { requireAccount } from '@/lib/account'
+import { currentAccount } from '@/lib/account'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -32,11 +32,12 @@ export async function POST(request: NextRequest) {
         }
       }
       try {
-        // The scan is scoped to the signed-in account: its chunks carry that
-        // account, and the re-scan clears only that account's previous site.
-        // `requireAccount` throws rather than letting an unscoped scan write
-        // rows every customer could retrieve, or clear rows that are not theirs.
-        await analyzeWebsite(url, send, await requireAccount())
+        // Scoped to the signed-in account: its chunks carry that account, and a
+        // re-scan clears only that account's previous site. Null is allowed and
+        // means "do not persist" — the scan still runs and returns its profiles
+        // in memory, which is how a deployment with no database behaves. The
+        // storage layer refuses an unscoped WRITE; it does not refuse the scan.
+        await analyzeWebsite(url, send, await currentAccount())
       } catch (err) {
         send({
           type: 'error',

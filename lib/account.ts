@@ -117,6 +117,53 @@ export async function authenticateUser(
   }
 }
 
+/**
+ * The account a single-operator deployment works in.
+ *
+ * A deployment handed to one brand — a friend testing the platform, a
+ * single-tenant install — signs in through the operator gate, which issues a
+ * session with no account. Every scoped read and write then correctly refuses,
+ * which is right for a shared deployment and useless for this one: connecting a
+ * website is the first thing anyone does, and it failed with a message about
+ * signing in as a user of an account that does not exist.
+ *
+ * So the gate gets ONE account, found or created on first login and reused
+ * forever after. Identified by the slug `operator` rather than "the first row",
+ * so it stays unambiguous if accounts are later added by signup.
+ *
+ * Returns null when there is no database, which is a real answer: nothing
+ * persists in that mode, and the scan already falls back to an in-memory
+ * summary rather than failing.
+ */
+export const OPERATOR_ACCOUNT_SLUG = 'operator'
+
+export async function resolveOperatorAccount(name: string): Promise<AccountId | null> {
+  if (!ready()) return null
+  try {
+    const admin = getSupabaseAdmin()
+    const { data: found, error: findErr } = await admin
+      .from('accounts')
+      .select('id')
+      .eq('slug', OPERATOR_ACCOUNT_SLUG)
+      .maybeSingle()
+    if (findErr) throw findErr
+    if (found?.id) return String(found.id)
+
+    const { data: created, error: createErr } = await admin
+      .from('accounts')
+      .insert({ name: name.trim() || 'My brand', slug: OPERATOR_ACCOUNT_SLUG })
+      .select('id')
+      .single()
+    if (createErr) throw createErr
+    return String(created.id)
+  } catch (err) {
+    // A deployment whose accounts table has not been migrated yet still signs
+    // in; it simply has no account until the migration runs.
+    console.error('Operator account resolution failed:', err)
+    return null
+  }
+}
+
 /** True when this deployment has real user accounts (the SaaS path is live). */
 export async function hasUsers(): Promise<boolean> {
   if (!ready()) return false

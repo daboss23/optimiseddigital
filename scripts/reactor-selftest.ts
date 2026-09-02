@@ -264,6 +264,35 @@ async function main() {
     )
   }
 
+  /* -- 0. The single-brand path opens at all -------------------------------- */
+  /* A deployment handed to ONE brand signs in through the operator gate. When
+     the multi-tenant work landed, that gate issued a session with no account,
+     so every scoped write refused — and connecting a website, the first thing
+     anyone does, failed with a message about signing in as a user of an account
+     that did not exist. Sign-in succeeded and the product was unusable, which is
+     the worst shape a break can take. This asserts the scan REACHES the website
+     rather than being refused before it starts. */
+  console.log(bold('0. The connect-website path is open'))
+  try {
+    const res = await fetch(`${BASE_URL}/api/vault/website/analyze`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ url: 'https://example.com' }),
+    })
+    const body = await res.text()
+    const refusedForAccount = /No account on this session/i.test(body)
+    check(
+      'the scan is not refused for want of an account',
+      !refusedForAccount,
+      refusedForAccount
+        ? 'the operator gate signs in without an account, so nothing can be connected or saved'
+        : '',
+    )
+    check('and it gets as far as contacting the site', /ATLAS initialised/.test(body), body.slice(0, 160))
+  } catch (err) {
+    check('the connect-website route responds', false, err instanceof Error ? err.message : String(err))
+  }
+
   /* -- 1. Every mandatory layer activates and reports evidence -------------- */
   console.log(bold('1. Intelligence network activation'))
   const run = await fireReactor({
