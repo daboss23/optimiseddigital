@@ -296,6 +296,14 @@ export function ConceptResultCard({
           </button>
         </div>
       )}
+      {/* OPUS returned a format the brief did not ask for. Shown rather than
+          deleted, and never auto-rendered — a run that quietly answers "3
+          images" with three videos is the failure this replaces. */}
+      {c.formatMismatch && (
+        <p className="mt-2 rounded-lg border border-warning/30 bg-warning/[0.06] p-2 text-[11px] text-warning">
+          {c.formatMismatch}
+        </p>
+      )}
       {/* A render that did not run on the model it was meant to — or ran on one
           that cannot set legible copy — says so. A silent downgrade is exactly
           how an ad ships with a misspelled headline. */}

@@ -22,7 +22,12 @@ import {
 import { briefToVideoPrompt, compileRenderPrompt, type RenderBrand } from '@/lib/render-prompt'
 import { useRenderBrand } from '@/components/reactor/useRenderBrand'
 import type { MetaAdPackage } from '@/lib/meta-ads'
-import { VARIATION_METHOD_LABEL, type VariationMethod } from '@/lib/variations'
+import {
+  isMotionFormat,
+  VARIATION_METHOD_LABEL,
+  type VariationFormat,
+  type VariationMethod,
+} from '@/lib/variations'
 import type { CreativeTaxonomy } from '@/lib/taxonomy'
 import type { Verdict, OutcomeAttributes } from '@/lib/outcomes'
 import {
@@ -40,6 +45,14 @@ import {
 export interface Concept {
   type: string
   text: string
+  /**
+   * The creative family the run counted this concept against, resolved from the
+   * deliverable the operator selected. The medium is routed on THIS, never on
+   * `type` — see `isVideoConcept`.
+   */
+  format?: VariationFormat
+  /** Set when OPUS returned a family the brief did not ask for. */
+  formatMismatch?: string
   basis?: string
   learningCheck?: string
   score?: number
@@ -128,7 +141,17 @@ interface UgcOpts {
 // up with the concept the agent submits ("Static Concepts" ≈ "Static Concept").
 export const normType = (s: string) => s.toLowerCase().replace(/s$/, '').trim()
 
-const isVideoConcept = (c: Concept) => /video|testimonial/i.test(c.type)
+/**
+ * Does this concept render as MOTION?
+ *
+ * Reads the format the server stamped from the operator's own selection. The
+ * regex is the fallback for a concept that predates the stamp (one reopened
+ * from the ledger) — it is not the answer, because `type` is free text the
+ * orchestrator writes, and routing an expensive render off it is how a brief
+ * for three static creatives came back as three videos.
+ */
+export const isVideoConcept = (c: Concept): boolean =>
+  c.format ? isMotionFormat(c.format) : /video|testimonial|ugc/i.test(c.type)
 
 /* -------------------------------------------------------------------------- */
 /*  Context shape                                                             */

@@ -119,6 +119,25 @@ export function variationFormat(output: string): VariationFormat | null {
   return null
 }
 
+/**
+ * Which families are MOTION — the one definition of "does this render as a
+ * video", used by the counting, the routing and the aspect ratio alike.
+ *
+ * There were three, and they disagreed. The Workbench tested
+ * `/video|testimonial|ugc/`, the run context tested `/video|testimonial/`
+ * (no UGC), and `variationFormat` put "founder" in the video family. So a UGC
+ * concept was counted as motion, gated on a video provider being configured,
+ * given the 9:16 video ratio — and then rendered as a still; and a Founder
+ * concept consumed a video slot and rendered as an image. Worse, all three read
+ * a free-text `type` string the orchestrator writes, which is not a field
+ * anything should route on.
+ *
+ * Carousel is a still: it renders as images, however many frames it has.
+ */
+export function isMotionFormat(format: VariationFormat): boolean {
+  return format === 'video' || format === 'ugc' || format === 'montage'
+}
+
 /** Singular noun for the live summary — "3 UGC variations", "1 Static creative". */
 export const FORMAT_NOUN: Record<VariationFormat, string> = {
   static: 'Static',

@@ -49,7 +49,11 @@ import { recommendVideoModel } from '@/lib/video/recommend'
 import type { ModelAvailability } from '@/lib/video/types'
 import { recommendImageModel } from '@/lib/image/recommend'
 import type { ImageModelAvailability } from '@/lib/image/types'
-import { useReactorRun, type Concept } from '@/components/campaign-reactor/ReactorRunContext'
+import {
+  isVideoConcept,
+  useReactorRun,
+  type Concept,
+} from '@/components/campaign-reactor/ReactorRunContext'
 import { CreativeLedger } from '@/components/campaign-reactor/CreativeLedger'
 import { CLONE_STORAGE_KEY, type CloneReference, type IsolateConfig } from '@/lib/taxonomy'
 import { takeDraft } from '@/lib/operator/draft'
@@ -627,9 +631,10 @@ export function Workbench() {
     setTimeout(() => setCopied(null), 1500)
   }
 
-  // A concept whose brief is a moving creative (Video / Testimonial / UGC)
-  // renders a video ad; everything else renders a still.
-  const isVideoConcept = (c: Concept) => /video|testimonial|ugc/i.test(c.type)
+  // One definition of motion, shared with the renderer that acts on it. This
+  // used to be its own regex here and a DIFFERENT one in the run context, so a
+  // UGC concept was gated on a video provider and given the 9:16 video ratio,
+  // then rendered as a still at that ratio.
 
   /**
    * Does this concept carry a visual deliverable that should auto-render?
@@ -648,7 +653,12 @@ export function Workbench() {
    * excluded too — it has its own Creative Canvas scene pipeline.
    */
   const isVisualConcept = (c: Concept) =>
-    /concept|creative/i.test(c.type) && !/hook|headline|primary text|angle/i.test(c.type)
+    /concept|creative/i.test(c.type) &&
+    !/hook|headline|primary text|angle/i.test(c.type) &&
+    // A concept OPUS returned in a format the brief did not ask for is shown
+    // but never auto-rendered — the platform does not spend a video render on a
+    // brief that asked for a still.
+    !c.formatMismatch
 
   // The render size for a concept — the first ratio picked on the Formats step
   // for its deliverable family, falling back to the platform defaults.

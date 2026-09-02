@@ -279,6 +279,14 @@ interface ReactorRequest {
 interface Concept {
   type: string
   text: string
+  /**
+   * The creative family this concept was counted against — resolved from the
+   * deliverable the OPERATOR selected, never from the `type` string above.
+   * The client routes image-vs-video on this.
+   */
+  format?: VariationFormat
+  /** Set when OPUS returned a family the brief did not ask for. */
+  formatMismatch?: string
   basis?: string
   learningCheck?: string
   score?: number
@@ -441,8 +449,13 @@ const RECOUNT_MAX_TOTAL = 6
 function reconcileConceptCounts(
   concepts: Concept[],
   configs: VariationConfig[],
-): { kept: Concept[]; shortfall: { output: string; owed: number; got: number }[] } {
-  if (configs.length === 0) return { kept: concepts, shortfall: [] }
+): {
+  kept: Concept[]
+  shortfall: { output: string; owed: number; got: number }[]
+  /** Concepts in a creative family the brief did not select. */
+  mismatched: Concept[]
+} {
+  if (configs.length === 0) return { kept: concepts, shortfall: [], mismatched: [] }
 
   // Bucket by creative family rather than exact label: OPUS submits internal
   // concept types ("Testimonial Concept"), not the operator's deliverable names.
@@ -455,20 +468,42 @@ function reconcileConceptCounts(
   }
 
   const kept: Concept[] = []
+  const mismatched: Concept[] = []
   const taken = new Map<VariationFormat, number>()
   for (const concept of concepts) {
     const fmt = variationFormat(concept.type ?? '')
-    const owed = fmt ? owedBy.get(fmt) : undefined
-    // A concept for a family the brief never asked for is left alone rather
-    // than dropped — copy-only concepts and agent-decided formats land here,
-    // and silently deleting them would lose real work.
-    if (!fmt || !owed) {
+
+    // Copy-only output (a hook, a headline). It carries no creative family and
+    // no variation budget, and the brief asked for it through `outputs`.
+    if (!fmt) {
       kept.push(concept)
       continue
     }
+
+    const owed = owedBy.get(fmt)
+    if (!owed) {
+      /* A creative family the brief did not select, on a run that DID select
+         families. This used to be kept — "silently deleting it would lose real
+         work" — which is how a brief for three static creatives came back as
+         three videos: the videos matched no budget, so they were waved through
+         whole, and the statics were merely reported as a shortfall that a
+         later turn might or might not fill.
+
+         It is a substitution, not a bonus. It is held back from the count,
+         reported to OPUS, and if the revision never lands it still ships (see
+         the caller) — carrying the mismatch, and never auto-rendered, so the
+         platform cannot spend a video render on a brief that asked for a
+         still. */
+      mismatched.push(concept)
+      continue
+    }
+
     const used = taken.get(fmt) ?? 0
     if (used >= owed.owed) continue
     taken.set(fmt, used + 1)
+    // The medium is stamped from the SELECTION, not inferred downstream from
+    // the type string OPUS happened to write.
+    concept.format = fmt
     kept.push(concept)
   }
 
@@ -476,7 +511,7 @@ function reconcileConceptCounts(
     .map(([fmt, { output, owed }]) => ({ output, owed, got: taken.get(fmt) ?? 0 }))
     .filter((s) => s.got < s.owed)
 
-  return { kept, shortfall }
+  return { kept, shortfall, mismatched }
 }
 
 /**
@@ -1527,6 +1562,7 @@ async function runDemo(controller: ReadableStreamDefaultController, body: Reacto
         score: 8,
         adPackage: demoAdPackage(baseType, a, demoAudience),
         neuro: demoNeuroScore(8, baseType),
+        format: variationFormat(baseType) ?? undefined,
         taxonomy,
         testId,
         variantId: `${testId}-${variantLabel(i)}`,
@@ -1596,6 +1632,10 @@ async function runDemo(controller: ReadableStreamDefaultController, body: Reacto
         if (axis) variant.isolatedAxis = axis
         variantN += 1
       }
+      // Stamp the medium here too, so the demo path routes exactly the way the
+      // live path does rather than falling back to the type regex.
+      const demoFormat = variationFormat(c.type)
+      if (demoFormat) variant.format = demoFormat
       sse(controller, { type: 'concept', concept: variant })
       if (k === 0) await pace(800)
     }
@@ -2359,16 +2399,27 @@ export async function POST(request: NextRequest) {
               // a suggestion. Surplus is trimmed for free; a shortfall is only
               // worth an extra turn on a small run (see reconcileConceptCounts).
               const counted = reconcileConceptCounts(concepts, runVariations)
-              if (counted.kept.length !== concepts.length) {
+              const trimmed = concepts.length - counted.kept.length - counted.mismatched.length
+              if (trimmed > 0) {
                 sse(controller, {
                   type: 'step',
-                  text: `Trimmed ${concepts.length - counted.kept.length} concept(s) beyond the requested counts.`,
+                  text: `Trimmed ${trimmed} concept(s) beyond the requested counts.`,
+                })
+              }
+              if (counted.mismatched.length > 0) {
+                // The operator picked a format. Getting a different one back is
+                // the failure this names out loud rather than shipping quietly.
+                sse(controller, {
+                  type: 'step',
+                  text: `${counted.mismatched.length} concept(s) came back in a format the brief did not ask for (${Array.from(
+                    new Set(counted.mismatched.map((c) => c.type)),
+                  ).join(', ')}) — they will not be rendered as that medium.`,
                 })
               }
               concepts = counted.kept
               const owedTotal = totalVariations(runVariations)
               if (
-                counted.shortfall.length > 0 &&
+                (counted.shortfall.length > 0 || counted.mismatched.length > 0) &&
                 countRevisions < 1 &&
                 owedTotal <= RECOUNT_MAX_TOTAL &&
                 !FAST_PATH &&
@@ -2378,9 +2429,18 @@ export async function POST(request: NextRequest) {
                 const missing = counted.shortfall
                   .map((s) => `${s.output}: ${s.got} of ${s.owed}`)
                   .join(' · ')
+                const wrongFormat = counted.mismatched.length
+                  ? ` Also: you submitted ${counted.mismatched.length} concept(s) as ${Array.from(
+                      new Set(counted.mismatched.map((c) => c.type)),
+                    ).join(
+                      ', ',
+                    )}, which is a creative format the brief did not ask for. The operator chose the deliverables; the format is theirs to pick, not yours. Resubmit those as the requested format.`
+                  : ''
                 sse(controller, {
                   type: 'step',
-                  text: `Short of the requested counts (${missing}) — asking OPUS for the missing concept(s).`,
+                  text: missing
+                    ? `Short of the requested counts (${missing}) — asking OPUS for the missing concept(s).`
+                    : 'Asking OPUS to resubmit in the format the brief asked for.',
                 })
                 // Retain what did land on BOTH paths: `carriedConcepts` merges
                 // it into the top-up submission, `pendingConcepts` ships it if
@@ -2390,9 +2450,30 @@ export async function POST(request: NextRequest) {
                 results.push({
                   type: 'tool_result',
                   tool_use_id: tu.id,
-                  content: `The submission is SHORT of the requested counts — ${missing}. Call submit_concepts again with ONLY the missing concept(s), each one a genuinely different execution under the lever already stated for that format. Do not resubmit the concepts you already sent, and do not pad with paraphrases.`,
+                  content: `${
+                    missing
+                      ? `The submission is SHORT of the requested counts — ${missing}. Call submit_concepts again with ONLY the missing concept(s), each one a genuinely different execution under the lever already stated for that format. Do not resubmit the concepts you already sent, and do not pad with paraphrases.`
+                      : 'Call submit_concepts again with the concept(s) in the requested format.'
+                  }${wrongFormat}`,
                 })
                 continue
+              }
+
+              /* The revision was not taken (fast path, budget spent, or already
+                 used once). The wrong-format concepts are real, finished work,
+                 so they ship rather than being deleted — but they carry the
+                 mismatch, and the client skips auto-render for anything that
+                 does. Losing the work and silently rendering the wrong medium
+                 are both wrong; showing it and letting the operator decide is
+                 not. */
+              if (counted.mismatched.length > 0) {
+                for (const c of counted.mismatched) {
+                  const asked = runVariations.map((v) => v.output).join(', ')
+                  c.formatMismatch = `OPUS returned this as a ${c.type}; the brief asked for ${
+                    asked || 'a different format'
+                  }. Nothing was auto-rendered — render it by hand if you want it.`
+                }
+                concepts = [...concepts, ...counted.mismatched]
               }
 
               // Meta ad-unit compliance gate — Meta's placement limits + the platform's

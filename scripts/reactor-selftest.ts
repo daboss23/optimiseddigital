@@ -84,6 +84,10 @@ interface ObservedConcept {
   variantId?: string
   variationMethod?: string
   variationLabel?: string
+  /** The creative family the run counted it against — what the client routes on. */
+  format?: string
+  /** Set when OPUS returned a family the brief did not ask for. */
+  formatMismatch?: string
 }
 
 interface RunResult {
@@ -409,6 +413,37 @@ async function main() {
     'the two formats honoured DIFFERENT counts (per-format, not one global knob)',
     statics !== videos,
     `both formats produced ${statics} — the per-format counts collapsed into one`,
+  )
+
+  /* The medium, not just the count. A run answered "3 static creatives" with
+     three videos: the count gate waved through a family the brief never asked
+     for, and the client decided image-vs-video by regex over the free-text
+     `type` the orchestrator writes. Every shipped concept must now carry the
+     family it was COUNTED against, and it must be the family that was asked
+     for — the stamp is what the renderer routes on. */
+  const creatives = run.concepts.filter((c) => /concept|creative/i.test(c.type))
+  check(
+    'every creative concept carries the format it was counted against',
+    creatives.every((c) => Boolean(c.format || c.formatMismatch)),
+    `unstamped: ${creatives
+      .filter((c) => !c.format && !c.formatMismatch)
+      .map((c) => c.type)
+      .join(', ')}`,
+  )
+  const askedFor = new Set(['static', 'video'])
+  check(
+    'no concept ships in a format the brief did not ask for',
+    creatives.every((c) => c.formatMismatch || (c.format && askedFor.has(c.format))),
+    creatives
+      .filter((c) => !c.formatMismatch && c.format && !askedFor.has(c.format))
+      .map((c) => `${c.type} → ${c.format}`)
+      .join(', '),
+  )
+  const staticStamped = creatives.filter((c) => c.format === 'static').length
+  check(
+    'the static deliverable is stamped static — an image brief cannot render as video',
+    staticStamped === 3,
+    `expected 3 stamped static, got ${staticStamped}`,
   )
 
   // Attribution: a variation set is only useful if every version says which
