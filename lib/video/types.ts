@@ -1,5 +1,5 @@
 /**
- * Unified video-generation types for the TPB "oven" — the multi-model layer
+ * Unified video-generation types for the "oven" — the multi-model layer
  * that turns prompts (and stills) into high-quality clips.
  *
  * Every provider (fal.ai gateway, Higgsfield) is normalised to the same job

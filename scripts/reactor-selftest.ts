@@ -15,12 +15,49 @@
  *   npx tsx scripts/reactor-selftest.ts
  *   BASE_URL=https://your-app.vercel.app npx tsx scripts/reactor-selftest.ts
  *
+ * The platform sits behind a login gate, so the suite signs in first and
+ * carries the session cookie on every call. Without that it 401s on its first
+ * request and reports "is the app running?" — a test that cannot reach the
+ * thing it tests guards nothing. Override the pair with PLATFORM_LOGIN_NAME /
+ * PLATFORM_LOGIN_PASSWORD when the deployment has set its own.
+ *
  * Exits non-zero on the first failed assertion set, so it works in CI.
  */
 
 import { INTELLIGENCE, INTELLIGENCE_IDS, type IntelligenceId } from '@/lib/agents'
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:3000'
+
+/** The signed session cookie, held for the life of the run. */
+let sessionCookie = ''
+
+/**
+ * Sign in and keep the cookie. Falls through silently when the deployment has
+ * no gate (an older build, or one with auth disabled) — the suite then runs
+ * exactly as it did before.
+ */
+async function signIn(): Promise<void> {
+  const body = {
+    name: process.env.PLATFORM_LOGIN_NAME ?? 'Bamik',
+    password: process.env.PLATFORM_LOGIN_PASSWORD ?? '1234',
+  }
+  try {
+    const res = await fetch(`${BASE_URL}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const raw = res.headers.get('set-cookie')
+    if (res.ok && raw) sessionCookie = raw.split(';')[0]
+  } catch {
+    /* no gate, or unreachable — the first real request reports it properly */
+  }
+}
+
+/** Request headers, with the session attached once it exists. */
+function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  return sessionCookie ? { ...extra, cookie: sessionCookie } : extra
+}
 
 /** Layers the platform guarantees on every build (see MANDATORY_LAYERS). */
 const MANDATORY: IntelligenceId[] = ['atlas', 'nova', 'spark', 'echo', 'oracle']
@@ -47,6 +84,10 @@ interface ObservedConcept {
   variantId?: string
   variationMethod?: string
   variationLabel?: string
+  /** The creative family the run counted it against — what the client routes on. */
+  format?: string
+  /** Set when OPUS returned a family the brief did not ask for. */
+  formatMismatch?: string
 }
 
 interface RunResult {
@@ -88,11 +129,15 @@ async function fireReactor(payload: Record<string, unknown>): Promise<RunResult>
   const started = Date.now()
   const res = await fetch(`${BASE_URL}/api/campaign-reactor`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(payload),
   })
   if (!res.ok || !res.body) {
-    throw new Error(`Reactor responded ${res.status} ${res.statusText}`)
+    throw new Error(
+      res.status === 401
+        ? 'Reactor responded 401 Unauthorized — the login pair did not open the gate. Set PLATFORM_LOGIN_NAME / PLATFORM_LOGIN_PASSWORD to this deployment\'s own.'
+        : `Reactor responded ${res.status} ${res.statusText}`,
+    )
   }
 
   const agents = INTELLIGENCE_IDS.reduce(
@@ -181,8 +226,72 @@ async function fireReactor(payload: Record<string, unknown>): Promise<RunResult>
 
 /* ---------------------------------- Suite ---------------------------------- */
 
+/**
+ * Whether this deployment has a knowledge corpus behind the agent layers.
+ *
+ * A blank platform is the SHIPPED state: the curated corpus belongs to one
+ * company and is gated behind NEXT_PUBLIC_REACTOR_DEMO_DATA, so on a fresh
+ * deployment with no vault of its own, NOVA/SPARK/ECHO/ORACLE genuinely have
+ * nothing to retrieve. That is correct behaviour, not a failure — the layers
+ * must still activate and must still report Exploratory rather than inventing
+ * findings, which is what this suite checks instead.
+ */
+async function hasCorpus(): Promise<boolean> {
+  try {
+    const health = await fetch(`${BASE_URL}/api/health`, { headers: authHeaders() }).then((r) =>
+      r.json(),
+    )
+    if (health?.display?.demoData === true) return true
+    // A live vault with rows in it counts too.
+    const stats = await fetch(`${BASE_URL}/api/vault/stats`, { headers: authHeaders() }).then((r) =>
+      r.json(),
+    )
+    return Number(stats?.data?.total ?? stats?.total ?? 0) > 0
+  } catch {
+    return false
+  }
+}
+
 async function main() {
   console.log(bold(`\nCampaign Reactor self-test → ${BASE_URL}\n`))
+  await signIn()
+  const corpus = await hasCorpus()
+  if (!corpus) {
+    console.log(
+      dim(
+        '   blank platform: no vault rows and demo data off — layers are checked for honest\n   reporting (activate, no invented findings) rather than for retrieval volume.\n',
+      ),
+    )
+  }
+
+  /* -- 0. The single-brand path opens at all -------------------------------- */
+  /* A deployment handed to ONE brand signs in through the operator gate. When
+     the multi-tenant work landed, that gate issued a session with no account,
+     so every scoped write refused — and connecting a website, the first thing
+     anyone does, failed with a message about signing in as a user of an account
+     that did not exist. Sign-in succeeded and the product was unusable, which is
+     the worst shape a break can take. This asserts the scan REACHES the website
+     rather than being refused before it starts. */
+  console.log(bold('0. The connect-website path is open'))
+  try {
+    const res = await fetch(`${BASE_URL}/api/vault/website/analyze`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ url: 'https://example.com' }),
+    })
+    const body = await res.text()
+    const refusedForAccount = /No account on this session/i.test(body)
+    check(
+      'the scan is not refused for want of an account',
+      !refusedForAccount,
+      refusedForAccount
+        ? 'the operator gate signs in without an account, so nothing can be connected or saved'
+        : '',
+    )
+    check('and it gets as far as contacting the site', /ATLAS initialised/.test(body), body.slice(0, 160))
+  } catch (err) {
+    check('the connect-website route responds', false, err instanceof Error ? err.message : String(err))
+  }
 
   /* -- 1. Every mandatory layer activates and reports evidence -------------- */
   console.log(bold('1. Intelligence network activation'))
@@ -220,13 +329,32 @@ async function main() {
       a.completed,
       `started=${a.started} completed=${a.completed}`,
     )
-    check(
-      `${name} retrieved real evidence`,
-      a.findings.length > 0,
-      `${name} reported with zero retrievals — its knowledge systems (${INTELLIGENCE[
-        id
-      ].systems.join(', ')}) returned nothing`,
-    )
+    if (corpus) {
+      check(
+        `${name} retrieved real evidence`,
+        a.findings.length > 0,
+        `${name} reported with zero retrievals — its knowledge systems (${INTELLIGENCE[
+          id
+        ].systems.join(', ')}) returned nothing`,
+      )
+    } else {
+      /* On a blank platform the layers do not all have the same ground. ATLAS
+         reads `vault` + `website`, which carry the universal craft the product
+         ships, so it legitimately retrieves and legitimately bands above
+         Exploratory. The others read systems that only fill from the account's
+         own work, so they correctly find nothing.
+
+         What must hold for EVERY layer either way is that the confidence
+         matches the evidence: a layer that retrieved nothing must say
+         Exploratory. A layer reporting Medium off zero findings is the
+         fabricated-activity failure this suite exists to catch. */
+      const band = a.confidence ?? 'Exploratory'
+      check(
+        `${name} bands its confidence to the evidence it actually has`,
+        a.findings.length > 0 || band === 'Exploratory',
+        `findings=${a.findings.length} confidence=${band}`,
+      )
+    }
   }
 
   const reported = INTELLIGENCE_IDS.filter((id) => run.agents[id].completed)
@@ -314,6 +442,37 @@ async function main() {
     'the two formats honoured DIFFERENT counts (per-format, not one global knob)',
     statics !== videos,
     `both formats produced ${statics} — the per-format counts collapsed into one`,
+  )
+
+  /* The medium, not just the count. A run answered "3 static creatives" with
+     three videos: the count gate waved through a family the brief never asked
+     for, and the client decided image-vs-video by regex over the free-text
+     `type` the orchestrator writes. Every shipped concept must now carry the
+     family it was COUNTED against, and it must be the family that was asked
+     for — the stamp is what the renderer routes on. */
+  const creatives = run.concepts.filter((c) => /concept|creative/i.test(c.type))
+  check(
+    'every creative concept carries the format it was counted against',
+    creatives.every((c) => Boolean(c.format || c.formatMismatch)),
+    `unstamped: ${creatives
+      .filter((c) => !c.format && !c.formatMismatch)
+      .map((c) => c.type)
+      .join(', ')}`,
+  )
+  const askedFor = new Set(['static', 'video'])
+  check(
+    'no concept ships in a format the brief did not ask for',
+    creatives.every((c) => c.formatMismatch || (c.format && askedFor.has(c.format))),
+    creatives
+      .filter((c) => !c.formatMismatch && c.format && !askedFor.has(c.format))
+      .map((c) => `${c.type} → ${c.format}`)
+      .join(', '),
+  )
+  const staticStamped = creatives.filter((c) => c.format === 'static').length
+  check(
+    'the static deliverable is stamped static — an image brief cannot render as video',
+    staticStamped === 3,
+    `expected 3 stamped static, got ${staticStamped}`,
   )
 
   // Attribution: a variation set is only useful if every version says which

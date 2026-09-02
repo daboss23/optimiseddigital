@@ -1,19 +1,19 @@
 /**
  * Tenant identity — who this deployment is FOR.
  *
- * The agent network used to name The Professional Builder (and its trades /
+ * The agent network used to name the original tenant (and its trades /
  * construction audience) directly inside its system prompts. That made every
- * deployment a TPB deployment: point the platform at a marketing agency and
+ * deployment the original tenant's deployment: point the platform at a marketing agency and
  * NOVA still profiled builders, NEURO still framed the pre-test around
  * builder coaching, and the strategic directives still assumed the reader had
- * seen TPB's ads.
+ * seen that first tenant's ads.
  *
  * Identity now resolves in three tiers, most authoritative first:
  *   1. The connected website (ATLAS's own read — the real source of truth)
  *   2. Environment overrides, for a deployment with no site connected yet
  *   3. A neutral fallback that names no company at all
  *
- * The fallback is deliberately generic rather than TPB: a prompt that says
+ * The fallback is deliberately generic rather than any named company: a prompt that says
  * "this business" produces vague copy, but a prompt that says the wrong
  * company produces confidently wrong copy, which is far more expensive.
  */
@@ -23,7 +23,7 @@ import { getConnectedWebsite, type WebsiteSummary } from '@/lib/website-intellig
 const UNKNOWN = 'Not confidently identified'
 
 export interface TenantProfile {
-  /** Full company name, e.g. "Summit Build Co". Empty when genuinely unknown. */
+  /** Full company name, e.g. "Northwind Studio". Empty when genuinely unknown. */
   companyName: string
   /** What the business does, e.g. "marketing agency". */
   industry: string
@@ -89,14 +89,34 @@ export function tenantFromWebsite(w: WebsiteSummary): TenantProfile {
 // freshly connected website still takes effect without a redeploy.
 
 const TTL_MS = 60_000
-let cached: { at: number; profile: TenantProfile } | null = null
 
-export async function getTenant(): Promise<TenantProfile> {
-  if (cached && Date.now() - cached.at < TTL_MS) return cached.profile
+/**
+ * Resolved identities, KEYED BY ACCOUNT.
+ *
+ * This was a single `cached` profile in module scope. A serverless instance
+ * serves many requests, so whichever customer warmed it handed their company
+ * name, industry, audience and positioning to whoever landed on that instance
+ * next — into the orchestrator prompt, the render prompt and the shell. A cache
+ * that cannot say WHOSE entry it holds is not a cache on a multi-tenant
+ * deployment, it is a leak with a TTL.
+ *
+ * Bounded, because an unbounded map keyed by tenant is a slow memory leak on an
+ * instance that serves a thousand accounts.
+ */
+const MAX_CACHED_TENANTS = 64
+const cache = new Map<string, { at: number; profile: TenantProfile }>()
+
+export async function getTenant(accountId: string | null): Promise<TenantProfile> {
+  // No account: the env override or the neutral fallback, never another
+  // customer's identity and never a cached one.
+  if (!accountId) return fromEnv() ?? NEUTRAL_TENANT
+
+  const hit = cache.get(accountId)
+  if (hit && Date.now() - hit.at < TTL_MS) return hit.profile
 
   let profile = fromEnv() ?? NEUTRAL_TENANT
   try {
-    const site = await getConnectedWebsite()
+    const site = await getConnectedWebsite(accountId)
     if (site) {
       const fromSite = tenantFromWebsite(site)
       // The site wins, but only for fields it actually established — an env
@@ -115,13 +135,22 @@ export async function getTenant(): Promise<TenantProfile> {
     console.error('Tenant resolution failed, using fallback:', err)
   }
 
-  cached = { at: Date.now(), profile }
+  if (cache.size >= MAX_CACHED_TENANTS) {
+    // Oldest insertion first — Map preserves insertion order.
+    const oldest = cache.keys().next()
+    if (!oldest.done) cache.delete(oldest.value)
+  }
+  cache.set(accountId, { at: Date.now(), profile })
   return profile
 }
 
 /** Drop the cache — call after a website scan so the new identity is live. */
-export function invalidateTenant(): void {
-  cached = null
+export function invalidateTenant(accountId?: string | null): void {
+  // One account's scan invalidates that account's identity. Clearing the whole
+  // map would be correct but wasteful; clearing nothing would leave a customer
+  // looking at their previous brand for a minute after connecting a new site.
+  if (accountId) cache.delete(accountId)
+  else cache.clear()
 }
 
 /* ------------------------------ Prompt helpers ---------------------------- */

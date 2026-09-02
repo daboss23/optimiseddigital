@@ -5,6 +5,7 @@ import { SESSION_COOKIE, credentialsAreDemo, expectedCredentials, readSessionTok
 import { DEFAULT_IDENTITY } from '@/lib/brand-identity'
 import { getBrandIdentity } from '@/lib/brand-identity.server'
 import { LoginForm } from '@/components/login/LoginForm'
+import { currentAccount } from '@/lib/account'
 
 /* ----------------------------------------------------------------------------
    Login.
@@ -49,7 +50,7 @@ export default async function LoginPage({
 
   let identity = DEFAULT_IDENTITY
   try {
-    identity = await getBrandIdentity()
+    identity = await getBrandIdentity(await currentAccount())
   } catch {
     /* branding must never be able to fail the door */
   }

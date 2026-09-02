@@ -14,7 +14,7 @@ import {
   type VariationMethod,
 } from '@/lib/variations'
 import { searchKnowledge } from '@/lib/knowledge'
-import { learnings } from '@/lib/reactor-data'
+import { learnings, type Learning } from '@/lib/reactor-data'
 import { INTELLIGENCE, INTELLIGENCE_IDS, isIntelligenceId, type IntelligenceId } from '@/lib/agents'
 import {
   ORCHESTRATOR_MODEL,
@@ -23,7 +23,7 @@ import {
   INTELLIGENCE_MODEL as TIER_INTELLIGENCE_MODEL,
 } from '@/lib/models'
 import { generateImageWith, imageConfigured, listImageModels, type AspectRatio } from '@/lib/image'
-import { enforceSingleFrame } from '@/lib/render-prompt'
+import { briefHasSubject, enforceSingleFrame } from '@/lib/render-prompt'
 import {
   startVideoJob,
   listVideoModels,
@@ -31,7 +31,7 @@ import {
   type GenMode,
 } from '@/lib/video'
 import { logGeneration } from '@/lib/video/persistence'
-import { retrieveWinningConfigs, type WinningConfig } from '@/lib/outcomes'
+import { resolveCreativeLearnings, retrieveWinningConfigs, type WinningConfig } from '@/lib/outcomes'
 import { outputTypeOptions, type ReactorInputs, type ProductionBrief, type NeuroScore } from '@/lib/reactor-inputs'
 import {
   retrieveNeuroPrinciples,
@@ -63,6 +63,7 @@ import { bestVisualReferenceFor } from '@/lib/visual-library'
 import { getConnectedWebsite } from '@/lib/website-intelligence'
 import { websiteBrandBrief } from '@/lib/brand-context'
 import { getTenant, tenantDescriptor } from '@/lib/tenant'
+import { currentAccount } from '@/lib/account'
 
 // ORACLE strategic memory injected into OPUS at fire time — past winning
 // configurations matching the brief, so generation reuses what worked.
@@ -219,12 +220,19 @@ const FAST_PATH = RUN_BUDGET_MS < FAST_PATH_UNDER_MS
  */
 const INLINE_IMAGES = process.env.REACTOR_INLINE_IMAGES === '1'
 
-// The Creative Learnings rubric is a static, documented list — it does not change
-// within a process, so build the get_learnings tool-result string once and reuse
-// it across every run instead of re-mapping the array on each self-critique call.
-const LEARNINGS_RUBRIC = learnings
-  .map((l) => `• ${l.insight} — ${l.recommendation} (evidence: ${l.evidence})`)
-  .join('\n')
+/**
+ * The Creative Learnings rubric, formatted for the get_learnings tool result.
+ *
+ * No longer a process-level constant: the rubric now leads with what THIS
+ * account has actually learned from its own graded outcomes, so it changes as
+ * the account runs creative. It was a static list of figures measured on one
+ * company's ad account and served to every deployment — which meant every
+ * tenant self-scored their creative against another business's results.
+ * Resolved once per run and reused across that run's self-critique calls.
+ */
+function formatLearnings(list: Learning[]): string {
+  return list.map((l) => `• ${l.insight} — ${l.recommendation} (evidence: ${l.evidence})`).join('\n')
+}
 
 // MCP connector (Messages API) beta — lets the coordinator call remote MCP
 // tools (Meta Ads) that Anthropic executes server-side.
@@ -258,7 +266,6 @@ interface ReactorRequest {
   angle: string
   inputs?: string[]
   outputs?: string[]
-  builderId?: string | null
   videoModel?: string | null
   imageModel?: string | null
   metaProvider?: MetaProvider | null
@@ -272,6 +279,14 @@ interface ReactorRequest {
 interface Concept {
   type: string
   text: string
+  /**
+   * The creative family this concept was counted against — resolved from the
+   * deliverable the OPERATOR selected, never from the `type` string above.
+   * The client routes image-vs-video on this.
+   */
+  format?: VariationFormat
+  /** Set when OPUS returned a family the brief did not ask for. */
+  formatMismatch?: string
   basis?: string
   learningCheck?: string
   score?: number
@@ -293,6 +308,84 @@ interface Concept {
    * axis also set `isolatedAxis`, the rest are attributable through this alone.
    */
   variationMethod?: VariationMethod
+}
+
+/* --------------------------- Production-brief gate ------------------------ */
+
+/**
+ * Which concepts render a picture, and therefore owe a production brief.
+ *
+ * Deliberately the same rule the Workbench auto-render uses to decide what to
+ * send to the image oven — a concept the client will try to render is a concept
+ * the gate must have checked.
+ */
+function isVisualConcept(type: string): boolean {
+  return /concept|creative/i.test(type) && !/hook|headline|primary text|angle|vsl/i.test(type)
+}
+
+/** A visual concept that renders a still (rather than motion) owes on-image copy. */
+function isStillConcept(type: string): boolean {
+  return isVisualConcept(type) && !/video|testimonial|ugc|montage/i.test(type)
+}
+
+/**
+ * The gate that makes the design brief load-bearing rather than advisory.
+ *
+ * `productionBrief` is optional in the submit schema and the orchestrator is
+ * merely TOLD to attach one. A prompt rule is not a guarantee: a truncated turn
+ * or a rushed fast-path submit ships a visual concept with no brief, and the
+ * renderer then falls back to the concept's own one-line text — which is a
+ * description of a strategy, not a photograph. That is the same hole as a brief
+ * made entirely of copy zones, and it produces the same result: an image model
+ * with nothing to compose from, inventing a subject of its own.
+ *
+ * Three things are checked, in the order they break:
+ *   1. the brief exists at all;
+ *   2. it names a SUBJECT — asked of `briefHasSubject`, the compiler's own
+ *      classifier, so the gate can never pass something the renderer strips;
+ *   3. a still declares its on-image copy, which is what the renderer sets.
+ *
+ * Shares the single bounded revision pass with NEURO and Meta compliance.
+ */
+function briefFeedback(
+  concepts: { type: string; productionBrief?: ProductionBrief }[],
+): { failingIndices: number[]; feedback: string } {
+  const lines: string[] = []
+  const failingIndices: number[] = []
+
+  concepts.forEach((c, i) => {
+    if (!isVisualConcept(c.type)) return
+    const brief = c.productionBrief
+
+    if (!brief?.frames?.length) {
+      failingIndices.push(i)
+      lines.push(
+        `- [${c.type}] has NO productionBrief. The platform renders this concept FROM the brief, so without one the image model receives only your one-line concept text and will invent a photograph that has nothing to do with this business.`,
+      )
+      return
+    }
+    if (!briefHasSubject(brief)) {
+      failingIndices.push(i)
+      lines.push(
+        `- [${c.type}] the brief names only copy zones (${brief.frames
+          .map((f) => f.label)
+          .filter(Boolean)
+          .join(', ')}) and no SUBJECT. Add a first frame describing the photograph itself — who or what is in shot, where, in what light, framed how — labelled by what is IN it ("Hero shot — …"), never by the copy that sits on it.`,
+      )
+      return
+    }
+    if (isStillConcept(c.type) && !brief.onImageText?.some((t) => t?.text?.trim())) {
+      failingIndices.push(i)
+      lines.push(
+        `- [${c.type}] the brief declares no onImageText. A still with no words is a stock photograph, not an ad — declare the headline (and the CTA label if it earns the space).`,
+      )
+    }
+  })
+
+  const feedback = `PRODUCTION BRIEF: ${failingIndices.length} visual concept(s) cannot be rendered as written:\n${lines.join(
+    '\n',
+  )}\n\nFix the briefs (keep the concepts and their ad packages) and call submit_concepts again with ALL concepts, including the ones that already passed.`
+  return { failingIndices, feedback }
 }
 
 /* ------------------------- Test-ID attribution ---------------------------- */
@@ -356,11 +449,16 @@ const RECOUNT_MAX_TOTAL = 6
 function reconcileConceptCounts(
   concepts: Concept[],
   configs: VariationConfig[],
-): { kept: Concept[]; shortfall: { output: string; owed: number; got: number }[] } {
-  if (configs.length === 0) return { kept: concepts, shortfall: [] }
+): {
+  kept: Concept[]
+  shortfall: { output: string; owed: number; got: number }[]
+  /** Concepts in a creative family the brief did not select. */
+  mismatched: Concept[]
+} {
+  if (configs.length === 0) return { kept: concepts, shortfall: [], mismatched: [] }
 
   // Bucket by creative family rather than exact label: OPUS submits internal
-  // concept types ("Testimonial Concept"), not the builder's deliverable names.
+  // concept types ("Testimonial Concept"), not the operator's deliverable names.
   const owedBy = new Map<VariationFormat, { output: string; owed: number }>()
   for (const c of configs) {
     const fmt = variationFormat(c.output)
@@ -370,20 +468,42 @@ function reconcileConceptCounts(
   }
 
   const kept: Concept[] = []
+  const mismatched: Concept[] = []
   const taken = new Map<VariationFormat, number>()
   for (const concept of concepts) {
     const fmt = variationFormat(concept.type ?? '')
-    const owed = fmt ? owedBy.get(fmt) : undefined
-    // A concept for a family the brief never asked for is left alone rather
-    // than dropped — copy-only concepts and agent-decided formats land here,
-    // and silently deleting them would lose real work.
-    if (!fmt || !owed) {
+
+    // Copy-only output (a hook, a headline). It carries no creative family and
+    // no variation budget, and the brief asked for it through `outputs`.
+    if (!fmt) {
       kept.push(concept)
       continue
     }
+
+    const owed = owedBy.get(fmt)
+    if (!owed) {
+      /* A creative family the brief did not select, on a run that DID select
+         families. This used to be kept — "silently deleting it would lose real
+         work" — which is how a brief for three static creatives came back as
+         three videos: the videos matched no budget, so they were waved through
+         whole, and the statics were merely reported as a shortfall that a
+         later turn might or might not fill.
+
+         It is a substitution, not a bonus. It is held back from the count,
+         reported to OPUS, and if the revision never lands it still ships (see
+         the caller) — carrying the mismatch, and never auto-rendered, so the
+         platform cannot spend a video render on a brief that asked for a
+         still. */
+      mismatched.push(concept)
+      continue
+    }
+
     const used = taken.get(fmt) ?? 0
     if (used >= owed.owed) continue
     taken.set(fmt, used + 1)
+    // The medium is stamped from the SELECTION, not inferred downstream from
+    // the type string OPUS happened to write.
+    concept.format = fmt
     kept.push(concept)
   }
 
@@ -391,7 +511,7 @@ function reconcileConceptCounts(
     .map(([fmt, { output, owed }]) => ({ output, owed, got: taken.get(fmt) ?? 0 }))
     .filter((s) => s.got < s.owed)
 
-  return { kept, shortfall }
+  return { kept, shortfall, mismatched }
 }
 
 /**
@@ -593,7 +713,7 @@ function buildTools(
     tools.push({
       name: 'generate_video',
       description:
-        'Generate a high-quality video clip for a visual concept (Video Concept, Founder Concept, Testimonial Concept). Two modes: text-to-video (describe the full scene — e.g. a real builder on-site, a person speaking to camera) needs only a prompt; image-to-video animates a still from generate_image (pass its imageUrl). Choose the model best suited to the shot. The clip renders asynchronously and appears on the concept card when ready.',
+        'Generate a high-quality video clip for a visual concept (Video Concept, Founder Concept, Testimonial Concept). Two modes: text-to-video (describe the full scene — a real person at work in this brand’s own environment, someone speaking to camera) needs only a prompt; image-to-video animates a still from generate_image (pass its imageUrl). Choose the model best suited to the shot. The clip renders asynchronously and appears on the concept card when ready.',
       input_schema: {
         type: 'object',
         properties: {
@@ -725,7 +845,8 @@ function buildTools(
  */
 const SINGLE_FRAME_RULE = `
 - A STILL IS ONE FRAME, NOT A SEQUENCE. For every image deliverable the frames describe ONE photograph: frame 1 is the whole composition (subject, setting, light, framing), and any further frames describe LAYERS of that same single image (where the headline sits, where the CTA sits) — never a second scene, never a before/after, never a story beat. Do not write "Frame 2: the turning point" or "Frame 3: the after" on a still: that renders as a multi-panel collage and the ad is unusable. Save narrative beats for video deliverables.
-- EVERY STILL CARRIES ITS HEADLINE. A photograph with no words is a stock image, not an ad — declare the headline in onImageText on every image concept.`
+- EVERY STILL CARRIES ITS HEADLINE. A photograph with no words is a stock image, not an ad — declare the headline in onImageText on every image concept.
+- LABEL THE SUBJECT FRAME BY WHAT IS IN IT, never by the copy sitting on it. "Hero shot — founder at the packing bench" is a subject; "Headline zone" is not. The platform strips copy-labelled frames out of the scene it sends the image model, so a brief whose frames are all named after copy arrives with a layout and no photograph, and the model invents one that has nothing to do with the business.`
 
 const ON_IMAGE_TEXT_RULE = `
 - ON-IMAGE COPY — the words burned into the creative: declare them in productionBrief.onImageText, never only inside the frame prose. AT MOST TWO entries: the headline and the CTA button label, roughly 95 characters across both. Image models mangle every letter once you ask for more, so a third line costs you the first two. NEVER ask the image for fine print, compliance lines, disclaimers, sub-paragraphs, logos or wordmarks — those are overlaid after the render and the platform strips them from the prompt. Write the frames as pure art direction (subject, setting, light, framing, where the type sits) and let onImageText carry the words.`
@@ -763,14 +884,14 @@ function coordinatorPrompt(
       ? ` The user has selected the "${caps.preferredVideoModel}" model — use it for every generate_video call unless a shot clearly needs a different capability.`
       : ''
   const videoLine = caps.video
-    ? `\n- For video output types (Video Concept, Founder Concept, Testimonial Concept): FIRST write a frame-by-frame production brief, THEN build the generate_video prompt FROM that brief, and attach the productionBrief to the submitted concept. Available models: ${caps.videoModels.join(', ')} — the generate_video tool description says what each one is for. Use text-to-video to direct a full scene (e.g. a real builder on-site, a member speaking to camera — whenever someone SPEAKS, pick a model with native audio or the ad ships silent; pick a cinematic-realism model for action and B-roll). Use image-to-video to animate a still from generate_image. Match conceptType to the concept you submit.${preferredLine}`
+    ? `\n- For video output types (Video Concept, Founder Concept, Testimonial Concept): FIRST write a frame-by-frame production brief, THEN build the generate_video prompt FROM that brief, and attach the productionBrief to the submitted concept. Available models: ${caps.videoModels.join(', ')} — the generate_video tool description says what each one is for. Use text-to-video to direct a full scene set in this business's own world (a real customer or operator at work, someone speaking to camera — whenever someone SPEAKS, pick a model with native audio or the ad ships silent; pick a cinematic-realism model for action and B-roll). Use image-to-video to animate a still from generate_image. Match conceptType to the concept you submit.${preferredLine}`
     : ''
 
   return `You are OPUS — the Master Strategist of ${tenant}'s Creative Intelligence Command Center. You direct an intelligence network and synthesize it into launch-ready creative.
 
 Your intelligence network:
 - ATLAS — Knowledge Intelligence: frameworks, SOPs, calls, and uploaded assets.
-- NOVA — Market Intelligence: pains, desires, objections, beliefs, and member transformations.
+- NOVA — Market Intelligence: pains, desires, objections, beliefs, and real customer transformations.
 - SPARK — Creative Intelligence: winning creative structures, openings, and Creative DNA.
 - ECHO — Copy Intelligence: high-performing hooks, headlines, offers, and Copy DNA.
 - ORACLE — Strategic Memory: the memory of every winning strategic configuration (angle, audience, offer, awareness, creative + copy structure) — which patterns win, which lose, and what is most likely to work next.
@@ -784,7 +905,7 @@ ${META_CRAFT_BLOCK}
 
 On submit, every concept is run through NEURO — a neural pre-test that scores its PREDICTED RESPONSE (attention, emotion, memorability, first-3-seconds hook) against neuromarketing principles — and its adPackage is validated against Meta's placement limits and the compliance constraints. Concepts with a weak scroll-stop or hook, or a non-compliant ad unit, are returned to you to revise or drop. So lead with a concrete, specific pattern-interrupt in the opening beat of every concept — don't open on the offer or a generic claim.
 
-Voice: confident, specific, builder-native. Engineered for performance.`
+Voice: confident, specific, and native to THIS business and its audience — their vocabulary, their references, their level of expertise. Never a marketing department's voice, never a generic one. Engineered for performance.`
 }
 
 /* --------------------- Reactor modal input → prompt ----------------------- */
@@ -798,7 +919,7 @@ const INTELLIGENCE_BLOCK =
 const COMPLIANCE_BLOCK = `HARD COMPLIANCE CONSTRAINTS — these override all creative instructions:
 - Attribute every income or results figure to a named individual as THEIR result. Never imply typical or guaranteed outcomes for the viewer.
 - Never use: "guaranteed", "you will make", "passive income", "get rich", "earn from home".
-- Where a concept references a member result, it must carry: "Results are individual and not typical. Building a business involves risk."
+- Where a concept references a named client's result, it must carry a disclaimer in the ad package: "Results are individual and not typical." Add the risk clause the offer's own category requires (e.g. financial, health, business) — never omit it, never invent one that does not apply.
 - Reject and rewrite any concept of your own that violates these constraints before calling submit_concepts.`
 
 const BLOCK_SEP = '\n\n─────────────────────────────────────────────\n\n'
@@ -963,7 +1084,7 @@ async function runIntelligence(
   controller: ReadableStreamDefaultController,
   id: IntelligenceId,
   question: string,
-  builderId: string | null,
+  accountId: string | null,
 ): Promise<string> {
   const agent = INTELLIGENCE[id]
   sse(controller, {
@@ -978,7 +1099,7 @@ async function runIntelligence(
   // Gather scoped evidence across this layer's knowledge systems.
   const hits = (
     await Promise.all(
-      agent.systems.map((system) => searchKnowledge(question, { system, k: 4, builderId })),
+      agent.systems.map((system) => searchKnowledge(question, { system, k: 4, builderId: accountId })),
     )
   ).flat()
   // Every retrieval names the layer that made it. OPUS is told to batch
@@ -1000,7 +1121,7 @@ async function runIntelligence(
     ? hits.map((h) => `[${h.system}] ${h.title}: ${h.content}`).join('\n\n')
     : 'No stored knowledge yet — reason from first principles about this business and its market.'
 
-  const tenantName = tenantDescriptor(await getTenant())
+  const tenantName = tenantDescriptor(await getTenant(await currentAccount()))
 
   const response = await withRetry(
     () =>
@@ -1100,7 +1221,9 @@ function variationDemands(configs: VariationConfig[]): PreflightContext['variati
  * than the angle alone.
  */
 function preflightQuestion(id: IntelligenceId, ctx: PreflightContext): string {
-  const who = ctx.audience && ctx.audience !== 'No Preference' ? ctx.audience : 'builders'
+  // No audience picked: ask about the business's own buyer rather than naming
+  // one. "builders" here scoped every unspecified briefing to one industry.
+  const who = ctx.audience && ctx.audience !== 'No Preference' ? ctx.audience : 'this business\'s buyers'
   const stage = ctx.awareness && ctx.awareness !== 'No Preference' ? ctx.awareness : 'mixed-awareness'
   const offer = ctx.offer && ctx.offer !== 'No Preference' ? ctx.offer : 'the core offer'
   const briefTail = ctx.brief?.trim() ? ` Campaign brief: ${ctx.brief.trim().slice(0, 400)}` : ''
@@ -1149,7 +1272,7 @@ async function preflightBriefing(
   anthropic: Anthropic,
   controller: ReadableStreamDefaultController,
   ctx: PreflightContext,
-  builderId: string | null,
+  accountId: string | null,
   /**
    * Hard cap on the briefing. The briefing is research, not output — a layer
    * still thinking when this expires is abandoned so the run can spend what is
@@ -1162,7 +1285,7 @@ async function preflightBriefing(
       const question = preflightQuestion(id, ctx)
       try {
         const findings = await Promise.race([
-          runIntelligence(anthropic, controller, id, question, builderId),
+          runIntelligence(anthropic, controller, id, question, accountId),
           new Promise<null>((resolve) => setTimeout(() => resolve(null), deadlineMs)),
         ])
         if (findings === null) {
@@ -1217,18 +1340,28 @@ async function preflightBriefing(
 // shows the production-brief-driven workflow. When `montage` is set, frames are
 // labelled as an ordered scene sequence (matching the live orchestrator's
 // MONTAGE / SCENE FLOW instruction) instead of generic numbered frames.
-function demoBrief(creativeType: string, angle: string, montage = false): ProductionBrief {
+function demoBrief(
+  creativeType: string,
+  angle: string,
+  montage = false,
+  audience = 'operators',
+): ProductionBrief {
   const al = angle.toLowerCase()
+  /* Frame 1 names a SUBJECT, not a zone — the compiler strips copy-labelled
+     frames out of the scene, so a demo brief written as zones would render the
+     same subject-less prompt this path exists to demonstrate working.
+     The subject is the tenant's own buyer, never a fixed trade: hard-coding
+     "builder on a job site" here composed every demo render for one industry. */
   const frames = montage
     ? [
-        { label: 'Scene 1 — 5:47am, still on the tools', description: 'Builder overwhelmed on a chaotic job site, headlights sweeping an empty yard.' },
+        { label: 'Scene 1 — Before dawn, still working', description: `A ${audience.replace(/s$/, '')} at work in their own setting, before anyone else has started — tired, capable, carrying it alone.` },
         { label: 'Scene 2 — The leak exposed', description: `Close on a stark figure — the hidden ${al} leak nobody names out loud.` },
-        { label: 'Scene 3 — The turning point', description: 'The system introduced — a whiteboard session, a new second layer of leadership.' },
-        { label: 'Scene 4 — The after', description: 'Margin dashboard ticking up; the owner walking off site mid-afternoon.' },
+        { label: 'Scene 3 — The turning point', description: 'The system introduced — a working session where the second layer of responsibility is drawn up.' },
+        { label: 'Scene 4 — The after', description: 'The numbers moving the right way; the owner leaving mid-afternoon.' },
         { label: 'Scene 5 — Soft CTA', description: 'A quiet, qualifying call to the next step — no hard sell.' },
       ]
     : [
-        { label: 'Frame 1', description: 'Builder overwhelmed on a chaotic job site.' },
+        { label: 'Hero shot', description: `A ${audience.replace(/s$/, '')} at work in their own setting, mid-task, natural light, shot documentary-style.` },
         { label: 'Frame 2', description: `The hidden ${al} problem exposed with one stark figure.` },
         { label: 'Frame 3', description: 'The system / turning point introduced.' },
         { label: 'Frame 4', description: 'The after — margin, time, and control restored.' },
@@ -1237,7 +1370,7 @@ function demoBrief(creativeType: string, angle: string, montage = false): Produc
   return {
     creativeType,
     pattern: angle === 'Profit' ? 'Profit Leak' : angle,
-    audience: 'Builders $1M–$3M',
+    audience,
     awareness: 'Problem-Aware',
     frames,
   }
@@ -1300,6 +1433,14 @@ async function runDemo(controller: ReadableStreamDefaultController, body: Reacto
   const demoAngleSentinel =
     !body.angle || body.angle === 'Agent decides' || body.angle === 'No Preference'
   const demoAngle = demoAngleSentinel ? 'Profit' : (body.angle as string)
+  /* Who the demo speaks to. Resolved from the connected website like everything
+     else — the demo path is still THIS business's platform, so its scaffolding
+     names this business's buyer rather than another company's. Falls back to a
+     neutral noun when nothing is connected yet. */
+  const demoAudience =
+    demoRi?.audienceType && demoRi.audienceType !== 'No Preference'
+      ? demoRi.audienceType.toLowerCase()
+      : (await getTenant(await currentAccount()).catch(() => null))?.audienceDescriptor?.trim().toLowerCase() || 'operators'
   const demoQuery = [
     demoAngle,
     demoRi?.audienceType && demoRi.audienceType !== 'No Preference' ? demoRi.audienceType : '',
@@ -1309,11 +1450,11 @@ async function runDemo(controller: ReadableStreamDefaultController, body: Reacto
     .join(' ')
 
   const demoSummaries: Partial<Record<IntelligenceId, string>> = {
-    atlas: 'Vault grounded: TPB frameworks, SOPs and member-call assets retrieved as the foundation for this build',
-    nova: 'Builders fear margin erosion despite record revenue; "profit leak" language resonates',
-    spark: 'Founder videos (71% win) + static proof ads outperform; specific figures beat claims',
-    echo: 'Top hook: "Most builders don\'t have a revenue problem. They have a profit leak."',
-    oracle: 'Dominant winning pattern: Time Freedom — owner-dependency relief beats raw growth claims',
+    atlas: 'Vault grounded: the craft frameworks and SOPs behind this build were retrieved as its foundation',
+    nova: `${demoAudience[0].toUpperCase()}${demoAudience.slice(1)} fear erosion despite healthy top-line revenue; leak language resonates`,
+    spark: 'Founder-led video and static proof ads outperform; specific figures beat category claims',
+    echo: `Strongest hook shape: "Most ${demoAudience} don't have a revenue problem. They have a profit leak."`,
+    oracle: 'Dominant winning pattern: relief from owner-dependency beats raw growth claims',
   }
 
   // ATLAS leads every build — the Knowledge Vault is the foundation, never asleep.
@@ -1364,25 +1505,35 @@ async function runDemo(controller: ReadableStreamDefaultController, body: Reacto
   // Resolved once at the top of the run, alongside the retrieval query.
   const a = demoAngle
   const al = a.toLowerCase()
+  /* The demo pool proves the WIRING — the step-by-step flow, the concept card,
+     the ad unit, the variation contract — with no model call behind it. It is
+     therefore written as shape, not as copy: it names the audience the tenant
+     actually sells to and otherwise stays deliberately generic.
+
+     It used to be a set of finished ads for one coaching business: its client
+     count, its members' margins, its trade. On any other deployment those
+     rendered as that deployment's own concepts, one approval away from being
+     pushed to Meta. */
+  const who = demoAudience
   const pool: Concept[] = [
-    { type: 'Hook', text: `Most builders don't have a ${al} problem. They have a ${al} leak hiding in plain sight.`, basis: 'ECHO + NOVA', learningCheck: 'Specific, contrarian framing', score: 9 },
-    { type: 'Headline', text: `From struggling to systemized — how ${a} became TPB's unfair advantage.`, basis: 'NOVA (member transformations)', learningCheck: 'Transformation arc over features', score: 8 },
-    { type: 'Primary Text', text: `You didn't get into building to babysit jobs. This is the ${a} system that gave 500+ builders their margin — and their weekends — back.`, basis: 'NOVA + ECHO', learningCheck: 'Concrete proof (500+ builders)', score: 8 },
-    { type: 'VSL Opener', text: `In the next few minutes I'll show you the exact ${a} mechanism most builders never see until it's too late.`, basis: 'ECHO (VSL openers)', learningCheck: 'Mechanism + curiosity', score: 7 },
-    { type: 'Static Concept', text: `Dark background, one bold profit figure, named member underneath, single cyan accent. Angle: ${a}.`, basis: 'SPARK (static proof ad)', learningCheck: 'Specific $ numbers beat vague claims', score: 9 },
-    { type: 'Video Concept', text: `Founder direct-to-camera on-site: 1.5s pattern interrupt, contrarian ${al} belief, member proof, soft CTA.`, basis: 'SPARK (Founder Video, 71% win)', learningCheck: 'Founder videos beat talking heads', score: 9 },
-    { type: 'Founder Concept', text: `Handheld walk-through of a finished site while the founder breaks down the ${a} turning point.`, basis: 'SPARK (Founder Video, 71% win)', learningCheck: 'Founder-led, on-site, real proof', score: 9 },
-    { type: 'Testimonial Concept', text: `Member states old hours/margin, the ${al} turning point, then the after. B-roll of their jobs.`, basis: 'NOVA (transformations)', learningCheck: 'Named member win over generic promise', score: 8 },
+    { type: 'Hook', text: `Most ${who} don't have a ${al} problem. They have a ${al} leak hiding in plain sight.`, basis: 'ECHO + NOVA', learningCheck: 'Specific, contrarian framing', score: 9 },
+    { type: 'Headline', text: `From guesswork to system — how ${a} became the unfair advantage.`, basis: 'NOVA (client transformations)', learningCheck: 'Transformation arc over features', score: 8 },
+    { type: 'Primary Text', text: `You didn't start this to babysit the work. This is the ${a} system that gave ${who} their margin — and their weekends — back.`, basis: 'NOVA + ECHO', learningCheck: 'Outcome before mechanism', score: 8 },
+    { type: 'VSL Opener', text: `In the next few minutes I'll show you the exact ${a} mechanism most ${who} never see until it's too late.`, basis: 'ECHO (VSL openers)', learningCheck: 'Mechanism + curiosity', score: 7 },
+    { type: 'Static Concept', text: `Dark field, one bold figure carrying the ${al} claim, the named client underneath, a single accent colour. Angle: ${a}.`, basis: 'SPARK (static proof ad)', learningCheck: 'One specific number beats a vague claim', score: 9 },
+    { type: 'Video Concept', text: `Founder direct-to-camera in the business's own setting: 1.5s pattern interrupt, contrarian ${al} belief, client proof, soft CTA.`, basis: 'SPARK (founder-led format)', learningCheck: 'Founder-led beats talking head', score: 9 },
+    { type: 'Founder Concept', text: `Handheld walk-through of finished work while the founder breaks down the ${a} turning point.`, basis: 'SPARK (founder-led format)', learningCheck: 'Founder-led, in context, real proof', score: 9 },
+    { type: 'Testimonial Concept', text: `A named client states the before, the ${al} turning point, then the after. B-roll of their actual work.`, basis: 'NOVA (transformations)', learningCheck: 'Named client win over generic promise', score: 8 },
     { type: 'Event Concept', text: `High-energy room montage tied to one ${a} insight and community proof.`, basis: 'SPARK (Authority Pattern)', learningCheck: 'Community proof', score: 7 },
-    { type: 'Campaign Concept', text: `The ${a} Reactor: founder video + static proof ad + member testimonial, sequenced cold → warm → apply.`, basis: 'OPUS (stacks highest-win formats)', learningCheck: 'Stacks the three highest-win formats', score: 9 },
+    { type: 'Campaign Concept', text: `The ${a} sequence: founder video + static proof ad + client testimonial, run cold → warm → apply.`, basis: 'OPUS (stacks the three strongest formats)', learningCheck: 'Stacks complementary formats', score: 9 },
   ]
   // Visual concepts carry a production brief — the platform plans before it renders.
   // Every concept carries a launch-ready Meta ad unit, same as the live agent.
   for (const c of pool) {
     if (/static|video|founder|testimonial|event|campaign/i.test(c.type) && /concept/i.test(c.type)) {
-      c.productionBrief = demoBrief(c.type, a, wantsMontage)
+      c.productionBrief = demoBrief(c.type, a, wantsMontage, demoAudience)
     }
-    c.adPackage = demoAdPackage(c.type, a)
+    c.adPackage = demoAdPackage(c.type, a, demoAudience)
   }
   sse(controller, {
     type: 'step',
@@ -1409,8 +1560,9 @@ async function runDemo(controller: ReadableStreamDefaultController, body: Reacto
         }`,
         learningCheck: 'Only the isolated axis differs across variants',
         score: 8,
-        adPackage: demoAdPackage(baseType, a),
+        adPackage: demoAdPackage(baseType, a, demoAudience),
         neuro: demoNeuroScore(8, baseType),
+        format: variationFormat(baseType) ?? undefined,
         taxonomy,
         testId,
         variantId: `${testId}-${variantLabel(i)}`,
@@ -1468,7 +1620,7 @@ async function runDemo(controller: ReadableStreamDefaultController, body: Reacto
           : {
               ...c,
               text: `${c.text} ${labels[k % labels.length]} — ${DEMO_VARIATION_TWISTS[method]}.`,
-              adPackage: demoAdPackage(c.type, a),
+              adPackage: demoAdPackage(c.type, a, demoAudience),
               neuro: demoNeuroScore(c.score, c.type),
             }
       if (count > 1 && demoTestId) {
@@ -1480,6 +1632,10 @@ async function runDemo(controller: ReadableStreamDefaultController, body: Reacto
         if (axis) variant.isolatedAxis = axis
         variantN += 1
       }
+      // Stamp the medium here too, so the demo path routes exactly the way the
+      // live path does rather than falling back to the type regex.
+      const demoFormat = variationFormat(c.type)
+      if (demoFormat) variant.format = demoFormat
       sse(controller, { type: 'concept', concept: variant })
       if (k === 0) await pace(800)
     }
@@ -1526,6 +1682,14 @@ function withConversationCache(messages: BetaMsg[]): BetaMsg[] {
 export async function POST(request: NextRequest) {
   const body = (await request.json()) as ReactorRequest
   const outputs = body.outputs ?? ['Hook', 'Headline', 'Campaign Concept']
+
+  /* The account this whole run belongs to, resolved ONCE from the signed
+     session before a single retrieval happens. It used to arrive as
+     `body.builderId` — the client naming its own tenant, which every scoped
+     search then trusted. Resolved here, it is the same value for the preflight
+     briefing, every consult, the NEURO retrieval and the outcome write, so no
+     part of a run can be scoped to a different customer than another part. */
+  const runAccount = await currentAccount()
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -1616,7 +1780,7 @@ export async function POST(request: NextRequest) {
         let brandBlock = ''
         if (body.reactorInputs?.onBrandEnabled) {
           try {
-            const site = await getConnectedWebsite()
+            const site = await getConnectedWebsite(await currentAccount())
             if (site) {
               const brief = websiteBrandBrief(site)
               if (brief) {
@@ -1680,7 +1844,7 @@ export async function POST(request: NextRequest) {
         // ORACLE's memory lookup and the mandatory-layer briefing are
         // independent, so they run against the same wall clock instead of
         // queueing. Neither can fail the run.
-        const [winningConfigs, briefing] = await Promise.all([
+        const [winningConfigs, briefing, runLearnings] = await Promise.all([
           // ORACLE retrieves matching past winners and feeds them into OPUS's
           // reasoning — the Reactor reuses what worked instead of starting cold.
           retrieveWinningConfigs({
@@ -1716,10 +1880,15 @@ export async function POST(request: NextRequest) {
               brief: ri?.brief,
               variationDemands: variationDemands(runVariations),
             },
-            body.builderId ?? null,
+            runAccount,
             Math.max(8_000, RUN_BUDGET_MS * PREFLIGHT_MAX_SHARE - elapsed()),
           ).catch(() => ''),
+          // What THIS account has learned, ahead of the craft floor. An
+          // independent read, so it runs against the same wall clock rather
+          // than queueing behind the briefing.
+          resolveCreativeLearnings().catch(() => [] as Learning[]),
         ])
+        const learningsRubric = formatLearnings(runLearnings)
         const oracleMemory = memoryBlock(winningConfigs)
 
         const angleClause =
@@ -1757,7 +1926,7 @@ export async function POST(request: NextRequest) {
             imageModels: availableImageModels,
             preferredVideoModel: body.videoModel ?? null,
             preferredImageModel: body.imageModel ?? null,
-          }, tenantDescriptor(await getTenant())) + inputBlocks + brandBlock + oracleMemory + cloneClause + isolationClause
+          }, tenantDescriptor(await getTenant(await currentAccount()))) + inputBlocks + brandBlock + oracleMemory + cloneClause + isolationClause
 
         // One test ID per run — stamped onto every submitted concept so outcomes
         // attribute back to which single variable was under test. Minted for an
@@ -1798,7 +1967,7 @@ export async function POST(request: NextRequest) {
         // parallel with the agent's intelligence loop + copy generation instead
         // of adding a serial wait at submit time. It's cached across runs too, so
         // repeat fires resolve instantly. Errors are swallowed inside the helper.
-        const neuroPrinciplesPromise = retrieveNeuroPrinciples(body.angle ?? '', body.builderId ?? null)
+        const neuroPrinciplesPromise = retrieveNeuroPrinciples(body.angle ?? '', runAccount)
         let neuroRevisions = 0
         // One top-up round at most. A second would compound against the wall
         // clock for diminishing returns — if OPUS came back short twice, the
@@ -2025,14 +2194,24 @@ export async function POST(request: NextRequest) {
                 controller,
                 layer,
                 question,
-                body.builderId ?? null,
+                runAccount,
               )
               return { type: 'tool_result', tool_use_id: tu.id, content: findings }
             }
 
             if (tu.name === 'get_learnings') {
-              sse(controller, { type: 'step', text: 'ORACLE — loading the Creative Learnings rubric for self-critique…' })
-              return { type: 'tool_result', tool_use_id: tu.id, content: LEARNINGS_RUBRIC }
+              // Say how much of the rubric is this account's own record rather
+              // than craft: a builder reading the feed should be able to tell
+              // whether the platform is scoring on evidence or on principle.
+              const owned = runLearnings.length - learnings.length
+              sse(controller, {
+                type: 'step',
+                text:
+                  owned > 0
+                    ? `ORACLE — loading the Creative Learnings rubric · ${owned} learned from this account's own graded outcomes.`
+                    : 'ORACLE — loading the Creative Learnings rubric · craft principles (this account has no graded outcomes yet).',
+              })
+              return { type: 'tool_result', tool_use_id: tu.id, content: learningsRubric }
             }
 
             if (tu.name === 'generate_image') {
@@ -2116,7 +2295,7 @@ export async function POST(request: NextRequest) {
                 })
               }
               await logGeneration({
-                builder_id: body.builderId ?? null,
+                builder_id: runAccount,
                 model_id: started.modelId,
                 provider: started.provider,
                 mode,
@@ -2228,16 +2407,27 @@ export async function POST(request: NextRequest) {
               // a suggestion. Surplus is trimmed for free; a shortfall is only
               // worth an extra turn on a small run (see reconcileConceptCounts).
               const counted = reconcileConceptCounts(concepts, runVariations)
-              if (counted.kept.length !== concepts.length) {
+              const trimmed = concepts.length - counted.kept.length - counted.mismatched.length
+              if (trimmed > 0) {
                 sse(controller, {
                   type: 'step',
-                  text: `Trimmed ${concepts.length - counted.kept.length} concept(s) beyond the requested counts.`,
+                  text: `Trimmed ${trimmed} concept(s) beyond the requested counts.`,
+                })
+              }
+              if (counted.mismatched.length > 0) {
+                // The operator picked a format. Getting a different one back is
+                // the failure this names out loud rather than shipping quietly.
+                sse(controller, {
+                  type: 'step',
+                  text: `${counted.mismatched.length} concept(s) came back in a format the brief did not ask for (${Array.from(
+                    new Set(counted.mismatched.map((c) => c.type)),
+                  ).join(', ')}) — they will not be rendered as that medium.`,
                 })
               }
               concepts = counted.kept
               const owedTotal = totalVariations(runVariations)
               if (
-                counted.shortfall.length > 0 &&
+                (counted.shortfall.length > 0 || counted.mismatched.length > 0) &&
                 countRevisions < 1 &&
                 owedTotal <= RECOUNT_MAX_TOTAL &&
                 !FAST_PATH &&
@@ -2247,9 +2437,18 @@ export async function POST(request: NextRequest) {
                 const missing = counted.shortfall
                   .map((s) => `${s.output}: ${s.got} of ${s.owed}`)
                   .join(' · ')
+                const wrongFormat = counted.mismatched.length
+                  ? ` Also: you submitted ${counted.mismatched.length} concept(s) as ${Array.from(
+                      new Set(counted.mismatched.map((c) => c.type)),
+                    ).join(
+                      ', ',
+                    )}, which is a creative format the brief did not ask for. The operator chose the deliverables; the format is theirs to pick, not yours. Resubmit those as the requested format.`
+                  : ''
                 sse(controller, {
                   type: 'step',
-                  text: `Short of the requested counts (${missing}) — asking OPUS for the missing concept(s).`,
+                  text: missing
+                    ? `Short of the requested counts (${missing}) — asking OPUS for the missing concept(s).`
+                    : 'Asking OPUS to resubmit in the format the brief asked for.',
                 })
                 // Retain what did land on BOTH paths: `carriedConcepts` merges
                 // it into the top-up submission, `pendingConcepts` ships it if
@@ -2259,12 +2458,33 @@ export async function POST(request: NextRequest) {
                 results.push({
                   type: 'tool_result',
                   tool_use_id: tu.id,
-                  content: `The submission is SHORT of the requested counts — ${missing}. Call submit_concepts again with ONLY the missing concept(s), each one a genuinely different execution under the lever already stated for that format. Do not resubmit the concepts you already sent, and do not pad with paraphrases.`,
+                  content: `${
+                    missing
+                      ? `The submission is SHORT of the requested counts — ${missing}. Call submit_concepts again with ONLY the missing concept(s), each one a genuinely different execution under the lever already stated for that format. Do not resubmit the concepts you already sent, and do not pad with paraphrases.`
+                      : 'Call submit_concepts again with the concept(s) in the requested format.'
+                  }${wrongFormat}`,
                 })
                 continue
               }
 
-              // Meta ad-unit compliance gate — Meta's placement limits + TPB's
+              /* The revision was not taken (fast path, budget spent, or already
+                 used once). The wrong-format concepts are real, finished work,
+                 so they ship rather than being deleted — but they carry the
+                 mismatch, and the client skips auto-render for anything that
+                 does. Losing the work and silently rendering the wrong medium
+                 are both wrong; showing it and letting the operator decide is
+                 not. */
+              if (counted.mismatched.length > 0) {
+                for (const c of counted.mismatched) {
+                  const asked = runVariations.map((v) => v.output).join(', ')
+                  c.formatMismatch = `OPUS returned this as a ${c.type}; the brief asked for ${
+                    asked || 'a different format'
+                  }. Nothing was auto-rendered — render it by hand if you want it.`
+                }
+                concepts = [...concepts, ...counted.mismatched]
+              }
+
+              // Meta ad-unit compliance gate — Meta's placement limits + the platform's
               // hard compliance phrases, enforced in code before anything ships.
               const compliance = adPackageFeedback(concepts)
               sse(controller, {
@@ -2275,6 +2495,22 @@ export async function POST(request: NextRequest) {
                     : ' · all launch-ready'
                 }`,
               })
+
+              // Production-brief gate — the brief IS the creative on every
+              // visual concept, so it is checked in code rather than trusted to
+              // the prompt that asked for it.
+              const briefs = briefFeedback(concepts)
+              const visualCount = concepts.filter((c) => isVisualConcept(c.type)).length
+              if (visualCount > 0) {
+                sse(controller, {
+                  type: 'step',
+                  text: `Validating production briefs · ${visualCount} visual concept(s)${
+                    briefs.failingIndices.length
+                      ? ` · ${briefs.failingIndices.length} missing a subject the image model can compose`
+                      : ' · every brief names its subject'
+                  }`,
+                })
+              }
 
               // NEURO — neural pre-test: estimate the predicted response of each
               // concept before it ships. Grounded in neuromarketing principles
@@ -2312,7 +2548,10 @@ export async function POST(request: NextRequest) {
               // Compliance is a hard gate — a non-compliant ad unit cannot
               // ship at any score, so it always earns the turn. NEURO only
               // does when a concept is below the revision floor.
-              const needsRevision = broken.length > 0 || compliance.failingIndices.length > 0
+              const needsRevision =
+                broken.length > 0 ||
+                compliance.failingIndices.length > 0 ||
+                briefs.failingIndices.length > 0
               if (needsRevision && neuroRevisions < revisionBudget) {
                 // Step 5 — hand the weak scores / compliance failures back to
                 // OPUS so it revises (or drops), same as the rubric self-critique.
@@ -2329,19 +2568,26 @@ export async function POST(request: NextRequest) {
                 pendingConcepts = concepts
                 sse(controller, {
                   type: 'step',
-                  text: `${
+                  // Three gates share one revision pass, so the feed names
+                  // whichever actually fired rather than implying NEURO.
+                  text: `${[
                     broken.length
                       ? `NEURO flagged ${broken.length} concept(s) for weak scroll-stop / hook`
-                      : ''
-                  }${broken.length && compliance.failingIndices.length ? ' · ' : ''}${
+                      : '',
                     compliance.failingIndices.length
                       ? `${compliance.failingIndices.length} ad unit(s) non-compliant`
-                      : ''
-                  } — OPUS revising…`,
+                      : '',
+                    briefs.failingIndices.length
+                      ? `${briefs.failingIndices.length} production brief(s) with no subject to render`
+                      : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')} — OPUS revising…`,
                 })
                 const feedbackParts: string[] = []
                 if (broken.length > 0) feedbackParts.push(neuroFeedback(concepts, scores, broken))
                 if (compliance.failingIndices.length > 0) feedbackParts.push(compliance.feedback)
+                if (briefs.failingIndices.length > 0) feedbackParts.push(briefs.feedback)
                 results.push({
                   type: 'tool_result',
                   tool_use_id: tu.id,

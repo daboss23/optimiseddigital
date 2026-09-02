@@ -30,6 +30,7 @@ import {
   type DerivedStrategyOptions,
 } from '@/lib/strategy-derive'
 import { invalidateTenant } from '@/lib/tenant'
+import { currentAccount } from '@/lib/account'
 
 // ATLAS synthesises profiles with the bulk model (single-shot, cost-aware).
 const MODEL = INTELLIGENCE_MODEL
@@ -1355,12 +1356,30 @@ function profileToText(title: string, profile: Record<string, unknown>): string 
 // One connected website at a time: clear ALL website chunks before ingesting a
 // scan. Makes refresh (same domain) and switching company (new domain) behave
 // identically — no leftovers, no duplicates, no cross-company contamination.
-async function clearAllWebsites(): Promise<void> {
+/**
+ * Clear ONE account's connected website before re-scanning.
+ *
+ * This deleted every `system: 'website'` row in the table. On a multi-tenant
+ * deployment that is not a stale-data cleanup, it is customer 2 destroying
+ * customer 1's brand intelligence by connecting their own site — the worst
+ * class of the tenancy bugs, because a read leak exposes data and this one
+ * removes it.
+ *
+ * Refuses to run unscoped rather than falling back to the old behaviour: an
+ * account that could not be resolved must not delete everybody's rows.
+ */
+async function clearAllWebsites(accountId: string | null): Promise<void> {
   if (!persistConfigured()) return
+  if (!accountId) {
+    throw new Error(
+      'Refusing to clear website intelligence with no account — an unscoped delete would remove every customer\'s.',
+    )
+  }
   const { error } = await getSupabaseAdmin()
     .from('knowledge_chunks')
     .delete()
     .eq('system', 'website')
+    .eq('builder_id', accountId)
   if (error) throw error
 }
 
@@ -1457,6 +1476,16 @@ function overviewFrom(profiles: WebsiteProfiles): WebsiteOverview {
 export async function analyzeWebsite(
   rawUrl: string,
   emit: (e: AnalyzeEvent) => void,
+  /**
+   * The account this scan belongs to.
+   *
+   * Every chunk written below carries it. Without it the scan wrote rows with
+   * no tenant at all, and `match_knowledge` returned null-tenant rows to every
+   * account — so one customer's positioning, proof points, audience and brand
+   * voice were retrievable by all of them, filed under the exact system a
+   * connected site lands in.
+   */
+  accountId: string | null,
 ): Promise<WebsiteSummary> {
   emit({ type: 'progress', message: 'ATLAS initialised' })
   const seed = assertSafeUrl(rawUrl)
@@ -1499,7 +1528,7 @@ export async function analyzeWebsite(
   // Carry every profile the new scan failed to produce across from the last
   // good scan of the same domain, per profile, and say which ones were kept.
   const preservedProfiles: string[] = []
-  const previous = await getConnectedWebsite().catch(() => null)
+  const previous = await getConnectedWebsite(await currentAccount()).catch(() => null)
   if (previous && previous.domain === domain) {
     for (const meta of PROFILE_META) {
       const fresh = profiles[meta.key] as unknown as Record<string, unknown>
@@ -1589,11 +1618,12 @@ export async function analyzeWebsite(
     // A new domain replaces the old company; a re-scan of the same domain is a
     // clean refresh. Runs only after the scan succeeded, so a failed fetch can
     // never wipe the existing site prematurely.
-    await clearAllWebsites()
+    await clearAllWebsites(accountId)
 
     for (const page of scanned) {
       const result = await ingestKnowledge({
         system: 'website',
+        builderId: accountId,
         category: 'Website Page',
         title: page.title,
         content: page.content,
@@ -1620,6 +1650,7 @@ export async function analyzeWebsite(
       const profile = profiles[meta.key]
       const result = await ingestKnowledge({
         system: 'website',
+        builderId: accountId,
         category: meta.category,
         title: meta.title,
         content: profileToText(meta.title, profile as unknown as Record<string, unknown>),
@@ -1683,7 +1714,7 @@ export async function analyzeWebsite(
 
   // A new site means a new business identity — drop the cached tenant so the
   // agent prompts stop describing whoever was connected before.
-  invalidateTenant()
+  invalidateTenant(accountId)
 
   // Nothing was written to the Vault, so hold the scan in memory — otherwise
   // the derived offers and the brand profile are gone by the next request.
@@ -1708,7 +1739,7 @@ interface WebsiteRow {
  *
  * Everything downstream of a scan — the Brand panel, and the brief's derived
  * angle/offer menus — reads the connected site back through
- * `getConnectedWebsite()`, which reconstructs it from stored chunks. With no
+ * `getConnectedWebsite(await currentAccount())`, which reconstructs it from stored chunks. With no
  * vector store there are no chunks, so a scan that ran perfectly well returned
  * null on the very next request and the brief showed seed offers only, as
  * though ATLAS had found nothing.
@@ -1721,12 +1752,20 @@ interface WebsiteRow {
 let lastUnpersistedScan: WebsiteSummary | null = null
 
 /** Reconstruct the connected-website summary from stored chunks (panel state). */
-export async function getConnectedWebsite(): Promise<WebsiteSummary | null> {
+export async function getConnectedWebsite(
+  accountId: string | null,
+): Promise<WebsiteSummary | null> {
   if (!persistConfigured()) return lastUnpersistedScan
+  // No account, no site. This used to read the whole table and return whichever
+  // domain was scanned most recently ANYWHERE on the deployment, so customer 2
+  // connecting their site silently became customer 1's brand — in the copy, in
+  // the render prompt, and in the shell's own logo.
+  if (!accountId) return null
   const { data, error } = await getSupabaseAdmin()
     .from('knowledge_chunks')
     .select('category, title, created_at, metadata')
     .eq('system', 'website')
+    .eq('builder_id', accountId)
     .order('created_at', { ascending: false })
     .limit(2000)
   if (error) {
@@ -1736,7 +1775,8 @@ export async function getConnectedWebsite(): Promise<WebsiteSummary | null> {
   const rows = (data ?? []) as WebsiteRow[]
   if (rows.length === 0) return null
 
-  // MVP supports one connected website — use the most recently scanned domain.
+  // One connected website per account — the most recently scanned domain
+  // belonging to THIS account.
   const domain = String(rows[0].metadata?.domain ?? '')
   if (!domain) return null
   const mine = rows.filter((r) => String(r.metadata?.domain ?? '') === domain)
@@ -1823,24 +1863,40 @@ export async function getConnectedWebsite(): Promise<WebsiteSummary | null> {
   }
 }
 
-/** Disconnect a website — remove all of its stored chunks from the Vault. */
-export async function disconnectWebsite(domain: string): Promise<void> {
+/**
+ * Disconnect a website — remove ONE ACCOUNT's stored chunks for it.
+ *
+ * The delete was scoped to the domain alone, so it removed that domain's rows
+ * for every account that had connected it. Two customers can legitimately share
+ * a domain — an agency and the client whose site it is — and one disconnecting
+ * must not wipe the other's intelligence.
+ */
+export async function disconnectWebsite(
+  domain: string,
+  accountId: string | null,
+): Promise<void> {
   // The tenant identity is DERIVED from the connected site and cached for a
   // minute, so a disconnect that does not drop the cache leaves the agents
   // still writing as the company that was just removed — and leaves the
   // company's name painted on the shell. A scan invalidates for exactly this
   // reason; a disconnect is the same event in the other direction.
-  invalidateTenant()
+  invalidateTenant(accountId)
 
   if (!persistConfigured()) {
     lastUnpersistedScan = null
     return
+  }
+  if (!accountId) {
+    throw new Error(
+      'Refusing to disconnect a website with no account — an unscoped delete would remove every customer\'s rows for that domain.',
+    )
   }
   const root = rootDomain(domain)
   const { error } = await getSupabaseAdmin()
     .from('knowledge_chunks')
     .delete()
     .eq('system', 'website')
+    .eq('builder_id', accountId)
     .eq('metadata->>domain', root)
   if (error) throw error
   lastUnpersistedScan = null

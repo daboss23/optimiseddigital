@@ -23,6 +23,7 @@ import type { AdImage } from '@/lib/ad-image'
 // lib/taxonomy.ts (which imports VisualDNA from here the same way).
 import type { CreativeTaxonomy } from '@/lib/taxonomy'
 import { getTenant, tenantDescriptor, type TenantProfile } from '@/lib/tenant'
+import { currentAccount } from '@/lib/account'
 
 const MODEL = INTELLIGENCE_MODEL
 
@@ -154,12 +155,12 @@ function heuristicDNA(text: string): CreativeDNA {
               : 'Authority Builder'
   return {
     hook: firstLine,
-    opening: 'Pattern interrupt → relatable builder scene.',
+    opening: 'Pattern interrupt → a scene the audience recognises as their own.',
     storyStructure: 'Problem → turning point → transformation → proof.',
     ctaStructure: 'Soft qualifying CTA to the next step.',
     editingStyle: 'Fast-cut, captioned, mobile-first.',
     offerPresentation: 'Outcome-led, proof-backed.',
-    visualStyle: 'On-site, high-contrast, authentic.',
+    visualStyle: 'High-contrast, authentic, shot in the business\'s own environment.',
     patternType,
     creativeCategory: patternType,
     summary: firstLine,
@@ -211,7 +212,7 @@ function heuristicVisualDNA(measured: MeasuredSwatch[] = []): VisualDNA {
       { hex: '#f59e0b', role: 'Accent / CTA' },
     ],
     typography: 'Condensed bold headline, regular-weight supporting copy.',
-    imagery: 'Authentic on-site photography rather than stock.',
+    imagery: 'Authentic photography from the brand\'s own environment rather than stock.',
     focalFlow: 'Headline → subject → CTA.',
     textDensity: 'Roughly one third text, two thirds image.',
     contrastDevice: 'Bright accent against a dark, low-noise field.',
@@ -403,7 +404,7 @@ export async function extractCreativeDNA(text: string): Promise<CreativeDNA> {
     const response = await anthropic.messages.create({
       model: MODEL,
       max_tokens: 700,
-      system: `${sparkSystemBase(await getTenant())} Study the winning creative below and extract its repeatable Creative DNA — the structure, not the words. Classify patternType as ONE of: ${CREATIVE_PATTERNS.join(', ')}. Reply with ONLY a JSON object, no prose.`,
+      system: `${sparkSystemBase(await getTenant(await currentAccount()))} Study the winning creative below and extract its repeatable Creative DNA — the structure, not the words. Classify patternType as ONE of: ${CREATIVE_PATTERNS.join(', ')}. Reply with ONLY a JSON object, no prose.`,
       messages: [
         {
           role: 'user',
@@ -516,7 +517,7 @@ export async function extractVisualDNA(
       model: VISION_MODEL,
       // Scales with how many ads a sheet can hold — a 12-ad teardown is long.
       max_tokens: 8000,
-      system: visionSystemPrompt(images.length, measured.length > 0, await getTenant()),
+      system: visionSystemPrompt(images.length, measured.length > 0, await getTenant(await currentAccount())),
       messages: [{ role: 'user', content }],
     })
 

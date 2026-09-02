@@ -18,13 +18,14 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
-import { getBrandMemory } from '@/lib/brand-memory'
+import { resolveBrandMemory } from '@/lib/brand-memory'
 import { generateImageDetailed, type AspectRatio } from '@/lib/image'
 import { INTELLIGENCE_MODEL } from '@/lib/models'
 import { parseModelJson } from '@/lib/parse'
 import { visualDirectionBlock } from '@/lib/taxonomy'
 import type { CreativeDNA, VisualDNA } from '@/lib/spark'
 import { getTenant, tenantDescriptor, tenantShortName } from '@/lib/tenant'
+import { currentAccount } from '@/lib/account'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120
@@ -140,9 +141,13 @@ async function writeClone(
     }
   }
 
-  const brand = getBrandMemory()
+  // The CONNECTED business's brand, not the repository's checked-in one. The
+  // clone writer fills a proven layout with fresh copy, and it was filling it
+  // with a residential builder's voice for every customer of the platform —
+  // see `resolveBrandMemory`.
+  const { memory: brand } = await resolveBrandMemory()
 
-  const system = `You are SPARK's clone designer for ${tenantDescriptor(await getTenant())}. You are handed the DESIGN of an ad that has already won, and you rebuild it for a different business and offer.
+  const system = `You are SPARK's clone designer for ${tenantDescriptor(await getTenant(await currentAccount()))}. You are handed the DESIGN of an ad that has already won, and you rebuild it for a different business and offer.
 
 RULES:
 - Reproduce the STRUCTURE — zones, placement, palette roles, contrast device, eye flow. Never reproduce the reference's words, brand, product or logo.
@@ -239,7 +244,7 @@ export async function POST(request: NextRequest) {
 
     // With no goal given, aim the clone at whoever this deployment is for —
     // never at the business the platform was originally built for.
-    const tenant = await getTenant()
+    const tenant = await getTenant(await currentAccount())
     const goal =
       body.goal?.trim() ||
       [tenantShortName(tenant), tenant.positioning].filter(Boolean).join(' — ') ||

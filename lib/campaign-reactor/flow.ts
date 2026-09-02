@@ -1,7 +1,7 @@
 /**
  * Creative Flow — pure data layer for the node-graph production canvas.
  *
- * The Flow is TPB's ElevenLabs-style counterpart to the Studio: a finished
+ * The Flow is the ElevenLabs-style counterpart to the Studio: a finished
  * Campaign Reactor run is laid out as a wired pipeline — Brief → visual/video
  * nodes (each a real, runnable generation step) → the live Ad Composition. No
  * React here; just the aspect-ratio menu, the lane categorisation, and the

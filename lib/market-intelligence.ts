@@ -22,6 +22,7 @@ import { fetchYouTubeTranscript } from '@/lib/youtube'
 import { parseModelJson } from '@/lib/parse'
 import { INTELLIGENCE_MODEL } from '@/lib/models'
 import { getTenant, tenantDescriptor, type TenantProfile } from '@/lib/tenant'
+import { currentAccount } from '@/lib/account'
 
 // NOVA extracts with the bulk model (single-shot, cost-aware) — same tier the
 // other intelligence layers run on.
@@ -424,7 +425,7 @@ export async function extractMarketIntel(
     const response = await anthropic.messages.create({
       model: MODEL,
       max_tokens: 2000,
-      system: novaSystemPrompt(await getTenant()),
+      system: novaSystemPrompt(await getTenant(await currentAccount())),
       messages: [
         {
           role: 'user',

@@ -23,11 +23,20 @@ create table if not exists creative_outputs (
 create index if not exists creative_outputs_created_at_idx
   on creative_outputs (created_at desc);
 
--- Row Level Security: enable and add policies appropriate to your auth model.
--- The app writes with the service-role key (bypasses RLS) and reads with the
--- anon key, so a read policy is required if you turn RLS on.
+-- Row Level Security.
+--
+-- This table holds generated ads, which on a multi-tenant deployment belong to
+-- individual customers. It previously shipped with:
+--
+--     create policy "Allow anon read access"
+--       on creative_outputs for select using (true);
+--
+-- — a blanket grant to the anon role, which is the key that ships to the
+-- browser. Anyone holding it could read every customer's creative. RLS is
+-- enabled with NO anon policy instead: the app reads and writes with the
+-- service-role key server-side, so it is unaffected, and the public key reads
+-- nothing.
+--
+-- See supabase/schema.tenancy.sql for the tenancy model this sits inside, and
+-- for why RLS is the backstop here rather than the mechanism.
 alter table creative_outputs enable row level security;
-
-create policy "Allow anon read access"
-  on creative_outputs for select
-  using (true);

@@ -2,6 +2,11 @@
 
 Knowledge the copy agent applies when writing Meta (Facebook/Instagram) ads.
 
+Craft only. Nothing here names an industry, an audience or a company — those
+come from the connected website and the Knowledge Vault at runtime. This file
+once carried one specific builder's proof points as its worked examples, which
+dragged every deployment's copy toward that company's market.
+
 ## AD ANATOMY
 
 A Meta feed ad has three copy slots that must work together:
@@ -16,26 +21,30 @@ A Meta feed ad has three copy slots that must work together:
 
 ### PAS — Problem · Agitate · Solve
 Name the reader's problem, twist the knife on what it costs them, then resolve
-it with the brand's proof. Best for fear-led angles (cost blowouts, builder
-disappearing).
+it with the brand's proof. Best for fear-led angles — money leaking, time lost,
+dependence on one person, a supplier who vanishes.
 
 ### BAB — Before · After · Bridge
-Paint the "before" (stress, uncertainty), the "after" (calm, finished home),
-and position the brand as the bridge. Best for aspiration angles.
+Paint the "before" (stress, uncertainty, everything on fire), the "after" (calm,
+finished, in control), and position the mechanism as the bridge. Best for
+aspiration and transformation angles where a named client win supplies the
+after-state.
 
 ### AIDA — Attention · Interest · Desire · Action
 Classic structure for a colder audience that needs the full arc in one ad.
 
 ### 4 U's (for hooks)
-A strong hook tends to be **Useful, Unique, Urgent, Ultra-specific.** Specific
-numbers (19 years, 200 homes, fixed price) outperform vague adjectives.
+A strong hook tends to be **Useful, Unique, Urgent, Ultra-specific.** A concrete
+figure the business can stand behind — a count, a timeframe, a measured
+before-and-after — outperforms a vague adjective every time.
 
 ## RULES OF THUMB
 
 - Lead with the reader's fear or desire, not the company.
 - One idea per ad. Don't stack three offers.
-- Specificity = credibility. Always prefer "the price you sign is the price
-  you pay" over "no hidden costs".
+- Specificity = credibility. Name the mechanism and the number rather than
+  claiming the category — "trusted", "proven" and "leading" are claims, not
+  evidence, and every competitor can make them.
 - Write at a Grade 5–6 reading level. Short words, short sentences.
 - Match message to temperature: cold audiences need the problem named;
   warm/retargeting audiences need the objection crushed and the CTA.

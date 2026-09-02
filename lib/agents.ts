@@ -1,5 +1,5 @@
 /**
- * The TPB Creative Reactor intelligence network — the single source of truth for
+ * The Creative Reactor intelligence network — the single source of truth for
  * the six agents the platform is built around. The orchestrator (`route.ts`)
  * delegates to the five consultable intelligence layers; the telemetry feed, the
  * Strategic Intelligence panel, and the Agent Network page all read their

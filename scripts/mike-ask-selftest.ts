@@ -187,7 +187,7 @@ async function main() {
      account around an invalid date, and it surfaces as "Invalid time value"
      from inside date arithmetic — nowhere near the cause. The context loader
      resolves the date FIRST, per origin, and these three say so. */
-  const context = await loadOperatorContext()
+  const context = await loadOperatorContext(null)
   check('34 · the bootstrap resolves a real evaluation date', isValidDate(context.evaluationDate), context.evaluationDate)
   check('35 · it loads the account in the same pass', context.creatives.length > 0, `${context.creatives.length} creatives`)
   check(

@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { saveCreativeOutput } from '@/lib/supabase'
+import { requireAccount } from '@/lib/account'
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
 
     const saved = await saveCreativeOutput({
-      builder_id: body.builderId ?? null,
+      builder_id: await requireAccount(),
       campaign_angle: body.campaignAngle,
       campaign_goal: body.campaignGoal,
       hooks: body.copy.hooks,

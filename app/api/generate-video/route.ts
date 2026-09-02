@@ -8,6 +8,7 @@ import {
   type GenMode,
 } from '@/lib/video'
 import { logGeneration, updateGeneration } from '@/lib/video/persistence'
+import { currentAccount } from '@/lib/account'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -35,7 +36,6 @@ export async function POST(request: NextRequest) {
       mode?: GenMode
       aspectRatio?: '1:1' | '9:16' | '16:9'
       durationSec?: number
-      builderId?: string | null
     }
 
     // Infer mode: explicit > reference (faces/videos supplied) > image (still) > text.
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
     }
 
     await logGeneration({
-      builder_id: body.builderId ?? null,
+      builder_id: await currentAccount(),
       model_id: job.modelId,
       provider: job.provider,
       mode,

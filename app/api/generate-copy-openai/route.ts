@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getOpenAI } from '@/lib/openai'
-import { getBrandMemory } from '@/lib/brand-memory'
+import { resolveBrandMemory } from '@/lib/brand-memory'
 import { getSkills } from '@/lib/skills'
 import { parseModelJson } from '@/lib/parse'
-import { getBuilder } from '@/lib/supabase'
-import { buildBrandContext } from '@/lib/brand-context'
 import { buildFrameworksContext } from '@/lib/frameworks'
 import type { CopyOutput } from '@/types'
+import { currentAccount } from '@/lib/account'
 
 export const runtime = 'nodejs'
 
@@ -18,25 +17,17 @@ export async function POST(request: NextRequest) {
   try {
     const openai = getOpenAI()
 
-    const { brief, builderId } = await request.json()
+    const { brief } = await request.json()
+    // The tenant comes from the signed session, never from the body — a
+    // client-declared tenant is a suggestion, not an identity.
+    const accountId = await currentAccount()
 
-    let brandMemory = ''
-    let brandName = 'Summit Build Co'
-    if (builderId) {
-      try {
-        const builder = await getBuilder(builderId)
-        brandMemory = buildBrandContext(builder)
-        brandName = builder.name
-      } catch (e) {
-        console.error('Builder load failed, using static brand memory:', e)
-        brandMemory = getBrandMemory()
-      }
-    } else {
-      brandMemory = getBrandMemory()
-    }
+    // Same resolution order as the Claude route — the two are compared against
+    // each other, so they must be written for the same brand.
+    const { memory: brandMemory, brandName } = await resolveBrandMemory(accountId)
 
     const skills = getSkills(['meta-frameworks', 'hooks-library'])
-    const dbFrameworks = await buildFrameworksContext(builderId ?? null)
+    const dbFrameworks = await buildFrameworksContext(accountId)
     const frameworksSection = [skills, dbFrameworks].filter(Boolean).join('\n\n---\n\n')
 
     const systemPrompt = `${brandMemory}

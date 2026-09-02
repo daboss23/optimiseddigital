@@ -54,6 +54,7 @@ import { listOutcomes } from '@/lib/outcomes'
 import { rangeLabel, rangeQuery, resolveRange } from '@/lib/date-range'
 import { cn } from '@/lib/utils'
 import { MetaSyncButton } from './MetaSyncButton'
+import { currentAccount } from '@/lib/account'
 
 export const dynamic = 'force-dynamic'
 
@@ -225,7 +226,7 @@ export default async function ReactorDashboard({
 
   const [data, meta, outcomes] = await Promise.all([
     getDashboardData(),
-    resolveMetaDashboard(range),
+    resolveMetaDashboard(await currentAccount(), range),
     listOutcomes(12),
   ])
 

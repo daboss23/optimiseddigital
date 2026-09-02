@@ -28,6 +28,7 @@ import path from 'path'
 import Anthropic from '@anthropic-ai/sdk'
 import { ORCHESTRATOR_FALLBACK_MODEL } from '@/lib/models'
 import { getTenant } from '@/lib/tenant'
+import { currentAccount } from '@/lib/account'
 import { parseModelJson } from '@/lib/parse'
 import { STRENGTH_LABELS } from '@/lib/operator/strength'
 import {
@@ -86,7 +87,7 @@ export function loadConstitution(): string {
  * means "do not invent it".
  */
 async function clientContext() {
-  const tenant = await getTenant().catch(() => null)
+  const tenant = await getTenant(await currentAccount()).catch(() => null)
   return {
     company: tenant?.companyName || null,
     industry: tenant?.industry || null,

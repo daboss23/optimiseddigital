@@ -63,7 +63,7 @@ async function main() {
 
   // 0 · Credential resolution — the stored connection wins when one exists,
   // the environment is the fallback. Either way a usable token must resolve.
-  const credentials = await resolveMetaCredentials()
+  const credentials = await resolveMetaCredentials(null)
   check(
     'credentials resolve (stored connection wins, env is the fallback)',
     Boolean(credentials?.token) &&
@@ -71,7 +71,7 @@ async function main() {
     credentials ? `origin: ${credentials.origin}` : 'no credentials',
   )
 
-  const payload = await fetchOperatorSource()
+  const payload = await fetchOperatorSource(null)
   const { creatives, baselines, metadata } = payload
 
   console.log(

@@ -52,7 +52,14 @@ export function getSupabaseAdmin(): SupabaseClient {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Builders (tenants)                                                          */
+/* Accounts (tenants)                                                          */
+/*                                                                             */
+/* The table is `accounts` — renamed from `builders` by                        */
+/* supabase/schema.tenancy.sql, which preserves every row, index and foreign   */
+/* key. These three functions still named the old table after that migration,  */
+/* so `getBuilder` (and the brand memory that depends on it) would have failed  */
+/* the moment it ran. The `Builder*` type and function names are kept so the    */
+/* call sites do not churn; only the table they read is corrected.              */
 /* -------------------------------------------------------------------------- */
 
 export interface BuilderInsert {
@@ -68,7 +75,7 @@ export interface BuilderInsert {
 
 export async function createBuilder(input: BuilderInsert): Promise<Builder> {
   const { data, error } = await getSupabaseAdmin()
-    .from('builders')
+    .from('accounts')
     .insert([input])
     .select()
     .single()
@@ -79,7 +86,7 @@ export async function createBuilder(input: BuilderInsert): Promise<Builder> {
 
 export async function listBuilders(): Promise<Builder[]> {
   const { data, error } = await getSupabaseAdmin()
-    .from('builders')
+    .from('accounts')
     .select('*')
     .order('created_at', { ascending: false })
 
@@ -89,7 +96,7 @@ export async function listBuilders(): Promise<Builder[]> {
 
 export async function getBuilder(id: string): Promise<Builder> {
   const { data, error } = await getSupabaseAdmin()
-    .from('builders')
+    .from('accounts')
     .select('*')
     .eq('id', id)
     .single()

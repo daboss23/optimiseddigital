@@ -83,7 +83,24 @@ export interface IngestInput {
   title: string
   content: string
   category?: string | null
+  /**
+   * The account this knowledge belongs to. Required for customer content.
+   *
+   * It used to be optional and written as `builder_id: input.builderId ?? null`
+   * — and `match_knowledge` returned null-tenant rows to EVERY tenant, so a
+   * caller that forgot to pass one did not write a private row, it published
+   * one. The two callers that could not supply an account were the website
+   * scan and the vault ingest: exactly the two that carry a customer's own
+   * brand intelligence.
+   */
   builderId?: string | null
+  /**
+   * Platform-owned knowledge, deliberately readable by every account (shared
+   * craft, never a customer's material). Must be set explicitly — the intent
+   * can no longer be inferred from an absent tenant, because "global" and
+   * "somebody forgot" looked identical and one of them is a leak.
+   */
+  isGlobal?: boolean
   metadata?: Record<string, unknown>
 }
 
@@ -101,13 +118,30 @@ export async function ingestKnowledge(input: IngestInput): Promise<IngestResult>
     return { ok: true, chunks: chunks.length, stored: false, reason: 'Vector store not configured' }
   }
 
+  // Refused rather than written unscoped. A row with no account and no explicit
+  // global flag is retrievable by nobody under the new match function and was
+  // retrievable by everybody under the old one; neither is what the caller
+  // meant, and guessing which is not this function's job.
+  const accountId = input.builderId ?? null
+  const isGlobal = input.isGlobal === true
+  if (!accountId && !isGlobal) {
+    return {
+      ok: false,
+      chunks: chunks.length,
+      stored: false,
+      reason:
+        'Refused: knowledge must belong to an account. Pass builderId (the signed-in account), or isGlobal for platform-owned craft.',
+    }
+  }
+
   const vectors = await embed(chunks, 'document')
   const rows = chunks.map((content, i) => ({
     system: input.system,
     category: input.category ?? null,
     title: input.title,
     content,
-    builder_id: input.builderId ?? null,
+    builder_id: accountId,
+    is_global: isGlobal,
     metadata: input.metadata ?? {},
     embedding: vectors[i],
   }))
@@ -373,13 +407,31 @@ function buildDemoCorpus(): Doc[] {
   if (demoCorpus) return demoCorpus
   const docs: Doc[] = []
 
-  // ATLAS's foundation — the `vault` and `website` systems. Without these the
-  // Knowledge Intelligence layer is the only one with no documents behind it,
-  // so it reports zero evidence on every run that isn't backed by a live
-  // Supabase + Voyage stack.
+  // ATLAS's foundation — universal craft knowledge (ad anatomy, PAS/BAB/AIDA,
+  // hook construction, compliance, offer framing). True for every business on
+  // the platform, so it ships unconditionally: without it the layer the product
+  // calls its foundation is the one layer with nothing behind it whenever the
+  // vector store is unreachable.
   for (const a of foundationAssets) {
     docs.push({ system: a.system, category: a.category, title: a.title, content: a.content })
   }
+
+  /* Everything below is ONE BUSINESS'S DATA — its patterns, its client
+     transformations with their real margins, its winning hooks, its research
+     findings, its creative win rates. It exists for demos and screenshots and
+     it is gated accordingly.
+
+     The dashboards have always gated it. Retrieval did not, and retrieval is
+     the path that feeds the agents: on a deployment with the flag unset, every
+     panel rendered honestly empty while every reactor run still retrieved
+     another company's members, margins and market as evidence and grounded the
+     campaign in them. The screen said "blank platform" and the ads said
+     otherwise. Same flag, same answer, everywhere. */
+  if (!demoDataEnabled()) {
+    demoCorpus = docs
+    return docs
+  }
+
   // The Vault's asset inventory is retrievable too, so ATLAS can answer "what
   // do we actually hold on this" with the real shape of the library.
   for (const g of vaultCategories) {

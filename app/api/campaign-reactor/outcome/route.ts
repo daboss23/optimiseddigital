@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { recordOutcome, type OutcomeAttributes, type Verdict } from '@/lib/outcomes'
+import { currentAccount } from '@/lib/account'
 
 export const runtime = 'nodejs'
 
@@ -27,7 +28,7 @@ export async function POST(request: NextRequest) {
       metricName: body.metricName,
       metricValue: body.metricValue,
       verdict: (body.verdict as Verdict) ?? 'winner',
-      builderId: body.builderId ?? null,
+      builderId: await currentAccount(),
       notes: body.notes,
     })
 

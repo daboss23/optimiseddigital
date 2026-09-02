@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { resolveMetaDashboard } from '@/lib/meta-graph'
 import { resolveRange } from '@/lib/date-range'
+import { currentAccount } from '@/lib/account'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,7 +23,7 @@ export async function GET(req: Request) {
   })
 
   try {
-    const data = await resolveMetaDashboard(range)
+    const data = await resolveMetaDashboard(await currentAccount(), range)
     return NextResponse.json({ ok: true, data })
   } catch (e) {
     return NextResponse.json(

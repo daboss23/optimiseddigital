@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ingestKnowledge, type KnowledgeSystem } from '@/lib/knowledge'
 import { extractVideoId, fetchYouTubeTranscript, structureTranscriptForVault } from '@/lib/youtube'
+import { requireAccount } from '@/lib/account'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest) {
       title,
       content,
       category: body.category ?? null,
-      builderId: body.builderId ?? null,
+      builderId: await requireAccount(),
       metadata: { ...(body.metadata ?? {}), ...(url?.trim() ? { sourceUrl: url.trim() } : {}) },
     })
 

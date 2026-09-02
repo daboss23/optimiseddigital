@@ -3,6 +3,7 @@ import './globals.css'
 import { GlossTracker } from '@/components/reactor/GlossTracker'
 import { DEFAULT_IDENTITY } from '@/lib/brand-identity'
 import { getBrandIdentity } from '@/lib/brand-identity.server'
+import { currentAccount } from '@/lib/account'
 
 /**
  * Title and description follow the connected business, so a deployment that has
@@ -14,7 +15,7 @@ import { getBrandIdentity } from '@/lib/brand-identity.server'
 export async function generateMetadata(): Promise<Metadata> {
   let name = DEFAULT_IDENTITY.name
   try {
-    name = (await getBrandIdentity()).name
+    name = (await getBrandIdentity(await currentAccount())).name
   } catch {
     /* keep the product default */
   }

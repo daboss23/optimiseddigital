@@ -167,9 +167,36 @@ function referenceText(ref: StoredVisualReference): string {
 export interface VisualMatch {
   reference: StoredVisualReference
   score: number
+  /**
+   * The part of the score that is EVIDENCE THIS BRIEF, not design richness.
+   *
+   * Word overlap and taxonomy agreement say a design was aimed at the same
+   * reader; element count only says the design was read thoroughly. Ranking can
+   * use both, but the decision to auto-attach a reference at all must rest on
+   * the first alone — a thoroughly-read ad for someone else's business is the
+   * most dangerous thing in the Vault, not the best.
+   */
+  relevance: number
   /** Human-readable reason, e.g. "Profit Leak · 4:5 · matches profit, margin". */
   why: string
 }
+
+/**
+ * How much real evidence of fit a design needs before the platform will attach
+ * it to a run unasked.
+ *
+ * Two shared content words, or one taxonomy axis in common. Below that the pick
+ * is not a match, it is whatever happens to sit at the top of an ordered list —
+ * and `bestVisualReferenceFor` used to return exactly that, so a single
+ * unrelated ad banked in the Vault became "PROVEN DESIGN — build the visual
+ * concepts on it" on every subsequent run, carrying its subject matter into
+ * campaigns that had nothing to do with it.
+ *
+ * Deliberately NOT satisfied by an aspect-ratio match: every 4:5 design in the
+ * Vault shares a ratio with every 4:5 brief, which is a fact about Meta's
+ * placements, not about this campaign.
+ */
+export const MIN_VISUAL_RELEVANCE = 4
 
 /**
  * Rank banked designs against a brief. Highest score first; ties broken by
@@ -188,13 +215,17 @@ export function rankVisualReferences(
       const refTokens = new Set(tokens(referenceText(reference)))
       const shared = Array.from(wanted).filter((t) => refTokens.has(t))
 
-      let score = shared.length * 2
+      // Evidence that this design was aimed at THIS brief.
+      let relevance = shared.length * 2
+      // Everything else that makes one match rank above another.
+      let bonus = 0
       const reasons: string[] = []
 
       // A design built for a different placement has to be re-laid-out, which
-      // is exactly the work a proven layout is supposed to save.
+      // is exactly the work a proven layout is supposed to save. It orders
+      // matches; it never establishes one (see MIN_VISUAL_RELEVANCE).
       if (wantedRatio && reference.visual.aspectRatio === wantedRatio) {
-        score += 3
+        bonus += 3
         reasons.push(wantedRatio)
       }
 
@@ -204,20 +235,21 @@ export function rankVisualReferences(
         const a = briefTax[key]
         const b = reference.taxonomy?.[key]
         if (a && b && a === b) {
-          score += 4
+          relevance += 4
           reasons.push(b)
         }
       }
 
       // A design with real placements is worth more than a thin one — it gives
-      // the production brief more to rebuild from.
-      score += Math.min(3, reference.visual.elements.length / 3)
+      // the production brief more to rebuild from. Richness, not relevance.
+      bonus += Math.min(3, reference.visual.elements.length / 3)
 
       if (shared.length) reasons.push(shared.slice(0, 3).join(', '))
 
       return {
         reference,
-        score,
+        score: relevance + bonus,
+        relevance,
         why: [reference.pattern, ...reasons].filter(Boolean).join(' · ') || reference.title,
       }
     })
@@ -234,6 +266,11 @@ export function rankVisualReferences(
 export async function bestVisualReferenceFor(brief: VisualBrief): Promise<VisualMatch | null> {
   const refs = await listVisualReferences()
   if (!refs.length) return null
-  const ranked = rankVisualReferences(refs, brief)
-  return ranked[0] ?? null
+  const best = rankVisualReferences(refs, brief)[0]
+  // No match is a legitimate answer, and a far better one than the top of a
+  // list. A run with no proven design simply invents its own layout, which is
+  // what it did before the visual library existed; a run handed an irrelevant
+  // one is told to build on it.
+  if (!best || best.relevance < MIN_VISUAL_RELEVANCE) return null
+  return best
 }

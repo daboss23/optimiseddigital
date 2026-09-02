@@ -45,13 +45,27 @@ export function normaliseAccountId(raw: string): string {
 }
 
 /**
- * Resolve the credentials the live source should use, or null when neither
- * source has any. Never throws — a settings-store failure reads as "no stored
- * connection" and the environment gets its say, which is the same philosophy
- * as every other setting on the platform.
+ * Resolve the credentials the live source should use FOR ONE ACCOUNT, or null
+ * when neither source has any.
+ *
+ * The stored connection is a Meta System User token with write access to an ad
+ * account. It lived in a globally-keyed setting, so on a multi-tenant
+ * deployment whichever customer connected last owned the credential every
+ * other customer's ads published and reported through. It is now read from
+ * that account's own settings row.
+ *
+ * The environment fallback is deliberately kept but is DEPLOYMENT-WIDE by
+ * nature: it exists for a single-tenant install. On a deployment with real
+ * accounts it should be left unset, and `npm run selftest:tenant` says so.
+ *
+ * Never throws — a settings-store failure reads as "no stored connection" and
+ * the environment gets its say, which is the same philosophy as every other
+ * setting on the platform.
  */
-export async function resolveMetaCredentials(): Promise<ResolvedMetaCredentials | null> {
-  const stored = await getSetting<StoredMetaConnection>(SETTING_META_CONNECTION)
+export async function resolveMetaCredentials(
+  accountId: string | null,
+): Promise<ResolvedMetaCredentials | null> {
+  const stored = await getSetting<StoredMetaConnection>(SETTING_META_CONNECTION, accountId)
   if (stored?.accessToken) {
     return {
       token: stored.accessToken,

@@ -17,6 +17,7 @@ import {
   type CreativeTaxonomy,
 } from '@/lib/taxonomy'
 import { getConnectedWebsite } from '@/lib/website-intelligence'
+import { currentAccount } from '@/lib/account'
 
 const WIN = new Set(['winner', 'high_performer'])
 
@@ -57,7 +58,7 @@ function uniq(seed: readonly string[], discovered: string[]): string[] {
  */
 async function derivedAudienceAxes(): Promise<{ personas: string[]; pains: string[] }> {
   try {
-    const site = await getConnectedWebsite()
+    const site = await getConnectedWebsite(await currentAccount())
     return {
       personas: site?.strategyOptions?.personas ?? [],
       pains: site?.strategyOptions?.painPoints ?? [],

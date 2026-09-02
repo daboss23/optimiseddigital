@@ -14,6 +14,7 @@
 
 import { NextResponse } from 'next/server'
 import { fetchOperatorSource } from '@/lib/operator/adapters/meta-server'
+import { currentAccount } from '@/lib/account'
 
 export const runtime = 'nodejs'
 // Live account data — never cached.
@@ -21,7 +22,7 @@ export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
-    const payload = await fetchOperatorSource()
+    const payload = await fetchOperatorSource(await currentAccount())
     return NextResponse.json(payload)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Meta source failed.'

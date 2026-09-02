@@ -1,6 +1,23 @@
-// Demo intelligence data powering the TPB Creative Reactor command center.
-// This is the curated knowledge layer the platform presents as an AI strategist
-// actively working across 20+ years of TPB creative assets.
+// Demo intelligence data for the Creative Reactor command center.
+//
+// Two different things live in this file and they are NOT interchangeable:
+//
+//   · UNIVERSAL CRAFT (`foundationAssets`, `learnings`) — ad anatomy, copy
+//     frameworks, hook construction, compliance, offer framing by awareness
+//     stage. True for every business on the platform, so it ships and is
+//     retrievable unconditionally.
+//
+//   · ONE BUSINESS'S DATA (`patterns`, `topHooks`/`topHeadlines`/`topOffers`,
+//     `transformations`, `researchOutputs`, `creativeAnalyses`,
+//     `vaultCategories`, `recommendations`) — a specific company's winning ads,
+//     its clients' margins, its market. Illustrative for demos and screenshots
+//     and WRONG for anyone else, so it is gated behind `demoDataEnabled()`
+//     (NEXT_PUBLIC_REACTOR_DEMO_DATA=1) on every surface, retrieval included.
+//
+// If you add to this file, decide which of the two it is first. Anything that
+// names an industry, a client, a figure or a market belongs in the second
+// group; put it anywhere reachable without the flag and every deployment
+// inherits another company's business as its own.
 
 export interface KpiStat {
   label: string
@@ -515,9 +532,19 @@ export const patterns: Pattern[] = [
  * creative analyses). ATLAS reads the `vault` and `website` systems, which had
  * no curated documents at all — so the layer the platform calls its foundation
  * was the one layer that could never return evidence without a live Supabase +
- * Voyage stack. These are the curated stand-ins: real TPB frameworks, SOPs and
- * positioning distilled from `skills/*.md` and `brand/BRAND_MEMORY.md`, so
- * ATLAS retrieves genuine, specific ground truth on every run.
+ * Voyage stack.
+ *
+ * What ships here is UNIVERSAL CRAFT and nothing else: ad anatomy, copy
+ * frameworks, hook construction, compliance, offer framing by awareness stage.
+ * That knowledge belongs to the product and is true for every business on it.
+ *
+ * What used to ship alongside it was one specific company's positioning, proof
+ * points, audience fears and brand voice, filed under the `website` system —
+ * the exact system a connected site's real profile lands in. Any deployment
+ * whose vector store was unreachable therefore retrieved another company —
+ * a residential builder — as its own identity, and grounded every campaign in
+ * it. A tenant's
+ * identity is never shipped in the source; it is read from their website.
  *
  * Kept isomorphic (no `fs`) because `lib/knowledge.ts` is imported by client
  * components — reading the markdown at runtime would break the browser bundle.
@@ -563,14 +590,14 @@ export const foundationAssets: FoundationAsset[] = [
     category: 'Hook Frameworks',
     title: 'The 4 U\'s — Useful, Unique, Urgent, Ultra-specific',
     content:
-      'A strong hook tends to be Useful, Unique, Urgent and Ultra-specific. Specific numbers (19 years, 200 homes, 12% to 22% margin, fixed price) outperform vague adjectives every time. Specificity is credibility: prefer "the price you sign is the price you pay" over "no hidden costs".',
+      'A strong hook tends to be Useful, Unique, Urgent and Ultra-specific. A concrete figure the business can actually stand behind — a count, a timeframe, a measured before-and-after — outperforms a vague adjective every time. Specificity is credibility: name the mechanism and the number rather than claiming the category ("trusted", "proven", "no hidden costs").',
   },
   {
     system: 'vault',
     category: 'Hook Frameworks',
     title: 'Hook construction checklist',
     content:
-      'Four gates every hook must pass. 1. Does it name a specific fear or desire in the first six words? 2. Is there a concrete number or local detail? 3. Could a competitor run it unchanged — if yes, rewrite it. 4. Is it under ~12 words and readable at a glance? A hook that fails gate 3 is a category claim, not a campaign.',
+      'Four gates every hook must pass. 1. Does it name a specific fear or desire in the first six words? 2. Is there a concrete number or a detail only this business could supply? 3. Could a competitor run it unchanged — if yes, rewrite it. 4. Is it under ~12 words and readable at a glance? A hook that fails gate 3 is a category claim, not a campaign.',
   },
   {
     system: 'vault',
@@ -584,14 +611,14 @@ export const foundationAssets: FoundationAsset[] = [
     category: 'Creative SOPs',
     title: 'Meta compliance guardrails',
     content:
-      'No claims that cannot be substantiated. Avoid before/after framing that implies a guaranteed personal outcome. Do not assert personal attributes about the viewer ("Struggling with debt?") — speak to the situation, not the person\'s identity. No fake countdowns or invented scarcity. Attribute every results figure to a named individual as their result, and carry the not-typical disclaimer wherever a member result appears.',
+      'No claims that cannot be substantiated. Avoid before/after framing that implies a guaranteed personal outcome. Do not assert personal attributes about the viewer ("Struggling with debt?") — speak to the situation, not the person\'s identity. No fake countdowns or invented scarcity. Attribute every results figure to a named individual as their result, and carry the not-typical disclaimer wherever a named client\'s result appears.',
   },
   {
     system: 'vault',
     category: 'Story Mining SOPs',
     title: 'Mining a client win into creative',
     content:
-      'Pull the before-state in the member\'s own words (hours, margin, the moment it broke), the turning point (which mechanism, applied when), and the after-state with one hard figure. Ship it as: named member, concrete number, the mechanism between the two. Refresh proof inventory monthly — named-member proof ads booked 38% versus 21% for promise-led creative.',
+      'Pull the before-state in the client\'s own words (what it cost them, the moment it broke), the turning point (which mechanism, applied when), and the after-state with one hard figure. Ship it as: named client, concrete number, the mechanism between the two. Refresh the proof inventory on a schedule — a named client with a real figure outperforms a promise the whole category could make.',
   },
   {
     system: 'vault',
@@ -600,64 +627,61 @@ export const foundationAssets: FoundationAsset[] = [
     content:
       'Unaware and problem-aware traffic converts to a low-friction diagnostic (audit, assessment, scorecard) — the offer is clarity, not the program. Solution-aware traffic converts to the mechanism itself, named. Product-aware and most-aware traffic converts to the direct application or call, where the job of the ad is objection removal and urgency, not education.',
   },
-  {
-    system: 'website',
-    category: 'Positioning',
-    title: 'Who we are — the operating positioning',
-    content:
-      'A family-owned residential building company in the Hunter Valley, NSW. 19 years building, 200+ custom homes, knockdown-rebuilds and major renovations across Maitland, Cessnock, Pokolbin, Newcastle and surrounds. Deliberately not a volume builder — a limited number of homes each year so every client gets the director\'s personal phone number and a site they can walk any time.',
-  },
-  {
-    system: 'website',
-    category: 'Proof',
-    title: 'Proof points — what makes the offer different',
-    content:
-      'Fixed-Price Guarantee: the price you sign is the price you pay, with no provisional sums that balloon halfway through the slab. 19 years and 200+ homes in one region. Director-led — you deal with the owners, not a rotating cast of subcontracted project managers. Local trades and local reputation, with subbies who have worked with the company for years. Free, no-obligation site assessment before a dollar is committed.',
-  },
-  {
-    system: 'website',
-    category: 'Audience',
-    title: 'Who we talk to and what they fear',
-    content:
-      'Hunter Valley families and professionals, typically 30–55, building a first custom home or knocking down and rebuilding. Burned by — or terrified of — cost blowouts they have heard about from friends. Afraid of the horror story: the builder who disappears, goes under, or leaves a half-finished frame in the rain. Time-poor and craving a builder who communicates without being chased. Core pains: "What if the final bill is nothing like the quote?", "What if the builder goes broke and takes my deposit?", "What if I can never get a straight answer about where my money went?", "I don\'t want to project-manage tradies on my weekends."',
-  },
-  {
-    system: 'website',
-    category: 'Voice',
-    title: 'Voice and tone — how the brand speaks',
-    content:
-      'Plain-spoken and confident — a straight-shooting builder on site, not a marketing department. Calm authority: never hype, never exclamation-mark spam, never promise the world; reassure with specifics. Proof over adjectives — "200 homes in 19 years" beats "trusted and reliable". Australian, regional and grounded: Hunter Valley references welcome, no American spelling, no corporate jargon.',
-  },
 ]
 
 /* ----------------------------- Creative Learnings ------------------------- */
 
 export interface Learning {
   insight: string
+  /**
+   * What stands behind the insight.
+   *
+   * These used to carry hard figures — "71% win rate vs 58% across 170
+   * creatives" — measured on one company's ad account and shipped to every
+   * deployment as the rubric OPUS self-scores against. No other tenant ran
+   * those creatives, so the numbers were, from their side, invented. A rubric
+   * that opens with a fabricated statistic teaches the orchestrator to argue
+   * from evidence nobody has.
+   *
+   * The floor below therefore claims no measurement at all. Real figures reach
+   * the rubric through `resolveCreativeLearnings()`, computed from the
+   * account's OWN graded outcomes, and they say how many creatives they rest on.
+   */
   evidence: string
   recommendation: string
 }
 
+/**
+ * The Creative Learnings floor — craft that holds before an account has run
+ * anything, stated as principle rather than as measurement.
+ *
+ * Superseded per-run by the tenant's own outcomes the moment there are enough
+ * of them to mean something (see `resolveCreativeLearnings` in lib/outcomes.ts).
+ */
 export const learnings: Learning[] = [
   {
-    insight: 'Founder videos outperform talking-head interviews.',
-    evidence: '71% win rate vs 58% across 170 creatives in the last 3 cohorts.',
-    recommendation: 'Default new concepts to founder-led, on-site delivery.',
+    insight: 'A creative earns attention in its first beat or not at all.',
+    evidence: 'Craft principle — not yet measured on this account.',
+    recommendation:
+      'Open on one concrete, specific pattern-interrupt. Never open on the offer, the brand, or a claim any competitor could make.',
   },
   {
-    insight: 'Specific profit numbers outperform vague claims.',
-    evidence: 'Ads with a dollar/margin figure had 2.1x ROAS vs 1.3x for generic.',
-    recommendation: 'Always lead with a real member figure in the hook or headline.',
+    insight: 'Specific, attributable figures outperform category adjectives.',
+    evidence: 'Craft principle — not yet measured on this account.',
+    recommendation:
+      'Lead with a number the business can stand behind and attribute it to a named individual as their result. "Trusted", "proven" and "leading" are claims, not evidence.',
   },
   {
-    insight: 'Transformation stories outperform feature messaging.',
-    evidence: 'Story-led creatives held attention 40% longer (avg watch time).',
-    recommendation: 'Frame the mechanism inside a member transformation arc.',
+    insight: 'A transformation the reader recognises beats a feature list.',
+    evidence: 'Craft principle — not yet measured on this account.',
+    recommendation:
+      'Frame the mechanism inside a before-and-after the audience can place themselves in, rather than describing what the offer includes.',
   },
   {
-    insight: 'Member wins outperform generic promises.',
-    evidence: 'Named-member proof ads booked 38% vs 21% for promise-led.',
-    recommendation: 'Mine new client wins monthly to refresh proof inventory.',
+    insight: 'A creative that could run for a competitor unchanged is not a campaign.',
+    evidence: 'Craft principle — not yet measured on this account.',
+    recommendation:
+      'Test every concept by swapping the brand name out. If it still reads, the concept carries no proof and belongs to the category, not the business.',
   },
 ]
 

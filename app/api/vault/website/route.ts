@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getConnectedWebsite, disconnectWebsite } from '@/lib/website-intelligence'
+import { currentAccount, requireAccount } from '@/lib/account'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -9,7 +10,7 @@ export const maxDuration = 30
 // reconstructed from the website chunks already stored in the Knowledge Vault.
 export async function GET() {
   try {
-    const website = await getConnectedWebsite()
+    const website = await getConnectedWebsite(await currentAccount())
     return NextResponse.json({ success: true, website })
   } catch (err) {
     console.error('Website summary error:', err)
@@ -28,7 +29,7 @@ export async function DELETE(request: NextRequest) {
     if (!domain) {
       return NextResponse.json({ success: false, error: 'domain is required' }, { status: 400 })
     }
-    await disconnectWebsite(domain)
+    await disconnectWebsite(domain, await requireAccount())
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error('Website disconnect error:', err)

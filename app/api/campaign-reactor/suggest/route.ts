@@ -15,6 +15,7 @@ import { angleEvidence } from '@/lib/outcomes'
 import { vaultStats } from '@/lib/knowledge'
 import { parseModelJson } from '@/lib/parse'
 import { getTenant, tenantDescriptor } from '@/lib/tenant'
+import { currentAccount } from '@/lib/account'
 
 export const runtime = 'nodejs'
 
@@ -232,7 +233,7 @@ export async function POST(request: NextRequest) {
       model: MODEL,
       max_tokens: 500,
       system:
-        `You are OPUS, the Campaign Reactor strategist for ${tenantDescriptor(await getTenant())}. Given a brief, name the single strongest campaign ANGLE — a precise, evocative strategic angle that may be sharper than the base categories (examples of the shape, not the subject: "Profit Leak", "Owner Dependency"). Then choose the best-fit awareness stage, market-sophistication stage (Eugene Schwartz — what KIND of claim still lands in this market), audience and offer from the provided lists, and the creative deliverables to produce. Reply with ONLY a JSON object, no prose.`,
+        `You are OPUS, the Campaign Reactor strategist for ${tenantDescriptor(await getTenant(await currentAccount()))}. Given a brief, name the single strongest campaign ANGLE — a precise, evocative strategic angle that may be sharper than the base categories (examples of the shape, not the subject: "Profit Leak", "Owner Dependency"). Then choose the best-fit awareness stage, market-sophistication stage (Eugene Schwartz — what KIND of claim still lands in this market), audience and offer from the provided lists, and the creative deliverables to produce. Reply with ONLY a JSON object, no prose.`,
       messages: [
         {
           role: 'user',

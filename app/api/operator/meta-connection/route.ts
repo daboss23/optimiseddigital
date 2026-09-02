@@ -27,6 +27,7 @@ import {
   SETTING_META_CONNECTION,
 } from '@/lib/settings'
 import { listAccounts } from '@/lib/meta-graph'
+import { currentAccount } from '@/lib/account'
 import {
   normaliseAccountId,
   tokenTail,
@@ -37,7 +38,7 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  const stored = await getSetting<StoredMetaConnection>(SETTING_META_CONNECTION)
+  const stored = await getSetting<StoredMetaConnection>(SETTING_META_CONNECTION, await currentAccount())
   return NextResponse.json({
     success: true,
     data: {
@@ -129,7 +130,7 @@ export async function POST(request: NextRequest) {
     adAccountId: chosen.id,
     accountName: chosen.name,
     connectedAt: new Date().toISOString(),
-  } satisfies StoredMetaConnection)
+  } satisfies StoredMetaConnection, await currentAccount())
   if (!stored) {
     return NextResponse.json(
       { success: false, error: 'The connection could not be saved.' },
@@ -144,6 +145,6 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE() {
-  await clearSetting(SETTING_META_CONNECTION)
+  await clearSetting(SETTING_META_CONNECTION, await currentAccount())
   return NextResponse.json({ success: true })
 }

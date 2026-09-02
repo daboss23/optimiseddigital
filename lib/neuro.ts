@@ -5,7 +5,7 @@
  * We can't use that model (CC BY-NC license, and it outputs fMRI voxels, not ad
  * performance), but we CAN port its thesis: score every generated concept on how
  * the human brain is likely to react BEFORE any spend — grounded not in fMRI but
- * in established neuromarketing principles (and, later, in TPB's own outcome
+ * in established neuromarketing principles (and, later, in the account's own outcome
  * data).
  *
  * This is a PREDICTION/ESTIMATE, never measured neuroscience. The UI labels it as
@@ -21,6 +21,7 @@ import { searchKnowledge } from '@/lib/knowledge'
 import { parseModelJson } from '@/lib/parse'
 import { NEURO_PASS_MARK, type NeuroScore } from '@/lib/reactor-inputs'
 import { getTenant, tenantShortName } from '@/lib/tenant'
+import { currentAccount } from '@/lib/account'
 
 /** A concept as it reaches the NEURO grader (only the fields it scores on). */
 interface ScorableConcept {
@@ -37,14 +38,14 @@ export const NEURO_THRESHOLD = NEURO_PASS_MARK
 /**
  * Curated neuromarketing principles — the grounding rubric NEURO scores against
  * when the Vault has nothing more specific. These are established, well-documented
- * effects (not invented), so the estimate is principled even before TPB uploads
+ * effects (not invented), so the estimate is principled even before the account uploads
  * its own neuro-research.
  */
 export const NEURO_PRINCIPLES = `ESTABLISHED NEUROMARKETING PRINCIPLES (the grounding rubric):
 - Visual salience & pattern-interrupt: attention is allocated to novelty and high-contrast change within the first ~50ms. Openings that break the expected scroll pattern win attention; predictable openings get filtered out pre-consciously.
 - Processing fluency / cognitive load: messages that are easy to process feel truer and more likeable (the fluency heuristic). One clear idea per beat beats a crowded frame; complexity taxes attention and suppresses action.
 - Emotional valence & arousal: emotionally arousing stimuli are encoded more strongly and drive sharing and action far more than neutral information (the affect heuristic). Flat, purely informational creative under-performs.
-- Memory encoding / isolation (Von Restorff) effect: a single distinctive, isolated element is remembered better than a list. One bold figure or one named member beats many competing claims.
+- Memory encoding / isolation (Von Restorff) effect: a single distinctive, isolated element is remembered better than a list. One bold figure or one named person beats many competing claims.
 - First-3-seconds attentional gating: scroll-stopping requires a concrete, specific, curiosity-opening first beat. Vague or generic openers are gated out before the message lands.
 - Specificity & concreteness: concrete numbers and named individuals are processed as more credible and more memorable than abstract claims.
 - Self-reference effect: creative that makes the viewer feel personally identified ("seen") is encoded more deeply and recalled better.
@@ -63,7 +64,7 @@ const NEURO_PRINCIPLES_TTL_MS = 10 * 60 * 1000
 const neuroPrinciplesCache = new Map<string, { value: string; at: number }>()
 
 /**
- * Retrieve any TPB-specific neuromarketing knowledge from the Vault (learning +
+ * Retrieve any account-specific neuromarketing knowledge from the Vault (learning +
  * creative systems), appended to the curated principles. Never throws — returns
  * the curated rubric alone if retrieval is unavailable. Cached per angle+builder
  * across runs (see NEURO_PRINCIPLES_TTL_MS) so the retrieval is skipped on repeat
@@ -155,7 +156,7 @@ export async function scoreConceptsNeuro(
   if (concepts.length === 0) return []
 
   const list = concepts.map(conceptLine).join('\n')
-  const brand = tenantShortName(await getTenant())
+  const brand = tenantShortName(await getTenant(await currentAccount()))
   const system = `You are NEURO, the Predicted Response layer of ${brand}'s Creative Intelligence Command Center. You run a neural PRE-TEST on ad concepts: estimate how the human brain is likely to react to each one before any spend, using established neuromarketing principles. You are producing an ESTIMATE, not measured brain data — be calibrated and honest, not flattering.
 
 ${principles}

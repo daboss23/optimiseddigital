@@ -258,8 +258,8 @@ function perfAttributes(
  * Run one full performance sync: Meta ads → graded verdicts → ORACLE memory.
  * Winners flow on into the knowledge Vault automatically. Never throws.
  */
-export async function syncMetaPerformance(): Promise<MetaIngestSummary> {
-  const credentials = await resolveMetaCredentials()
+export async function syncMetaPerformance(accountId: string | null): Promise<MetaIngestSummary> {
+  const credentials = await resolveMetaCredentials(accountId)
   if (!credentials) {
     return {
       ...emptySummary(false),
@@ -374,7 +374,7 @@ export async function syncMetaPerformance(): Promise<MetaIngestSummary> {
 }
 
 /** Status for the sync UI — configuration + how much Meta memory exists. */
-export async function metaIngestStatus(): Promise<{
+export async function metaIngestStatus(accountId: string | null): Promise<{
   configured: boolean
   storageReady: boolean
   minSpend: number
@@ -382,7 +382,7 @@ export async function metaIngestStatus(): Promise<{
   syncedAds: number
 }> {
   const base = {
-    configured: Boolean(await resolveMetaCredentials()),
+    configured: Boolean(await resolveMetaCredentials(accountId)),
     storageReady: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL),
     minSpend: minSpend(),
     datePreset: datePreset(),

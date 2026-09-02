@@ -15,7 +15,9 @@
     "selftest:operator": "tsx scripts/operator-selftest.ts",
     "selftest:operator-meta": "tsx scripts/operator-meta-selftest.ts",
     "selftest:mike-ask": "tsx scripts/mike-ask-selftest.ts",
-    "preflight": "tsx scripts/preflight.ts"
+    "preflight": "tsx scripts/preflight.ts",
+    "selftest:blank-slate": "tsx scripts/blank-slate-selftest.ts",
+    "selftest:tenant": "tsx scripts/tenant-isolation-selftest.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.103.0",

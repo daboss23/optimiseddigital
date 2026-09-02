@@ -10,6 +10,7 @@ import { extractVideoId, fetchYouTubeTranscript } from '@/lib/youtube'
 import { resolveAdImages, MAX_AD_IMAGES } from '@/lib/ad-image'
 import { classifyTaxonomy } from '@/lib/taxonomy-classify'
 import type { MeasuredSwatch } from '@/lib/palette'
+import { requireAccount } from '@/lib/account'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120
@@ -68,7 +69,6 @@ export async function POST(request: NextRequest) {
       /** Palettes measured in the browser, indexed to match `images`. */
       palettes?: (MeasuredSwatch[] | undefined)[]
       title?: string
-      builderId?: string | null
     }
 
     const url = body.url?.trim()
@@ -174,7 +174,7 @@ export async function POST(request: NextRequest) {
                     : body.title
                   : undefined,
               },
-              body.builderId ?? null,
+              await requireAccount(),
               visual,
               taxonomy,
             )
