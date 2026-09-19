@@ -44,12 +44,42 @@ function check(name: string, ok: boolean, detail = '') {
 const realFetch = globalThis.fetch
 let lastUrl = ''
 
+let urls: string[] = []
+
 /** Serve one canned envelope and record the URL the source actually built. */
 function stubFetch(body: unknown, status = 200) {
+  urls = []
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     lastUrl = typeof input === 'string' ? input : input.toString()
+    urls.push(lastUrl)
     return new Response(JSON.stringify(body), {
       status,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }) as typeof fetch
+}
+
+/**
+ * Refuse the named parameters the way the live API does, then serve `body` on
+ * the retry. This is the exact failure that shipped: the endpoint's names are
+ * not its MCP wrapper's names, so a perfectly authenticated request came back
+ * "Unrecognized parameter(s): geo, limit, compact".
+ */
+function stubRefusing(names: string[], body: unknown) {
+  urls = []
+  let first = true
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    lastUrl = typeof input === 'string' ? input : input.toString()
+    urls.push(lastUrl)
+    if (first) {
+      first = false
+      return new Response(
+        JSON.stringify({ message: `Unrecognized parameter(s): ${names.join(', ')}` }),
+        { status: 422, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
+    return new Response(JSON.stringify(body), {
+      status: 200,
       headers: { 'Content-Type': 'application/json' },
     })
   }) as typeof fetch
@@ -296,8 +326,60 @@ async function main() {
     'the surface must always offer a next move',
   )
 
-  /* ------------------------------ 6. Clone text --------------------------- */
-  console.log('\n6. Clone text')
+  /* ------------------ 6. Refused parameters (the shipped bug) ------------- */
+  console.log('\n6. Refused parameter names')
+
+  check(
+    'the REST page-size name is sent, not the MCP one',
+    param('per_page') !== null && param('limit') === null,
+    'the endpoint rejects `limit`; its name here is `per_page`',
+  )
+  check(
+    'no MCP-only payload flag is sent',
+    param('compact') === null,
+    '`compact` is MCP payload shaping and the REST endpoint refuses it',
+  )
+
+  stubRefusing(['geo'], {
+    data: CAPTURED_ROWS.slice(0, 1),
+    meta: { total: 12, has_more: false },
+    used_credits: 0.01,
+    remaining_credits: 59.8,
+  })
+  const widened = await searchProvenAds({ focus: 'services' })
+
+  check('a refused filter triggers exactly one retry', urls.length === 2, `${urls.length} requests`)
+  check('the retry drops the refused filter', new URL(urls[1]!).searchParams.get('geo') === null)
+  check(
+    'the retry keeps every filter that was accepted',
+    new URL(urls[1]!).searchParams.get('niche') !== null &&
+      new URL(urls[1]!).searchParams.get('status') === 'active',
+    'stripping more than was refused would silently widen a billed search',
+  )
+  check('the retry returns real rows', widened.ads.length === 1)
+  check(
+    'a widened result SAYS it is wider',
+    (widened.note ?? '').toLowerCase().includes('all markets'),
+    'serving global ads to someone who picked their markets must never look like success',
+  )
+  check('a widened result still reports credits', widened.credits?.used === 0.01)
+
+  stubRefusing(['niche', 'status'], { data: [], meta: {} })
+  const manyDropped = await searchProvenAds({ focus: 'services' })
+  check(
+    'a non-country refusal is named in the note',
+    (manyDropped.note ?? '').includes('niche'),
+    'the operator cannot act on a note that does not say what was dropped',
+  )
+
+  // A parameter we never sent must not trigger a pointless second billed call.
+  stubRefusing(['some_filter_we_never_send'], { data: [], meta: {} })
+  const noRetry = await searchProvenAds({ focus: 'services' })
+  check('an irrelevant refusal does not retry', urls.length === 1, `${urls.length} requests`)
+  check('an irrelevant refusal still surfaces its message', Boolean(noRetry.note))
+
+  /* ------------------------------ 7. Clone text --------------------------- */
+  console.log('\n7. Clone text')
 
   const text = adToCloneText(tridas!)
   check('clone text carries the headline', text.includes('Guaranteed To Land Projects'))

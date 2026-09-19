@@ -153,7 +153,9 @@ GETHOOKD_API_KEY             # GetHookd proven-ad library — powers the Ad Libr
                              #   Optional overrides: GETHOOKD_API_BASE (default
                              #   https://app.gethookd.ai/api/v1), GETHOOKD_TIMEOUT_MS,
                              #   GETHOOKD_GEO (default US,AU — the markets this
-                             #   deployment sells into)
+                             #   deployment sells into), GETHOOKD_GEO_PARAM (the endpoint's
+                             #   name for the country filter, default `geo` — run
+                             #   `npm run gethookd:params` to confirm it)
 PIPEBOARD_API_TOKEN          # Meta Ads MCP (live ad performance) — optional
 META_ACCESS_TOKEN            # Meta Marketing API (System User token) — /meta dashboard + performance ingest + creative publish
 META_AD_ACCOUNT_ID           # Ad account for "Push Creative to Meta" (with or without act_ prefix)
@@ -244,7 +246,10 @@ end. For destructive writes (Supabase inserts), surface errors clearly.
 - This is distinct from `lib/tenant.ts`, which resolves who the deployment IS. Collapsing the two makes the library research the operator rather than the market.
 - **Cost is a design constraint, not an afterthought** — the source bills per returned row. Page size is capped (24), `ads_per_brand_limit` stops one advertiser owning the grid, filters refetch but typing does not, and the credits a query actually spent are shown to the operator.
 - Every row carries a signed still, so **"Design" on a card posts it straight to `/api/spark/analyze`** — the same route the Vault drop box uses — which reads the layout/palette/on-ad copy and banks it as a `design` chunk. No second extractor.
-- Guarded by `npm run selftest:gethookd` — 63 in-process checks against a stubbed transport and a captured real response. It never touches the network, because a suite that hit the live library would bill the account on every run.
+- **The REST endpoint's parameter names are NOT its MCP wrapper's names.** The wrapper takes `geo` / `limit` / `compact`; the endpoint answers `Unrecognized parameter(s): geo, limit, compact`. It is `per_page`, there is no `compact`, and the country filter's name is env-overridable (`GETHOOKD_GEO_PARAM`). That mismatch shipped a tab that authenticated perfectly and returned nothing — the expensive kind of bug, because everything looks connected.
+- **A refused filter costs the filter, not the feature.** `gethookdGet` reads the names out of the error, retries ONCE without them, and returns `droppedParams` so the surface can say the rows are wider than asked for. Exactly one retry: stripping our way down to an unfiltered, fully billed search would be worse than one honest failure. Never let this degrade silently — global ads shown to someone who picked their markets looks like success.
+- `npm run gethookd:params` probes a live key for the endpoint's current filter names and prints the env var to set, the same way `muapi:slugs` does for model slugs. Costs under 0.1 credits.
+- Guarded by `npm run selftest:gethookd` — 74 in-process checks against a stubbed transport and a captured real response. It never touches the network, because a suite that hit the live library would bill the account on every run.
 
 ### Meta Ads (MCP connector)
 - Attach Pipeboard's hosted Meta Ads MCP to the orchestrator with Anthropic's **MCP connector** (`mcp_servers` + `mcp_toolset` on `anthropic.beta.messages.create`, beta header `mcp-client-2025-11-20`). Token auth via `PIPEBOARD_API_TOKEN` (`?token=` on the server URL).
@@ -610,7 +615,7 @@ Full architecture: `docs/MIKE_DELIGHT.md`.
 - [x] Ad Library "Proven Ads" tab — focus toggle (Service Businesses / E-commerce / Both), format and tier filters, longest-running-first ordering, credit accounting on screen
 - [x] Two actions per ad: **Clone** (headline + body + transcript → Creative DNA → Reactor) and **Design** (signed still → SPARK's visual reader → banked as a `design` chunk in the Vault, with an honest receipt when nothing was stored)
 - [x] The ICP is configuration, not prose: `lib/gethookd/icp.ts` defines services and e-commerce as separate niche sets, and the curated demo winners were rewritten off one construction account onto the real ICP
-- [x] `npm run selftest:gethookd` — 63 in-process checks: focus separation, the real payload shape, cost caps, and honest failure on an unkeyed / rejected / exhausted / dead source
+- [x] `npm run selftest:gethookd` — 74 in-process checks: focus separation, the real payload shape, cost caps, and honest failure on an unkeyed / rejected / exhausted / dead source
 
 **Meta-native output + closed loop**
 - [x] Launch-ready Meta ad units on every concept (`lib/meta-ads.ts`): primary text with 125-char fold discipline, headline/description limits, CTA button types, compliance validator wired into the submit gate + concept cards ("Copy for Ads Manager")
