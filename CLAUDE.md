@@ -142,6 +142,18 @@ MUAPIAPP_API_KEY             # Muapi unified image + video gateway — CURRENT D
                              #     veo-4-text-to-video each do it differently. Take them
                              #     verbatim; `npm run muapi:slugs -- --video` re-probes when a
                              #     vendor renames one)
+GETHOOKD_API_KEY             # GetHookd proven-ad library — powers the Ad Library's
+                             #   "Proven Ads" tab. Without it the tab falls back to Meta's
+                             #   ads_archive, which outside the EU returns political/issue
+                             #   ads or nothing — which is why the tab was a dead end before.
+                             #   BILLS PER RETURNED ROW (~0.01 credits/ad), so page size is
+                             #   capped at 24, one brand can never fill the feed, and the
+                             #   credits a search spent ride back into the UI. Optional:
+                             #   paste-to-clone works with no key.
+                             #   Optional overrides: GETHOOKD_API_BASE (default
+                             #   https://app.gethookd.ai/api/v1), GETHOOKD_TIMEOUT_MS,
+                             #   GETHOOKD_GEO (default US,AU — the markets this
+                             #   deployment sells into)
 PIPEBOARD_API_TOKEN          # Meta Ads MCP (live ad performance) — optional
 META_ACCESS_TOKEN            # Meta Marketing API (System User token) — /meta dashboard + performance ingest + creative publish
 META_AD_ACCOUNT_ID           # Ad account for "Push Creative to Meta" (with or without act_ prefix)
@@ -225,6 +237,14 @@ end. For destructive writes (Supabase inserts), surface errors clearly.
 - `lib/video/index.ts` dispatches start/poll into one `VideoJob` shape: `startVideoJob(modelId, input)` and `getVideoJob(modelId, requestId)`. Supports both `text-to-video` (full scene, e.g. a builder on-site or a person speaking) and `image-to-video` (animate a still). Use **veo-3** for spoken/UGC (native audio), **seedance-2.0**/**kling-2.5** for cinematic realism, **wan-2.5** for high-volume/budget.
 - Exposed to the agent as the `generate_video` tool with a `model` + `mode` selector; renders stream as `media` SSE events. Every render is logged to `media_generations` (`lib/video/persistence.ts`, `supabase/schema.media.sql`) when Supabase is configured.
 - API: `GET /api/video/models` lists the menu + which are configured; `POST/GET /api/generate-video` starts/polls a render (model-aware, backward compatible). Never throw on missing keys — return null/`unknown`.
+
+### Proven ads (GetHookd)
+- `lib/gethookd/` is the external ad source, shaped exactly like `lib/image/` and `lib/video/`: a transport (`client.ts`), a normaliser (`index.ts`) and a provider-agnostic row type (`types.ts`). The Ad Library renders a `ProvenAd`, never a vendor row, so a second source normalises in and nothing above the folder changes.
+- **`lib/gethookd/icp.ts` is the single source of truth for who this platform researches ads FOR**: service businesses and e-commerce, as two SEPARATE focuses. They are never blended into one feed — a service ad sells a conversation and an e-commerce ad sells a purchase, so an averaged feed teaches neither. GetHookd has no "e-commerce" category, so that focus is a set of DTC verticals; services is the set that sells time and expertise. The file reads no env at import time (`defaultGeo()` is a function) so the Ad Library's client component can import `ICP_FOCUSES` and the ICP stays defined once.
+- This is distinct from `lib/tenant.ts`, which resolves who the deployment IS. Collapsing the two makes the library research the operator rather than the market.
+- **Cost is a design constraint, not an afterthought** — the source bills per returned row. Page size is capped (24), `ads_per_brand_limit` stops one advertiser owning the grid, filters refetch but typing does not, and the credits a query actually spent are shown to the operator.
+- Every row carries a signed still, so **"Design" on a card posts it straight to `/api/spark/analyze`** — the same route the Vault drop box uses — which reads the layout/palette/on-ad copy and banks it as a `design` chunk. No second extractor.
+- Guarded by `npm run selftest:gethookd` — 63 in-process checks against a stubbed transport and a captured real response. It never touches the network, because a suite that hit the live library would bill the account on every run.
 
 ### Meta Ads (MCP connector)
 - Attach Pipeboard's hosted Meta Ads MCP to the orchestrator with Anthropic's **MCP connector** (`mcp_servers` + `mcp_toolset` on `anthropic.beta.messages.create`, beta header `mcp-client-2025-11-20`). Token auth via `PIPEBOARD_API_TOKEN` (`?token=` on the server URL).
@@ -584,6 +604,13 @@ Full architecture: `docs/MIKE_DELIGHT.md`.
       queue's presentation contract (word limits, chip caps and deduplication,
       WATCH's own verb, generated summary copy at 0/1/n, condensing that never
       splits a decimal, undo)
+
+**Proven-ad intelligence (GetHookd)**
+- [x] `lib/gethookd/` — the proven-ad source: live Meta creative that is already running in the ICP's markets, with performance tier, run-time, transcripts and signed stills. Replaces the Meta `ads_archive` search that could never return commercial ads outside the EU (it is kept as the unkeyed fallback)
+- [x] Ad Library "Proven Ads" tab — focus toggle (Service Businesses / E-commerce / Both), format and tier filters, longest-running-first ordering, credit accounting on screen
+- [x] Two actions per ad: **Clone** (headline + body + transcript → Creative DNA → Reactor) and **Design** (signed still → SPARK's visual reader → banked as a `design` chunk in the Vault, with an honest receipt when nothing was stored)
+- [x] The ICP is configuration, not prose: `lib/gethookd/icp.ts` defines services and e-commerce as separate niche sets, and the curated demo winners were rewritten off one construction account onto the real ICP
+- [x] `npm run selftest:gethookd` — 63 in-process checks: focus separation, the real payload shape, cost caps, and honest failure on an unkeyed / rejected / exhausted / dead source
 
 **Meta-native output + closed loop**
 - [x] Launch-ready Meta ad units on every concept (`lib/meta-ads.ts`): primary text with 125-char fold discipline, headline/description limits, CTA button types, compliance validator wired into the submit gate + concept cards ("Copy for Ads Manager")

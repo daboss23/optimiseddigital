@@ -1,8 +1,9 @@
-// Clone sources — the data behind the Ad Library dashboard's two tabs. "Our
-// Winners" reads proven ads out of ORACLE memory (campaign_outcomes) with their
+// Clone sources — the data behind the Ad Library dashboard's "Our Winners"
+// tab, which reads proven ads out of ORACLE memory (campaign_outcomes) with their
 // real CTR/ROAS/winner-score and taxonomy so a strategist can clone what has
-// actually worked. External ads come in via paste-to-DNA (see /api/clone/extract)
-// which reuses SPARK's extractor — no second extractor here.
+// actually worked. External ads come in on the "Proven Ads" tab (lib/gethookd)
+// or via paste-to-DNA (see /api/clone/extract), both of which reuse SPARK's
+// extractor — no second extractor here.
 //
 // Never throws; degrades to a small curated demo set so the tab always shows the
 // experience with no keys, per the platform convention.
@@ -29,14 +30,26 @@ export interface WinnerCard {
   demo?: boolean
 }
 
+/**
+ * Curated demo rows for a deployment with no logged winners yet.
+ *
+ * They are written to THIS platform's ICP — service businesses and e-commerce —
+ * and deliberately not to any one vertical. The previous set was a single
+ * construction-coaching account's ads, which is worse than generic: a demo row
+ * is a clone reference, so an operator in a different market would have cloned
+ * another industry's campaign structure and never known where it came from.
+ *
+ * One lead-gen service ad, one service testimonial, one DTC product ad, so both
+ * halves of the ICP are represented and neither reads as the default.
+ */
 function demoWinners(): WinnerCard[] {
   return [
     {
       id: 'demo-1',
-      title: 'Profit Leak',
+      title: 'Empty Calendar',
       conceptType: 'Founder Concept',
       conceptText:
-        "Most builders don't have a profit problem — they have a profit leak. Founder walks a finished site and breaks down where the margin actually goes.",
+        "Most service businesses don't have a lead problem — they have a follow-up problem. Founder pulls up the CRM and shows where the enquiries actually die.",
       metrics: { ctr: 2.1, roas: 5.4, spend: 4200, winnerScore: 2.25 },
       scoreBand: '2.25x',
       scoreConfidence: 'high',
@@ -44,27 +57,46 @@ function demoWinners(): WinnerCard[] {
         hookStyle: 'Contrarian',
         visualFormat: 'Expert Explainer',
         assetType: 'UGC Mashup',
-        persona: 'Sub-$1M Builder',
-        painPoint: 'Profit Leak',
+        persona: 'Owner-Operator',
+        painPoint: 'Leads Going Cold',
       },
       verdict: 'winner',
       demo: true,
     },
     {
       id: 'demo-2',
-      title: 'Time Freedom',
+      title: 'Booked Solid',
       conceptType: 'Testimonial Concept',
       conceptText:
-        'Member states their old 70-hour weeks, the systems turning point, then the after — weekends back. B-roll of their jobs running without them.',
+        'Client states the quiet months before, the one change they made, then the after — a calendar booked six weeks out. Screen recording of the booking system doing the work.',
       metrics: { ctr: 1.8, roas: 4.1, spend: 3100, winnerScore: 1.72 },
       scoreBand: '1.72x',
       scoreConfidence: 'high',
       taxonomy: {
         hookStyle: 'Storytelling',
-        visualFormat: 'Transformation',
+        visualFormat: 'Review',
         assetType: 'UGC Mashup',
-        persona: 'Overwhelmed Owner',
-        painPoint: 'No Time / Weekends Gone',
+        persona: 'Service Business Owner',
+        painPoint: 'Unpredictable Month-to-Month Revenue',
+      },
+      verdict: 'winner',
+      demo: true,
+    },
+    {
+      id: 'demo-3',
+      title: 'Side By Side',
+      conceptType: 'Static Creative',
+      conceptText:
+        'The product against what it replaces, shot in the same frame at the same scale. One line of copy naming the difference, price held back until the click.',
+      metrics: { ctr: 2.6, roas: 3.8, spend: 5600, winnerScore: 1.94 },
+      scoreBand: '1.94x',
+      scoreConfidence: 'high',
+      taxonomy: {
+        hookStyle: 'Contrast',
+        visualFormat: 'Transformation',
+        assetType: 'Lifestyle-Product Image with Text',
+        persona: 'Repeat DTC Buyer',
+        painPoint: 'Paying More For Less',
       },
       verdict: 'winner',
       demo: true,
