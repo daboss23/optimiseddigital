@@ -23,6 +23,28 @@ export interface GetHookdResponse<T> {
   remainingCredits?: number
   /** Present only on failure. Safe to show a builder. */
   note?: string
+  /**
+   * Filters the API refused by name and the retry therefore dropped. Non-empty
+   * means the rows came back LESS filtered than asked for, which the caller
+   * must report rather than pass off as a clean result.
+   */
+  droppedParams?: string[]
+}
+
+/**
+ * The API names every parameter it does not recognise, e.g.
+ * "Unrecognized parameter(s): geo, limit, compact". That is a gift: a vendor
+ * that renames a filter tells us exactly which one, so the request can be
+ * retried without it instead of failing the whole surface.
+ */
+function unrecognisedParams(message: string | undefined): string[] {
+  if (!message) return []
+  const m = /unrecognized parameter\(s\)\s*:\s*(.+)/i.exec(message)
+  if (!m) return []
+  return m[1]!
+    .split(',')
+    .map((s) => s.trim().replace(/[.'"`]/g, ''))
+    .filter(Boolean)
 }
 
 export function gethookdConfigured(): boolean {
@@ -53,7 +75,7 @@ function num(value: unknown): number | undefined {
  * the endpoint returns; the envelope (`meta`, credit counters) is unwrapped
  * here so callers never parse it twice.
  */
-export async function gethookdGet<T>(
+async function gethookdGetOnce<T>(
   path: string,
   params: Record<string, string | number | undefined | null> = {},
 ): Promise<GetHookdResponse<T>> {
@@ -115,11 +137,13 @@ export async function gethookdGet<T>(
     } | null
 
     if (!res.ok || !json || json.errors) {
+      const message = json?.message
       return {
         ok: false,
         data: null,
         meta: null,
-        note: json?.message || `GetHookd returned ${res.status}. Paste an ad below to clone it in the meantime.`,
+        note: message || `GetHookd returned ${res.status}. Paste an ad below to clone it in the meantime.`,
+        droppedParams: unrecognisedParams(message),
       }
     }
 
@@ -143,4 +167,34 @@ export async function gethookdGet<T>(
   } finally {
     clearTimeout(timer)
   }
+}
+
+/**
+ * One GET, retried once without any filter the API refused by name.
+ *
+ * Vendor parameter names drift, and this endpoint's names differ from the ones
+ * its MCP wrapper takes. A rename should cost a filter, not the whole feature:
+ * losing a country filter returns ads from more markets, which is worth
+ * showing; returning nothing is not. What it must never do is pretend — the
+ * dropped names ride back so the surface can say the results are wider than
+ * asked for, and `npm run gethookd:params` finds the endpoint's current name so
+ * the filter can be restored with an env var rather than a deploy.
+ *
+ * Exactly one retry. A second would mean the API is refusing something we send
+ * unconditionally, and quietly stripping our way down to an unfiltered, fully
+ * billed search is worse than one honest failure.
+ */
+export async function gethookdGet<T>(
+  path: string,
+  params: Record<string, string | number | undefined | null> = {},
+): Promise<GetHookdResponse<T>> {
+  const first = await gethookdGetOnce<T>(path, params)
+  const refused = (first.droppedParams ?? []).filter((name) => name in params)
+  if (first.ok || refused.length === 0) return first
+
+  const retried: Record<string, string | number | undefined | null> = { ...params }
+  for (const name of refused) delete retried[name]
+
+  const second = await gethookdGetOnce<T>(path, retried)
+  return { ...second, droppedParams: refused }
 }

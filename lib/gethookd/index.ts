@@ -25,6 +25,21 @@ export * from './types'
 export * from './icp'
 export { gethookdConfigured }
 
+/**
+ * The REST endpoint's own parameter names, which are NOT the ones its MCP
+ * wrapper takes — the wrapper translates, and building against its vocabulary
+ * shipped a tab that returned "Unrecognized parameter(s): geo, limit, compact".
+ *
+ *   limit   → per_page   (the REST convention across this API's endpoints)
+ *   compact →            (MCP-only payload shaping; no REST equivalent)
+ *   geo     → env-overridable, because the endpoint's name for the country
+ *             filter is the one thing still unconfirmed. `gethookd:params`
+ *             probes a live key and prints the value to set.
+ */
+function geoParam(): string {
+  return (process.env.GETHOOKD_GEO_PARAM || 'geo').trim()
+}
+
 /** Cap the grid. Every row costs credits, and nobody studies 50 ads at once. */
 const MAX_LIMIT = 24
 const DEFAULT_LIMIT = 12
@@ -177,7 +192,7 @@ export async function searchProvenAds(q: ProvenAdQuery = {}): Promise<ProvenAdRe
   const res = await gethookdGet<RawAd[]>('explore', {
     query: query || undefined,
     niche: nicheCsvFor(focus),
-    geo: (q.geo ?? defaultGeo()) || undefined,
+    [geoParam()]: (q.geo ?? defaultGeo()) || undefined,
     performance_scores: TIER_FILTER[q.tier ?? 'proven'],
     ad_format: FORMAT_FILTER[q.format ?? 'all'],
     run_time: q.minDaysActive,
@@ -187,9 +202,8 @@ export async function searchProvenAds(q: ProvenAdQuery = {}): Promise<ProvenAdRe
     sort_column: 'days_active',
     sort_direction: 'desc',
     ads_per_brand_limit: ADS_PER_BRAND,
-    limit,
+    per_page: limit,
     page,
-    compact: 'true',
   })
 
   const credits =
@@ -206,6 +220,17 @@ export async function searchProvenAds(q: ProvenAdQuery = {}): Promise<ProvenAdRe
   const total = typeof meta.total === 'number' ? meta.total : undefined
   const hasMore = meta.has_more === true
 
+  // A filter the endpoint refused means these rows are WIDER than what was
+  // asked for. Saying so is the whole point: silently serving global ads to
+  // someone who selected their own markets is a worse failure than an error,
+  // because it looks like it worked.
+  const dropped = res.droppedParams ?? []
+  const widened = dropped.length
+    ? dropped.includes(geoParam())
+      ? 'Showing ads from all markets — this endpoint did not accept the country filter. Run `npm run gethookd:params` to find its current name.'
+      : `Showing wider results — the ad library did not accept: ${dropped.join(', ')}.`
+    : undefined
+
   return {
     configured: true,
     source: 'gethookd',
@@ -214,10 +239,15 @@ export async function searchProvenAds(q: ProvenAdQuery = {}): Promise<ProvenAdRe
     hasMore,
     credits,
     note: ads.length
-      ? undefined
-      : query
-        ? `No proven ads matched "${query}" in this focus. Try a broader term, or clear it to browse the longest-running winners.`
-        : 'No proven ads matched those filters. Widen the performance tier or the format.',
+      ? widened
+      : [
+          query
+            ? `No proven ads matched "${query}" in this focus. Try a broader term, or clear it to browse the longest-running winners.`
+            : 'No proven ads matched those filters. Widen the performance tier or the format.',
+          widened,
+        ]
+          .filter(Boolean)
+          .join(' '),
   }
 }
 
