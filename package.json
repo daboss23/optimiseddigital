@@ -9,6 +9,7 @@
     "lint": "next lint",
     "selftest": "tsx scripts/reactor-selftest.ts",
     "selftest:render": "tsx scripts/render-prompt-selftest.ts",
+    "selftest:gethookd": "tsx scripts/gethookd-selftest.ts",
     "muapi:slugs": "tsx scripts/muapi-slugs.ts",
     "verify": "./scripts/verify-reactor.sh",
     "vault:copy": "tsx scripts/vault-copy.ts",
