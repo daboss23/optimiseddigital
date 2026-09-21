@@ -117,6 +117,31 @@ export async function GET() {
   }
 
   /**
+   * WHICH BUILD IS ANSWERING.
+   *
+   * The most expensive hours of this project were spent not knowing. A fix was
+   * merged to `main`, its build failed on the host's own dependency security
+   * check, and production went on serving the PREVIOUS commit — so every
+   * symptom pointed at the new code while the new code was not running at all.
+   * Nothing on screen could separate "the fix is wrong" from "the fix never
+   * deployed".
+   *
+   * `environment` matters just as much as `commit`. An environment variable
+   * scoped to Production is simply ABSENT from a preview URL, and a preview URL
+   * is the most natural thing to click from a deployment list — so a key that
+   * is correctly configured reads as a missing key, with nothing on the page
+   * hinting that you are not where you think you are.
+   *
+   * None of this is secret: the commit is on a public branch and the
+   * environment name is one of three words. Not reporting it cost days.
+   */
+  const deployment = {
+    commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? 'unknown',
+    branch: process.env.VERCEL_GIT_COMMIT_REF ?? 'unknown',
+    environment: process.env.VERCEL_ENV ?? 'local',
+  }
+
+  /**
    * Which source the Ad Library's "Proven Ads" tab will actually search.
    *
    * Reported because from inside the tab an unset key and a wrong key look
@@ -159,6 +184,7 @@ export async function GET() {
     // "the route responded". A schema a version behind the code is not ok.
     ok: !supabaseConfigured || tenancy.applied,
     timestamp: new Date().toISOString(),
+    deployment,
     tenancy,
     keys,
     display,
