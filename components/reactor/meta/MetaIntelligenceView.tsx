@@ -288,7 +288,7 @@ export function MetaIntelligenceView({
             revenueConnected={revenueConnected}
             variant="full"
             interactiveStatus
-            hrefFor={(ad) => `/ad-library?creative=${encodeURIComponent(ad.id)}`}
+            hrefFor={(ad) => `/creative?creative=${encodeURIComponent(ad.id)}#ad-library`}
           />
         )}
       </Panel>

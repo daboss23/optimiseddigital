@@ -85,6 +85,49 @@ function stubRefusing(names: string[], body: unknown) {
   }) as typeof fetch
 }
 
+/**
+ * Refuse the named parameters on EVERY call, serving `body` only once the
+ * request carries none of them.
+ *
+ * Distinct from `stubRefusing`, which relents on the retry. That one proves a
+ * rename succeeds; this one proves what happens when the endpoint knows none
+ * of the spellings — the only case where the results really are global and the
+ * banner has to say so.
+ */
+function stubRefusingAlways(names: string[], body: unknown) {
+  urls = []
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    lastUrl = typeof input === 'string' ? input : input.toString()
+    urls.push(lastUrl)
+    const sent = new URL(lastUrl).searchParams
+    const offending = names.filter((n) => sent.get(n) !== null)
+    if (offending.length) {
+      return new Response(
+        JSON.stringify({ message: `Unrecognized parameter(s): ${offending.join(', ')}` }),
+        { status: 422, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }) as typeof fetch
+}
+
+/** No tier asked for means no tier sent — the stale filter must not be a silent default. */
+async function tierIsOffByDefault(): Promise<boolean> {
+  stubFetch({ data: [], meta: {} })
+  await searchProvenAds({ focus: 'services' })
+  return !lastUrl.includes('performance_scores')
+}
+
+/** The tier filter still works when explicitly asked for — it is off by default, not gone. */
+async function tierIsSendable(): Promise<boolean> {
+  stubFetch({ data: [], meta: {} })
+  await searchProvenAds({ focus: 'services', tier: 'winning' })
+  return lastUrl.includes('performance_scores=winning')
+}
+
 function restoreFetch() {
   globalThis.fetch = realFetch
 }
@@ -275,13 +318,63 @@ async function main() {
 
   check('the ICP niche filter is sent', (param('niche') ?? '').includes('25'))
   check('only active ads are requested', param('status') === 'active')
-  check('the tier filter is sent', param('performance_scores') === 'winning,optimized')
+  // The vendor's stored tier is NOT what makes an ad proven here: it is largely
+  // derived from raw run time, so it scores a 2018 record nobody closed as
+  // "Winning, 100", and it goes stale between indexing and display — which
+  // withholds most of a page and leaves the grid looking half-empty.
+  check('the stale tier filter is not applied by default', await tierIsOffByDefault(), 'asking for winning/optimized had the source withhold five of every six rows')
+  check('the tier is still available on request', await tierIsSendable())
   check(
     'one brand cannot fill the feed',
     Number(param('ads_per_brand_limit')) > 0 && Number(param('ads_per_brand_limit')) <= 4,
     'an advertiser running 180 creatives would otherwise become the whole page',
   )
   check('longest-running first when unqueried', param('sort_column') === 'days_active')
+
+  /* ------------------- 4b. What makes an ad "proven" ---------------------- */
+  console.log('\n4b. Proof of life')
+
+  // THE BUG THIS LOCKS DOWN: with no launch bound, ordering by run time returns
+  // the OLDEST RECORDS IN THE DATABASE — 2018 dropshipping ads reporting ~3,200
+  // days "live" because nobody ever marked them stopped. The feed filled with
+  // ripped-jeans and fried-chicken ads and looked, accurately, like the worst
+  // ads on the internet.
+  const startedAfter = param('started_after')
+  check('a launch-date floor is sent', Boolean(startedAfter), 'without it the sort returns 2018 zombies')
+  check(
+    'the floor is a real date, inside the window and in the past',
+    (() => {
+      if (!startedAfter || !/^\d{4}-\d{2}-\d{2}$/.test(startedAfter)) return false
+      const ms = Date.parse(`${startedAfter}T00:00:00Z`)
+      if (!Number.isFinite(ms)) return false
+      const ageDays = (Date.now() - ms) / 86_400_000
+      return ageDays > 0 && ageDays < 365 * 4
+    })(),
+    `sent ${startedAfter}`,
+  )
+  check(
+    'a minimum run time is sent',
+    Number(param('run_time')) > 0,
+    'launched-recently alone is not proof; still-running-since is',
+  )
+
+  // A relaxed search matched "contract" inside "contractor" and returned car
+  // loan claims and phone plans — billed like any other row.
+  stubFetch({ data: [], meta: {} })
+  await searchProvenAds({ focus: 'services', query: 'contractor' })
+  check(
+    'a typed term is matched exactly',
+    param('strict_query') === 'true',
+    'relaxed matching returned confidently wrong ads and billed for them',
+  )
+
+  stubFetch({ data: [], meta: {} })
+  await searchProvenAds({ focus: 'services' })
+  check(
+    'no term means no strict flag',
+    param('strict_query') === null,
+    'it only governs a query, and sending it bare is noise',
+  )
 
   stubFetch({ data: [], meta: {} })
   await searchProvenAds({ focus: 'all', limit: 500 })
@@ -349,7 +442,18 @@ async function main() {
   const widened = await searchProvenAds({ focus: 'services' })
 
   check('a refused filter triggers exactly one retry', urls.length === 2, `${urls.length} requests`)
-  check('the retry drops the refused filter', new URL(urls[1]!).searchParams.get('geo') === null)
+  check(
+    'the retry stops sending the name that was refused',
+    new URL(urls[1]!).searchParams.get('geo') === null,
+  )
+  // A refused name is usually a RENAME, not a missing capability. Dropping the
+  // country filter outright is what served ads from every market on earth to an
+  // account scoped to US + AU, so the alternate spelling is tried FIRST.
+  check(
+    'the country filter is retried under its other name, not abandoned',
+    new URL(urls[1]!).searchParams.get('location') === 'US,AU',
+    'dropping it silently widens a billed search to the whole world',
+  )
   check(
     'the retry keeps every filter that was accepted',
     new URL(urls[1]!).searchParams.get('niche') !== null &&
@@ -358,11 +462,24 @@ async function main() {
   )
   check('the retry returns real rows', widened.ads.length === 1)
   check(
-    'a widened result SAYS it is wider',
-    (widened.note ?? '').toLowerCase().includes('all markets'),
-    'serving global ads to someone who picked their markets must never look like success',
+    'a rename that WORKED is not reported as widened',
+    !(widened.note ?? '').toLowerCase().includes('all markets'),
+    'the filter was applied, just under the endpoint\'s own spelling — warning anyway trains the operator to ignore the banner',
   )
   check('a widened result still reports credits', widened.credits?.used === 0.01)
+
+  // The honest failure: every spelling refused. THEN the results really are
+  // global, and saying so is the whole point.
+  stubRefusingAlways(['geo', 'location', 'countries', 'country'], {
+    data: CAPTURED_ROWS.slice(0, 1),
+    meta: { total: 12, has_more: false },
+  })
+  const trulyGlobal = await searchProvenAds({ focus: 'services' })
+  check(
+    'when no spelling is accepted, the result SAYS it is wider',
+    (trulyGlobal.note ?? '').toLowerCase().includes('all markets'),
+    'serving global ads to someone who picked their markets must never look like success',
+  )
 
   stubRefusing(['niche', 'status'], { data: [], meta: {} })
   const manyDropped = await searchProvenAds({ focus: 'services' })

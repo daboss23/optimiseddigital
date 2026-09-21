@@ -10,6 +10,8 @@ import {
 } from '@/components/reactor/ui'
 import { creativeAnalyses } from '@/lib/reactor-data'
 import { AdIngest } from '@/components/spark/AdIngest'
+import { AdLibrary } from '@/components/ad-library/AdLibrary'
+import { getWinners } from '@/lib/clone-sources'
 import { cn } from '@/lib/utils'
 import { demoDataEnabled } from '@/lib/demo-mode'
 
@@ -24,7 +26,15 @@ const creativeStats: { label: string; icon: LucideIcon; n: number; accent: Accen
 
 const analysisAccents: Accent[] = ['blue', 'emerald', 'violet', 'cyan']
 
-export default function CreativePage() {
+export const dynamic = 'force-dynamic'
+
+export default async function CreativePage() {
+  // The Ad Library lives here rather than in its own sidebar tab: finding a
+  // winning ad and tearing one down are the same job — studying creative that
+  // already works — and splitting them across two destinations made the
+  // library look like a separate product instead of the front half of SPARK.
+  const { winners, configured } = await getWinners()
+
   return (
     <>
       <PageHeader
@@ -57,6 +67,10 @@ export default function CreativePage() {
       </div>
 
       <AdIngest />
+
+      <section id="ad-library" className="scroll-mt-24">
+        <AdLibrary initialWinners={winners} winnersLive={configured} />
+      </section>
 
       {!demoDataEnabled() && (
         <Panel>
