@@ -62,7 +62,8 @@ async function metaArchive(q: string, country: string, limit: number): Promise<P
       source: 'none',
       ads: [],
       hasMore: false,
-      note: 'No ad source is connected. Add GETHOOKD_API_KEY to browse the proven-ad library — paste an ad below to clone it in the meantime.',
+      note:
+        'This deployment is running without GETHOOKD_API_KEY. Open /api/health — `deployment.environment` says whether you are on production or a preview URL (a Production-scoped variable is absent from previews), and `adLibrary.source` says which source this build can actually reach. Paste an ad below to clone it in the meantime.',
     }
   }
   if (!q) {

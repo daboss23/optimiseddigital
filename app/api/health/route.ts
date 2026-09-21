@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseUrl, getSupabaseAdmin } from '@/lib/supabase'
 import { demoDataEnabled } from '@/lib/demo-mode'
+import { gethookdConfigured, defaultGeo } from '@/lib/gethookd'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -87,6 +88,8 @@ export async function GET() {
     fal: Boolean(process.env.FAL_KEY),
     muapi: Boolean(process.env.MUAPIAPP_API_KEY || process.env.MUAPI_API_KEY),
     pipeboard: Boolean(process.env.PIPEBOARD_API_TOKEN),
+    gethookd: gethookdConfigured(),
+    meta: Boolean(process.env.META_ACCESS_TOKEN),
   }
 
   // The learning loop needs the URL + service key to write/read outcomes.
@@ -114,6 +117,54 @@ export async function GET() {
   }
 
   /**
+   * WHICH BUILD IS ANSWERING.
+   *
+   * The most expensive hours of this project were spent not knowing. A fix was
+   * merged to `main`, its build failed on the host's own dependency security
+   * check, and production went on serving the PREVIOUS commit — so every
+   * symptom pointed at the new code while the new code was not running at all.
+   * Nothing on screen could separate "the fix is wrong" from "the fix never
+   * deployed".
+   *
+   * `environment` matters just as much as `commit`. An environment variable
+   * scoped to Production is simply ABSENT from a preview URL, and a preview URL
+   * is the most natural thing to click from a deployment list — so a key that
+   * is correctly configured reads as a missing key, with nothing on the page
+   * hinting that you are not where you think you are.
+   *
+   * None of this is secret: the commit is on a public branch and the
+   * environment name is one of three words. Not reporting it cost days.
+   */
+  const deployment = {
+    commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? 'unknown',
+    branch: process.env.VERCEL_GIT_COMMIT_REF ?? 'unknown',
+    environment: process.env.VERCEL_ENV ?? 'local',
+  }
+
+  /**
+   * Which source the Ad Library's "Proven Ads" tab will actually search.
+   *
+   * Reported because from inside the tab an unset key and a wrong key look
+   * identical — both render an empty feed — and because the Meta fallback is
+   * a different product rather than a weaker version of the same one: outside
+   * the EU `ads_archive` returns political/issue ads or nothing, which is the
+   * dead end GetHookd was wired in to replace.
+   *
+   * Presence only, never a live call. This source bills per returned row, so a
+   * health check that proved the key by fetching an ad would spend credits
+   * every time someone opened it. To prove a key end to end, run
+   * `npm run gethookd:params` (under 0.1 credits) or search the tab once.
+   */
+  const adLibrary = {
+    source: keys.gethookd ? 'gethookd' : keys.meta ? 'meta-archive' : 'none',
+    geo: defaultGeo(),
+    geoParam: (process.env.GETHOOKD_GEO_PARAM || 'geo').trim(),
+    baseOverridden: Boolean(process.env.GETHOOKD_API_BASE),
+    /** Paste-to-clone never needed a key, so the tab is useful either way. */
+    pasteToClone: true,
+  }
+
+  /**
    * Display switches, reported so they can be CHECKED rather than guessed at.
    *
    * Both are read at build time on the client and at request time here, which
@@ -133,9 +184,11 @@ export async function GET() {
     // "the route responded". A schema a version behind the code is not ok.
     ok: !supabaseConfigured || tenancy.applied,
     timestamp: new Date().toISOString(),
+    deployment,
     tenancy,
     keys,
     display,
+    adLibrary,
     supabaseConfigured,
     tables,
     learningLoop,
