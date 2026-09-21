@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /* ============================================================================
-   TPB CREATIVE REACTOR — cybernetic command-center design system
+   CREATIVE REACTOR — cybernetic command-center design system
    Dark glass UI · neon accent channels · breathing reactor core
    ========================================================================== */
 
@@ -1497,30 +1497,30 @@ body {
    CREATIVE FLOW — React Flow production graph, themed to the command center
    ========================================================================== */
 
-.tpb-flow .react-flow__attribution { display: none; }
-.tpb-flow .react-flow__edge-path { filter: drop-shadow(0 0 6px rgb(94 168 255 / 0.35)); }
+.reactor-flow .react-flow__attribution { display: none; }
+.reactor-flow .react-flow__edge-path { filter: drop-shadow(0 0 6px rgb(94 168 255 / 0.35)); }
 
 /* Controls + minimap chrome — dark glass to match every panel */
-.tpb-flow .react-flow__controls {
+.reactor-flow .react-flow__controls {
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 10px;
   overflow: hidden;
   box-shadow: 0 12px 26px -20px rgba(0, 0, 0, 0.95);
 }
-.tpb-flow .react-flow__controls-button {
+.reactor-flow .react-flow__controls-button {
   background: rgba(11, 15, 23, 0.92);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.6);
 }
-.tpb-flow .react-flow__controls-button:hover { background: rgba(30, 41, 59, 0.92); color: #fff; }
-.tpb-flow .react-flow__controls-button svg { fill: currentColor; }
-.tpb-flow .react-flow__minimap {
+.reactor-flow .react-flow__controls-button:hover { background: rgba(30, 41, 59, 0.92); color: #fff; }
+.reactor-flow .react-flow__controls-button svg { fill: currentColor; }
+.reactor-flow .react-flow__minimap {
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 10px;
   overflow: hidden;
 }
-.tpb-flow .react-flow__handle { transition: box-shadow 0.2s ease; }
-.tpb-flow .react-flow__handle:hover { box-shadow: 0 0 0 4px rgb(94 168 255 / 0.2); }
+.reactor-flow .react-flow__handle { transition: box-shadow 0.2s ease; }
+.reactor-flow .react-flow__handle:hover { box-shadow: 0 0 0 4px rgb(94 168 255 / 0.2); }
 
 /* Convergence flare where channels meet the core */
 .conv-bloom { opacity: 0.18; transition: opacity 0.5s ease; }

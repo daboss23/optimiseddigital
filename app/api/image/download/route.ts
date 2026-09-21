@@ -14,8 +14,8 @@ import { NextRequest, NextResponse } from 'next/server'
 export const runtime = 'nodejs'
 
 function safeFilename(raw: string | null, ext: string): string {
-  const base = (raw || 'tpb-creative').replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 60)
-  return `${base || 'tpb-creative'}.${ext}`
+  const base = (raw || 'optimised-creative').replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 60)
+  return `${base || 'optimised-creative'}.${ext}`
 }
 
 export async function GET(req: NextRequest) {

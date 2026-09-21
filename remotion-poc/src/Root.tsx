@@ -1,13 +1,13 @@
 import { Composition } from 'remotion';
-import { TpbAd } from './TpbAd';
+import { OptimisedAd } from './OptimisedAd';
 import { AdvancedDemo } from './AdvancedDemo';
 
 export const RemotionRoot: React.FC = () => {
   return (
     <>
       <Composition
-        id="TpbAd"
-        component={TpbAd}
+        id="OptimisedAd"
+        component={OptimisedAd}
         durationInFrames={120}
         fps={30}
         width={1080}

@@ -25,7 +25,7 @@ import { cn } from '@/lib/utils'
    · a failed load shows a real error with a retry, never silent stale numbers
 ---------------------------------------------------------------------------- */
 
-const STORAGE_KEY = 'tpb.meta.range.v1'
+const STORAGE_KEY = 'od.meta.range.v1'
 const CACHE_MAX = 12
 
 export function MetaIntelligenceClient({

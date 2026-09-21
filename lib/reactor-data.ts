@@ -708,3 +708,34 @@ export const reactorOutputTypes = [
   'Carousel Creatives',
   'Montage / Scene Flow',
 ]
+
+/**
+ * The deliverables that render as a still.
+ *
+ * Kept next to the full list rather than derived from a name match, because
+ * "Carousel Creatives" is a still format whose label says neither "static" nor
+ * "image", and a regex over these labels would quietly drop it.
+ */
+export const staticOutputTypes = ['Static Creative', 'Carousel Creatives']
+
+/**
+ * Recommend static formats only.
+ *
+ * This deployment currently ships static Meta ads: the proven-ad research is
+ * image-only, the design read needs a still, and a video model that is not
+ * keyed produces a concept with nothing under it. So the SYSTEM never proposes
+ * a medium it is not set up to deliver — while the operator keeps every format
+ * in the brief, because removing the choice would be a different decision than
+ * the one taken here.
+ *
+ * `REACTOR_STATIC_ONLY=false` restores video and UGC to the recommendation the
+ * moment the video ovens are wired, with no deploy.
+ */
+export function staticOnly(): boolean {
+  return process.env.REACTOR_STATIC_ONLY !== 'false'
+}
+
+/** The deliverables the system may recommend right now. */
+export function recommendableOutputTypes(): string[] {
+  return staticOnly() ? staticOutputTypes : reactorOutputTypes
+}

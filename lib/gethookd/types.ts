@@ -56,6 +56,15 @@ export interface ProvenAdQuery {
   tier?: 'winning' | 'proven' | 'all'
   /** Minimum days the ad has been running. */
   minDaysActive?: number
+  /**
+   * How far back the ad may have LAUNCHED, in days.
+   *
+   * Omitted keeps the library's own browse window. `null` removes the bound
+   * entirely, which only the automatic research layer asks for: it wants a
+   * two-year-old ad that is still running, and it re-checks run time on every
+   * row itself rather than trusting the sort.
+   */
+  launchWindowDays?: number | null
   geo?: string
   limit?: number
   page?: number

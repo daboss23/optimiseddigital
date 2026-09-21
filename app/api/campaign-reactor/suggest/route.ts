@@ -8,7 +8,7 @@ import {
   type IntelSourceRecommendation,
   type ReactorSuggestion,
 } from '@/lib/reactor-inputs'
-import { reactorOutputTypes } from '@/lib/reactor-data'
+import { recommendableOutputTypes, staticOnly } from '@/lib/reactor-data'
 import { ORCHESTRATOR_FALLBACK_MODEL } from '@/lib/models'
 import { INTEL_SOURCES, recommendIntelSources } from '@/lib/intelligence-sources'
 import { angleEvidence } from '@/lib/outcomes'
@@ -32,7 +32,10 @@ const awarenessLabels = awarenessOptions.slice(1).map((o) => o.label)
 const sophisticationLabels = sophisticationOptions.slice(1).map((o) => o.label)
 const audienceLabels = audienceOptions.slice(1).map((o) => o.label)
 const offerLabels = offerOptions.slice(1).map((o) => o.label)
-const deliverableLabels = [...reactorOutputTypes]
+// What the system is allowed to PROPOSE — not what the operator may choose.
+// While this deployment ships static only, a video pick from the model is
+// filtered out here rather than talked out of it in the prompt.
+const deliverableLabels = recommendableOutputTypes()
 
 interface RawSuggestion {
   angle: string
@@ -99,8 +102,18 @@ function fallback(brief: string, angle: string): RawSuggestion {
   if (wantsVideo) set.add('Video Creative')
   if (wantsCarousel) set.add('Carousel Creatives')
   if (wantsImage) set.add('Static Creative')
+  // The heuristic reads the brief's own words, so it can name a medium this
+  // deployment does not currently ship. Filtered here for the same reason the
+  // model's picks are: proposing a format with no oven behind it produces a
+  // concept with nothing under it.
+  const allowed = recommendableOutputTypes()
+  for (const d of Array.from(set)) if (!allowed.includes(d)) set.delete(d)
   // Sensible default when the brief doesn't signal a medium.
-  const deliverables = set.size ? Array.from(set) : ['Static Creative', 'Video Creative']
+  const deliverables = set.size
+    ? Array.from(set)
+    : staticOnly()
+      ? ['Static Creative']
+      : ['Static Creative', 'Video Creative']
 
   return {
     angle: pickAngle,
@@ -113,7 +126,9 @@ function fallback(brief: string, angle: string): RawSuggestion {
     deliverables,
     deliverablesReason: set.size
       ? `Brief signals ${deliverables.join(' + ')} — leading with those.`
-      : 'Balanced starter set across static and video creative.',
+      : staticOnly()
+        ? 'Static Meta creative — the format this account is set up to render and measure.'
+        : 'Balanced starter set across static and video creative.',
   }
 }
 

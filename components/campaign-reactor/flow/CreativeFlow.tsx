@@ -929,7 +929,7 @@ function FlowInner({ offerName, angle }: { offerName?: string; angle?: string })
 
   return (
     <FlowContext.Provider value={ctxValue}>
-      <div ref={wrapperRef} className="tpb-flow relative h-[72vh] min-h-[520px] w-full">
+      <div ref={wrapperRef} className="reactor-flow relative h-[72vh] min-h-[520px] w-full">
         {/* Node palette — build the graph Weave-style */}
         <div className="absolute left-3 top-3 z-10 flex items-center gap-1.5 rounded-lg border border-white/10 bg-[#0b0f17]/90 p-1.5 backdrop-blur">
           <span className="px-1 text-[10px] font-semibold uppercase tracking-wider text-white/45">Add</span>

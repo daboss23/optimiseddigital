@@ -162,7 +162,7 @@ function secret(): string {
     (process.env.AUTH_SECRET ?? '').trim() ||
     // A fixed development fallback. Deployments that care set AUTH_SECRET; a
     // demo gate whose secret is public is still a gate, just not a lock.
-    'tpb-creative-reactor-session-key'
+    'optimised-digital-session-key'
   )
 }
 

@@ -28,6 +28,17 @@ import {
   nicheTitle,
   searchProvenAds,
 } from '@/lib/gethookd'
+import {
+  MIN_DAYS_ACTIVE,
+  echoEvidence,
+  isEligible,
+  provenAdBlock,
+  researchFocus,
+  researchProvenAds,
+  researchTerms,
+  shortlist,
+  sparkEvidence,
+} from '@/lib/gethookd/research'
 
 let failures = 0
 function check(name: string, ok: boolean, detail = '') {
@@ -506,6 +517,233 @@ async function main() {
     'clone text of a copy-only ad has no empty padding',
     !adToCloneText({ ...stony!, body: '' }).includes('\n\n\n'),
   )
+
+  /* --------------------- 8. Automatic campaign research ------------------- */
+  console.log('\n8. Automatic research — the agents\' own evidence')
+
+  /**
+   * One image row, shaped like the live payload. `days` is the whole point of
+   * this section: the bar is ninety days of actual run time, and every check
+   * below exists because the cheapest way to make a thin feed look full is to
+   * quietly let a four-day-old ad through.
+   */
+  const row = (id: number, brand: string, days: number, extra: Record<string, unknown> = {}) => ({
+    id,
+    asset_type: 'image',
+    display_format: 'image',
+    title: `Headline ${id}`,
+    body: 'A primary text long enough to carry an actual argument about the offer, the proof behind it and the reason to act now rather than later.',
+    cta_text: 'Learn more',
+    days_active: days,
+    performance_score: 70,
+    performance_score_title: 'Growing',
+    primary_image_url: `https://app.gethookd.ai/still/${id}`,
+    countries: ['US'],
+    platform: 'facebook,instagram',
+    brand: { id, name: brand },
+    ...extra,
+  })
+
+  /** Serve `body` only when the request carries no `query`, and count requests. */
+  function stubQueryless(body: unknown) {
+    urls = []
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      lastUrl = typeof input === 'string' ? input : input.toString()
+      urls.push(lastUrl)
+      const sent = new URL(lastUrl).searchParams
+      const payload = sent.get('query') ? { data: [], meta: {} } : body
+      return new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }) as typeof fetch
+  }
+
+  // --- the bar itself -----------------------------------------------------
+  const proven = {
+    id: 'gethookd-1',
+    brand: 'Brand',
+    title: 'Headline',
+    body: 'Body copy',
+    format: 'image' as const,
+    imageUrl: 'https://example.test/still',
+    daysActive: 120,
+    platforms: [],
+    countries: [],
+    focus: null,
+  }
+  check('ninety days is the bar', MIN_DAYS_ACTIVE === 90, `bar is ${MIN_DAYS_ACTIVE}`)
+  check('a 120-day static ad is eligible', isEligible(proven))
+  check('a 4-day ad is not', !isEligible({ ...proven, daysActive: 4 }))
+  check('an 89-day ad is not', !isEligible({ ...proven, daysActive: 89 }))
+  check('a video ad is not', !isEligible({ ...proven, format: 'video' }))
+  check('a carousel is not', !isEligible({ ...proven, format: 'carousel' }))
+  check(
+    'an ad with no still is not',
+    !isEligible({ ...proven, imageUrl: undefined }),
+    'this run renders static ads; a reference with no image teaches the design nothing',
+  )
+  check(
+    'an ad with no words is not',
+    !isEligible({ ...proven, title: '', body: '' }),
+    'a still with no copy is a mood board, not evidence',
+  )
+  check(
+    'a row with unknown run time is not',
+    !isEligible({ ...proven, daysActive: undefined }),
+    'unknown is not the same as long',
+  )
+  check(
+    'a 3,200-day zombie is not',
+    !isEligible({ ...proven, daysActive: 3200 }),
+    'the source never closed it; that is a data artefact, not a four-year winner',
+  )
+
+  // --- terms --------------------------------------------------------------
+  const terms = researchTerms({
+    offerName: 'Roofing Lead Machine',
+    brief: 'We want more leads for our roofing campaign, targeting homeowners who need a new roof.',
+  })
+  check('a search term is drawn from the brief', terms.length > 0)
+  check(
+    'marketing words never become a search term',
+    !terms.some((t) => ['leads', 'campaign', 'marketing', 'business'].includes(t)),
+    terms.join(', '),
+  )
+  check('the market noun does', terms.includes('roofing'), terms.join(', '))
+  check('at most two terms are ever tried', terms.length <= 2)
+  check(
+    'a brief with nothing but marketing words yields no term',
+    researchTerms({ brief: 'We need more leads from our marketing campaign' }).length === 0,
+    'an empty query is the browse rung, which is cheaper and returns more',
+  )
+  check(
+    'a booked-call offer researches service ads',
+    researchFocus({ offerType: 'Strategy Call / Application' }) === 'services',
+  )
+  check(
+    'a cart offer researches e-commerce ads',
+    researchFocus({ brief: 'drive checkout on our skincare store' }) === 'ecommerce',
+  )
+  check(
+    'an unreadable brief researches both rather than guessing',
+    researchFocus({ brief: 'make it good' }) === 'all',
+  )
+
+  // --- the ladder ---------------------------------------------------------
+  stubQueryless({
+    data: [row(1, 'Alpha', 300), row(2, 'Beta', 200), row(3, 'Gamma', 150), row(4, 'Delta', 95)],
+    meta: {},
+    used_credits: 0.04,
+    remaining_credits: 50,
+  })
+  const climbed = await researchProvenAds({ offerName: 'Roofing Lead Machine' })
+  check('the ladder falls back to the unqueried browse', climbed.ads.length === 4)
+  check(
+    'and it stops the moment it has enough',
+    urls.length <= 3,
+    `${urls.length} requests — every one of them is billed`,
+  )
+  check(
+    'every rung asked for at least ninety days',
+    urls.every((u) => Number(new URL(u).searchParams.get('run_time')) >= 90),
+    'the bar is never lowered to fill a feed',
+  )
+  check(
+    'every rung asked for images only',
+    urls.every((u) => new URL(u).searchParams.get('ad_format') === 'images'),
+  )
+  check(
+    'every rung asked for live ads only',
+    urls.every((u) => new URL(u).searchParams.get('status') === 'active'),
+  )
+  check(
+    'no rung launched an unbounded page',
+    urls.every((u) => Number(new URL(u).searchParams.get('per_page')) <= 8),
+    'page size is the cost ceiling, and it is set before anything runs',
+  )
+  check('the path taken is reported', climbed.steps.length >= 1)
+  check('credits spent are carried back', (climbed.credits?.used ?? 0) > 0)
+  check(
+    'the shortlist is ordered by run time',
+    climbed.ads[0]!.daysActive === 300,
+    'the longest-running ad leads — that is the only direct evidence here',
+  )
+
+  // --- nothing qualifies --------------------------------------------------
+  stubFetch({ data: [row(9, 'Fresh', 5)], meta: {} })
+  const none = await researchProvenAds({ offerName: 'Roofing Lead Machine' })
+  check('a corpus of fresh ads yields no references', none.ads.length === 0)
+  check('and it says so rather than lowering the bar', Boolean(none.note))
+  check('the note names the bar', (none.note ?? '').includes('90'))
+  check(
+    'the ladder is bounded even when every rung is empty',
+    urls.length <= 3,
+    `${urls.length} billed requests`,
+  )
+  check(
+    'an empty research set tells OPUS not to claim external validation',
+    provenAdBlock(none).includes('Do not present any concept as validated'),
+  )
+  check('an empty research set gives SPARK nothing to read', sparkEvidence(none) === '')
+  check('an empty research set gives ECHO nothing to read', echoEvidence(none) === '')
+
+  // --- one advertiser cannot own the briefing -----------------------------
+  stubQueryless({
+    data: [
+      row(11, 'Loud', 400),
+      row(12, 'Loud', 390),
+      row(13, 'Loud', 380),
+      row(14, 'Loud', 370),
+      row(15, 'Quiet', 100),
+    ],
+    meta: {},
+  })
+  const spread = await researchProvenAds({ offerName: 'Roofing Lead Machine' })
+  check(
+    'one advertiser cannot fill the reference set',
+    spread.ads.filter((a) => a.brand === 'Loud').length <= 2,
+    spread.ads.map((a) => a.brand).join(', '),
+  )
+  check('a second advertiser still makes it in', spread.ads.some((a) => a.brand === 'Quiet'))
+
+  // --- deduplication ------------------------------------------------------
+  const dupes = shortlist(
+    [
+      { ...proven, id: 'gethookd-20', daysActive: 300 },
+      { ...proven, id: 'gethookd-20', daysActive: 300 },
+      { ...proven, id: 'gethookd-21', title: 'Different', body: 'Different body', daysActive: 250 },
+    ],
+    [],
+  )
+  check('the same ad id is never listed twice', dupes.length === 2)
+  check(
+    'the same words under two ad ids are one reference',
+    shortlist(
+      [
+        { ...proven, id: 'gethookd-30', title: 'Same', body: 'Same body', daysActive: 300 },
+        { ...proven, id: 'gethookd-31', title: 'Same', body: 'Same body', daysActive: 280 },
+      ],
+      [],
+    ).length === 1,
+    'the source collapses copy variants per request, not across the ladder',
+  )
+
+  // --- what the agents are actually told ----------------------------------
+  const borrow = 'competitor'
+  check(
+    'SPARK is told these ads belong to somebody else',
+    sparkEvidence(climbed).toLowerCase().includes(borrow),
+    'without it, the shortest path to a strong ad is lifting a competitor\'s numbers',
+  )
+  check('ECHO is told the same', echoEvidence(climbed).toLowerCase().includes(borrow))
+  check('OPUS is told the same', provenAdBlock(climbed).toLowerCase().includes(borrow))
+  check(
+    'the evidence carries the proof, not just the words',
+    sparkEvidence(climbed).includes('300 days live'),
+  )
+  check('ECHO gets the primary text', echoEvidence(climbed).includes('Primary text'))
+  check('SPARK gets the on-ad headline', sparkEvidence(climbed).includes('On-ad headline'))
 
   /* ---------------------------------- done -------------------------------- */
   restoreFetch()

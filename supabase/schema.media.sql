@@ -1,4 +1,4 @@
--- Media generation ledger for the TPB multi-model video "oven".
+-- Media generation ledger for the multi-model video "oven".
 -- Tracks every render across providers (fal.ai gateway, Higgsfield) so
 -- dashboards can report volume/spend and the agent can reuse past clips.
 

@@ -1,4 +1,4 @@
--- TPB Creative Reactor — Clone & Iterate taxonomy analytics (OPTIONAL)
+-- Creative Reactor — Clone & Iterate taxonomy analytics (OPTIONAL)
 --
 -- The app already reads and writes the fixed creative taxonomy and test IDs
 -- INSIDE the existing `campaign_outcomes.concept` jsonb (under

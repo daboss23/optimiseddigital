@@ -1,4 +1,4 @@
-# TPB Creative Reactor — Liquid Glass Design System
+# Creative Reactor — Liquid Glass Design System
 
 > The implementation contract for the platform's visual layer. Every color, blur,
 > and glow used in `app/globals.css`, `tailwind.config.ts`, and the components

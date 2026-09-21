@@ -8,10 +8,10 @@ import {
 
 /**
  * Tiny proof-of-concept "counter": takes a written hook + brand mark and
- * composes a finished, TPB-branded 9:16 ad over a dark/amber background.
+ * composes a finished, brand-styled 9:16 ad over a dark/amber background.
  * In production the background would be the AI-generated clip from the oven.
  */
-export const TpbAd: React.FC<{ hook: string }> = ({ hook }) => {
+export const OptimisedAd: React.FC<{ hook: string }> = ({ hook }) => {
   const frame = useCurrentFrame();
   const { fps, durationInFrames } = useVideoConfig();
 

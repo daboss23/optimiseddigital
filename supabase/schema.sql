@@ -1,4 +1,4 @@
--- Summit Build Co — AI Creative System
+-- Legacy MVP table (creative_outputs). Superseded by schema.reactor.sql.
 -- Run this in the Supabase SQL editor before using the app.
 
 create table if not exists creative_outputs (
