@@ -87,6 +87,7 @@ export async function GET() {
     fal: Boolean(process.env.FAL_KEY),
     muapi: Boolean(process.env.MUAPIAPP_API_KEY || process.env.MUAPI_API_KEY),
     pipeboard: Boolean(process.env.PIPEBOARD_API_TOKEN),
+    gethookd: Boolean((process.env.GETHOOKD_API_KEY ?? '').trim()),
   }
 
   // The learning loop needs the URL + service key to write/read outcomes.
@@ -128,14 +129,53 @@ export async function GET() {
       process.env.OPERATOR_SOURCE ?? process.env.NEXT_PUBLIC_OPERATOR_SOURCE ?? 'seeded',
   }
 
+  /**
+   * WHICH BUILD IS ANSWERING.
+   *
+   * The most expensive hour of this project was spent not knowing. A fix was
+   * merged to `main`, its build failed on the host's own dependency check, and
+   * production kept serving the PREVIOUS commit — so every symptom pointed at
+   * the new code while the new code was not running at all. Nothing on screen
+   * could distinguish "the fix is wrong" from "the fix never deployed".
+   *
+   * The commit is not a secret; it is on a public branch. Reporting it turns
+   * that question into one request.
+   */
+  const deployment = {
+    commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? 'unknown',
+    branch: process.env.VERCEL_GIT_COMMIT_REF ?? 'unknown',
+    environment: process.env.VERCEL_ENV ?? 'local',
+  }
+
+  /**
+   * The proven-ad source, reported WITHOUT calling it.
+   *
+   * This endpoint is deliberately unauthenticated so a deployment probe never
+   * gets redirected to a login page. GetHookd bills per returned row, so a live
+   * probe here would be an open door to draining the account's credits one
+   * request at a time. Presence and configuration only — `npm run gethookd:params`
+   * is the thing that actually talks to the API, and it is run by a human.
+   *
+   * `geoParam` is included because a country filter under the wrong name is the
+   * one failure that still returns ads, just the wrong ones.
+   */
+  const gethookd = {
+    configured: keys.gethookd,
+    base: process.env.GETHOOKD_API_BASE || 'https://app.gethookd.ai/api/v1',
+    geo: process.env.GETHOOKD_GEO || 'US,AU',
+    geoParam: process.env.GETHOOKD_GEO_PARAM || 'geo',
+  }
+
   return NextResponse.json({
     // `ok` now means "this deployment can actually do its job", not merely
     // "the route responded". A schema a version behind the code is not ok.
     ok: !supabaseConfigured || tenancy.applied,
     timestamp: new Date().toISOString(),
+    deployment,
     tenancy,
     keys,
     display,
+    gethookd,
     supabaseConfigured,
     tables,
     learningLoop,
