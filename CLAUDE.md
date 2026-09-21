@@ -155,7 +155,19 @@ GETHOOKD_API_KEY             # GetHookd proven-ad library — powers the Ad Libr
                              #   GETHOOKD_GEO (default US,AU — the markets this
                              #   deployment sells into), GETHOOKD_GEO_PARAM (the endpoint's
                              #   name for the country filter, default `geo` — run
-                             #   `npm run gethookd:params` to confirm it)
+                             #   `npm run gethookd:params` to confirm it; a refused name is
+                             #   now retried under its known aliases (`location`, `countries`,
+                             #   `country`) BEFORE being dropped, so a vendor rename costs a
+                             #   round trip rather than scoping the feed to the whole world),
+                             #   GETHOOKD_LAUNCH_WINDOW_DAYS (default 540 — how far back an
+                             #   ad may have LAUNCHED. Load-bearing: the source reports run
+                             #   time from start date to last-seen, so a 2018 ad nobody
+                             #   marked stopped reads ~3,200 days "live", and ordering by
+                             #   duration without this bound returns the OLDEST ROWS IN THE
+                             #   DATABASE — which is exactly what filled the Ad Library with
+                             #   ripped-jeans dropshipping ads scored "Winning, 100"),
+                             #   GETHOOKD_MIN_DAYS_ACTIVE (default 21 — still-running-since,
+                             #   the other half of the proof)
 PIPEBOARD_API_TOKEN          # Meta Ads MCP (live ad performance) — optional
 META_ACCESS_TOKEN            # Meta Marketing API (System User token) — /meta dashboard + performance ingest + creative publish
 META_AD_ACCOUNT_ID           # Ad account for "Push Creative to Meta" (with or without act_ prefix)
@@ -643,6 +655,35 @@ Full architecture: `docs/MIKE_DELIGHT.md`.
       trapped by `backdrop-filter` / `isolation: isolate` containing blocks),
       `dvh` sheets, 44px touch targets, and a phone performance layer that
       freezes the aurora and drops backdrop blur under 768px
+- [x] **Ad Library lives inside Creative Intelligence** — finding an ad that
+      already works and tearing one down are the same job, so the library sits
+      beside SPARK on `/creative` (anchor `#ad-library`) instead of a sidebar
+      tab of its own. `/ad-library` stays as a redirect that preserves its
+      query string, because the Meta Intelligence board deep-links into it
+- [x] **The proven-ad feed is bounded by LAUNCH DATE, not by the vendor's tier**
+      (`lib/gethookd/index.ts`). Three bugs shipped together and reinforced each
+      other: ordering by `days_active` with no launch bound returned 2018
+      records nobody ever marked stopped (~3,200 days "live"); the vendor's
+      performance tier is largely derived from that same duration, so it rated
+      those zombies "Winning, 100" instead of correcting the sort; and the tier
+      is re-checked at display time, so a page asking for winning/optimized had
+      most of its rows WITHHELD as stale — six found, five discarded, one
+      rendered, which is why the grid also looked empty. Now: `started_after`
+      bounds the launch date (`GETHOOKD_LAUNCH_WINDOW_DAYS`), `run_time` carries
+      the proof (`GETHOOKD_MIN_DAYS_ACTIVE`), and the tier is opt-in rather than
+      the default. Duration still orders the feed — that reasoning is only sound
+      INSIDE the window
+- [x] **A typed term is matched exactly** — `strict_query` is sent whenever a
+      query is. Without it the source relaxes the term (partial words, dropped
+      words, similar meanings), so "contractor" returned ads that merely said
+      "contract" — car-loan claims and phone plans, billed per row like any
+      other. A feed of confidently wrong ads is worse than an empty one
+- [x] **A refused filter is renamed before it is dropped** (`lib/gethookd/client.ts`)
+      — `PARAM_ALIASES` retries the endpoint's other spellings (`geo` →
+      `location`) and only drops the filter when every one is refused, which is
+      the single case that still shows the "all markets" banner. Bounded and
+      named at every step, so it can never strip its way down to an unfiltered,
+      fully billed search. Guarded by `npm run selftest:gethookd` (82 checks)
 - [x] `npm run selftest` (`scripts/reactor-selftest.ts`) — asserts every
       mandatory layer activates with real evidence, evidence is attributable,
       and deliverable counts match the brief

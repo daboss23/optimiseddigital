@@ -29,6 +29,12 @@ export interface GetHookdResponse<T> {
    * must report rather than pass off as a clean result.
    */
   droppedParams?: string[]
+  /**
+   * Filters that WERE applied, but under a different name than the one asked
+   * for. Not a warning — a record, so a vendor rename shows up in the health
+   * check instead of being discovered again the next time a feed looks wrong.
+   */
+  appliedAliases?: Array<{ name: string; alias: string }>
 }
 
 /**
@@ -170,6 +176,25 @@ async function gethookdGetOnce<T>(
 }
 
 /**
+ * Other names this API has been seen to use for the same filter.
+ *
+ * A refused parameter is usually a RENAME, not a capability the endpoint
+ * lacks: `search_ads` (the MCP wrapper) calls the country filter `geo` while
+ * its REST siblings call it `location`. Dropping the filter in that case
+ * silently widens a search to every market on earth — which is exactly the bug
+ * that put German and Hawaiian ads in a feed scoped to US + AU. So a refused
+ * name is retried under its known alternates FIRST, and only dropped when the
+ * endpoint refuses all of them.
+ *
+ * `GETHOOKD_GEO_PARAM` still wins when set: a confirmed name from
+ * `npm run gethookd:params` should never be second-guessed by this table.
+ */
+const PARAM_ALIASES: Record<string, string[]> = {
+  geo: ['location', 'countries', 'country'],
+  location: ['geo', 'countries', 'country'],
+}
+
+/**
  * One GET, retried once without any filter the API refused by name.
  *
  * Vendor parameter names drift, and this endpoint's names differ from the ones
@@ -192,9 +217,52 @@ export async function gethookdGet<T>(
   const refused = (first.droppedParams ?? []).filter((name) => name in params)
   if (first.ok || refused.length === 0) return first
 
-  const retried: Record<string, string | number | undefined | null> = { ...params }
-  for (const name of refused) delete retried[name]
+  // Attempt 2 — RENAME. A refused name is usually a rename, and dropping the
+  // country filter is what served ads from every market on earth to an account
+  // scoped to US + AU.
+  const renamed: Record<string, string> = {}
+  const aliased: Record<string, string | number | undefined | null> = { ...params }
+  for (const name of refused) {
+    const value = aliased[name]
+    delete aliased[name]
+    const alias = (PARAM_ALIASES[name] ?? []).find((a) => !(a in params))
+    if (alias && value !== undefined && value !== null && String(value).trim()) {
+      aliased[alias] = value
+      renamed[name] = alias
+    }
+  }
 
-  const second = await gethookdGetOnce<T>(path, retried)
-  return { ...second, droppedParams: refused }
+  if (Object.keys(renamed).length) {
+    const second = await gethookdGetOnce<T>(path, aliased)
+    const refusedAgain = new Set(second.droppedParams ?? [])
+    const survived = Object.entries(renamed).filter(([, alias]) => !refusedAgain.has(alias))
+
+    // The rename worked: the filter WAS applied, just under the endpoint's own
+    // spelling. Not reported as dropped — warning about a filter that ran
+    // trains the operator to ignore a banner that means something.
+    if (second.ok) {
+      const stillDropped = refused.filter((name) => !renamed[name])
+      return {
+        ...second,
+        droppedParams: stillDropped,
+        appliedAliases: survived.map(([name, alias]) => ({ name, alias })),
+      }
+    }
+  }
+
+  // Attempt 3 — DROP. Every spelling refused, so the filter genuinely cannot
+  // be expressed here. Returning the wider set with a banner beats returning
+  // nothing: the operator can still find an ad to clone, and the banner says
+  // the scope is not what they asked for.
+  //
+  // This is the one place the "exactly one retry" rule is widened, and only
+  // because the sequence is BOUNDED and NAMED — try the name, try its known
+  // alias, drop it. It can never become an open-ended strip toward an
+  // unfiltered, fully billed search, because each step is decided by names the
+  // API itself reported.
+  const stripped: Record<string, string | number | undefined | null> = { ...params }
+  for (const name of refused) delete stripped[name]
+
+  const third = await gethookdGetOnce<T>(path, stripped)
+  return { ...third, droppedParams: refused }
 }

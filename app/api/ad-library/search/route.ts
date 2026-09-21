@@ -153,7 +153,12 @@ export async function GET(req: Request) {
 
   const rawFocus = searchParams.get('focus') ?? 'all'
   const rawFormat = searchParams.get('format') ?? 'all'
-  const rawTier = searchParams.get('tier') ?? 'proven'
+  // Defaults to 'all', not 'proven'. The vendor's tier is recorded at index
+  // time and re-checked at display time, so asking for winning/optimized has
+  // the source withhold most of a page as stale — six ads found, five thrown
+  // away, one rendered, which is why the grid looked empty. What makes an ad
+  // proven here is the launch window plus run time, applied in lib/gethookd.
+  const rawTier = searchParams.get('tier') ?? 'all'
   const geo = (searchParams.get('geo') ?? '').trim()
 
   if (!gethookdConfigured()) {
@@ -165,7 +170,7 @@ export async function GET(req: Request) {
     query: q,
     focus: isIcpFocus(rawFocus) ? rawFocus : 'all',
     format: isFormat(rawFormat) ? rawFormat : 'all',
-    tier: isTier(rawTier) ? rawTier : 'proven',
+    tier: isTier(rawTier) ? rawTier : 'all',
     geo: geo || undefined,
     limit,
     page,

@@ -1,27 +1,25 @@
-import { getWinners } from '@/lib/clone-sources'
-import { PageHeader } from '@/components/reactor/ui'
-import { AdLibrary } from '@/components/ad-library/AdLibrary'
-
-export const dynamic = 'force-dynamic'
+import { redirect } from 'next/navigation'
 
 /**
- * Ad Library — the clone dashboard. Browse proven ads (our winners from ORACLE)
- * or bring in an external ad, review/edit its extracted Creative DNA, then fire
- * the reactor locked to that structure. Winners are fetched server-side; the
- * external tab pastes-to-DNA client-side.
+ * The Ad Library moved into Creative Intelligence.
+ *
+ * Finding an ad that already works and tearing one down are the same job, so
+ * the library now sits beside SPARK on `/creative` rather than in a tab of its
+ * own. This route stays as a redirect because links to it exist — the Meta
+ * Intelligence board deep-links a creative here — and a bookmark that 404s is
+ * a worse outcome than one extra hop.
  */
-export default async function AdLibraryPage() {
-  const { winners, configured } = await getWinners()
-
-  return (
-    <>
-      <PageHeader
-        system="06"
-        title="Ad Library"
-        subtitle="Clone what works. Pull a proven winner from ORACLE or bring in an outside ad, edit its Creative DNA, and regenerate new on-brand creative locked to that structure — then iterate one thing to find the next winner."
-        tagline="Engineered For Performance"
-      />
-      <AdLibrary initialWinners={winners} winnersLive={configured} />
-    </>
-  )
+export default async function AdLibraryRedirect({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  const params = await searchParams
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (typeof value === 'string') query.set(key, value)
+    else if (Array.isArray(value) && value[0]) query.set(key, value[0])
+  }
+  const suffix = query.toString()
+  redirect(`/creative${suffix ? `?${suffix}` : ''}#ad-library`)
 }

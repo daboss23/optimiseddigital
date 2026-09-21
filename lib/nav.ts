@@ -9,7 +9,6 @@ import {
   BarChart3,
   Target,
   Boxes,
-  Copy,
   Fingerprint,
 } from 'lucide-react'
 
@@ -26,7 +25,6 @@ export const navItems: NavItem[] = [
   { label: 'Creative Intelligence', href: '/creative', icon: Sparkles, system: '03' },
   { label: 'Playbook', href: '/playbook', icon: BookOpen, system: '04' },
   { label: 'Campaign Reactor', href: '/campaign-reactor', icon: Atom, system: '05' },
-  { label: 'Ad Library', href: '/ad-library', icon: Copy },
   { label: 'Meta Intelligence', href: '/meta', icon: BarChart3, system: '06' },
   { label: 'Recommendations', href: '/recommendations', icon: Target, system: '07' },
   { label: 'Agent Network', href: '/network', icon: Boxes, system: '08' },

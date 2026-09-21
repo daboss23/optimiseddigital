@@ -46,6 +46,42 @@ const DEFAULT_LIMIT = 12
 /** One advertiser running 180 creatives must not become the whole feed. */
 const ADS_PER_BRAND = 2
 
+/**
+ * How far back a "currently working" ad may have LAUNCHED, in days.
+ *
+ * This is the single most important number on this surface, and shipping
+ * without it is what filled the feed with 2018 dropshipping ads. The source
+ * records an ad's run time from its start date to the last day it was seen,
+ * and an ad that launched in 2018 and was never marked stopped reports ~3,200
+ * days "live" — so ordering by duration returns the OLDEST RECORDS IN THE
+ * DATABASE, not the best ads. Worse, the performance tier is largely derived
+ * from that same duration, so the tier filter agrees with the bad sort instead
+ * of correcting it: those zombies come back scored "Winning, 100".
+ *
+ * Bounding the launch date fixes it at the source. Inside the window, long
+ * duration means what everyone assumes it means — this launched recently AND
+ * is still running, which somebody is still paying for.
+ */
+const LAUNCH_WINDOW_DAYS = Number(process.env.GETHOOKD_LAUNCH_WINDOW_DAYS) || 540
+
+/**
+ * Minimum days an ad must have been running to count as proven.
+ *
+ * Duration inside a bounded window is honest evidence; the vendor's stored
+ * tier is not. The tier is recorded at index time and re-checked at display
+ * time, so a page asking for winning/optimized routinely has most of its rows
+ * WITHHELD as stale — six found, five thrown away, one rendered. That is why
+ * the grid looked half-empty. Run time is computed from dates on the row and
+ * cannot go stale between the two checks.
+ */
+const MIN_DAYS_ACTIVE = Number(process.env.GETHOOKD_MIN_DAYS_ACTIVE) || 21
+
+/** The earliest launch date still inside the window, as YYYY-MM-DD. */
+function launchedAfter(now: Date = new Date()): string {
+  const d = new Date(now.getTime() - LAUNCH_WINDOW_DAYS * 86_400_000)
+  return d.toISOString().slice(0, 10)
+}
+
 /* -------------------------------- the wire -------------------------------- */
 
 interface RawMedia {
@@ -167,11 +203,20 @@ const FORMAT_FILTER: Record<string, string | undefined> = {
 /**
  * Search the proven-ad library, scoped to the ICP.
  *
- * With no free-text query the source sorts strictly by how long each ad has
- * been running — the single most honest proxy for "this is working", since an
- * agency does not keep paying for a loser for 1,300 days. With a query,
- * relevance leads and duration becomes the tiebreaker; that is the source's
- * ordering contract and fighting it returns worse ads, not better ones.
+ * "Proven" is defined here as: launched inside `LAUNCH_WINDOW_DAYS`, still
+ * running, and running for at least `MIN_DAYS_ACTIVE`. Deliberately NOT the
+ * vendor's performance tier — that score is largely a function of raw run
+ * time, so it rates a 2018 record nobody ever closed as "Winning, 100", and it
+ * goes stale between indexing and display, which withholds most of a page.
+ *
+ * Duration still orders the feed, because an advertiser does not keep paying
+ * for a loser. That reasoning is only sound inside the launch window: applied
+ * to the whole corpus it returns the oldest rows in the database instead of
+ * the best ads. The window is what makes the sort mean anything.
+ *
+ * With a query, relevance leads and duration becomes the tiebreaker; that is
+ * the source's ordering contract and fighting it returns worse ads, not
+ * better ones.
  */
 export async function searchProvenAds(q: ProvenAdQuery = {}): Promise<ProvenAdResult> {
   const focus: IcpFocus = q.focus ?? 'all'
@@ -191,14 +236,24 @@ export async function searchProvenAds(q: ProvenAdQuery = {}): Promise<ProvenAdRe
 
   const res = await gethookdGet<RawAd[]>('explore', {
     query: query || undefined,
+    // Without this the source silently relaxes the term: it matches partial
+    // words, drops words and adds similar meanings, so a search for
+    // "contractor" comes back full of ads that merely say "contract" — car
+    // loan claims, phone plans. Those rows bill like any other, and a feed of
+    // confidently wrong ads is worse than an empty one.
+    strict_query: query ? 'true' : undefined,
     niche: nicheCsvFor(focus),
     [geoParam()]: (q.geo ?? defaultGeo()) || undefined,
-    performance_scores: TIER_FILTER[q.tier ?? 'proven'],
+    performance_scores: TIER_FILTER[q.tier ?? 'all'],
     ad_format: FORMAT_FILTER[q.format ?? 'all'],
-    run_time: q.minDaysActive,
+    // Proof of life, in two halves: launched inside the window, and running a
+    // while since. Together they mean "someone is still paying for this".
+    started_after: launchedAfter(),
+    run_time: q.minDaysActive ?? MIN_DAYS_ACTIVE,
     status: 'active',
     // Ordering only bites when no query is set; sending it always is harmless
-    // and keeps the intent visible at the call site.
+    // and keeps the intent visible at the call site. Safe to sort on duration
+    // ONLY because started_after bounds what can appear.
     sort_column: 'days_active',
     sort_direction: 'desc',
     ads_per_brand_limit: ADS_PER_BRAND,
@@ -242,8 +297,8 @@ export async function searchProvenAds(q: ProvenAdQuery = {}): Promise<ProvenAdRe
       ? widened
       : [
           query
-            ? `No proven ads matched "${query}" in this focus. Try a broader term, or clear it to browse the longest-running winners.`
-            : 'No proven ads matched those filters. Widen the performance tier or the format.',
+            ? `No proven ads matched "${query}" in this focus. Terms are matched exactly, so try a single broader word — or clear it to browse what is running now.`
+            : 'No proven ads are running in this focus right now. Widen the format, or switch focus.',
           widened,
         ]
           .filter(Boolean)
