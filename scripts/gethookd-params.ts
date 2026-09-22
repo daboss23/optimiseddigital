@@ -34,6 +34,21 @@ const COUNTRY_CANDIDATES = [
 /** Names for the page-size filter. `per_page` is the convention elsewhere here. */
 const PAGE_SIZE_CANDIDATES = ['per_page', 'limit', 'page_size', 'results_per_page']
 
+/**
+ * Names for the creative-format filter. Refused as `ad_format` in production,
+ * which silently serves video and carousel rows to an operator who selected
+ * Image — and every card's design read needs a still.
+ */
+const FORMAT_CANDIDATES = ['ad_format', 'format', 'ad_formats', 'formats', 'asset_type']
+
+/**
+ * Names for the minimum-run-time filter — the 90-day bar, half of what this
+ * platform means by "proven". Refused as `run_time` in production, and its
+ * absence is invisible: the duration sort still puts long-running ads on top,
+ * so the feed looks right while the bar is simply not applied.
+ */
+const RUN_TIME_CANDIDATES = ['run_time', 'min_days_active', 'days_active_min', 'min_run_time']
+
 interface Probe {
   ok: boolean
   rows: number
@@ -139,10 +154,14 @@ async function main() {
   if (pageSize) sizeBase[pageSize] = 1
 
   const country = await findName('Country filter', COUNTRY_CANDIDATES, 'US', sizeBase)
+  const format = await findName('Creative format', FORMAT_CANDIDATES, 'images', sizeBase)
+  const runTime = await findName('Minimum run time', RUN_TIME_CANDIDATES, 90, sizeBase)
 
   console.log(`\n${'─'.repeat(52)}\nResult\n`)
   console.log(`  page size     ${pageSize ?? 'NONE ACCEPTED'}`)
   console.log(`  country       ${country ?? 'NONE ACCEPTED'}`)
+  console.log(`  format        ${format ?? 'NONE ACCEPTED'}`)
+  console.log(`  run time      ${runTime ?? 'NONE ACCEPTED'}`)
 
   if (country && country !== 'geo') {
     console.log(
@@ -156,6 +175,24 @@ async function main() {
       '\nNo country filter name was accepted. The tab still works; it returns\n' +
         'ads from every market and says so. Leave GETHOOKD_GEO_PARAM unset.\n',
     )
+  }
+
+  for (const [label, found, sent] of [
+    ['format', format, 'ad_format'],
+    ['run time', runTime, 'run_time'],
+  ] as const) {
+    if (found && found !== sent) {
+      console.log(
+        `\nThe ${label} filter answers to "${found}", not "${sent}".\n` +
+          `  PARAM_ALIASES in lib/gethookd/client.ts retries that spelling automatically —\n` +
+          `  confirm "${found}" is first in its list so the rename costs no round trip.\n`,
+      )
+    } else if (!found) {
+      console.log(
+        `\nNo ${label} filter name was accepted. The feed is WIDER than asked for and\n` +
+          `  says so in the banner. That is the honest failure, not a broken tab.\n`,
+      )
+    }
   }
 
   if (pageSize && pageSize !== 'per_page') {

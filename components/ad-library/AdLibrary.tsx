@@ -65,6 +65,43 @@ const DNA_FIELDS: { key: keyof CreativeDNA; label: string; long?: boolean }[] = 
   { key: 'summary', label: 'Summary', long: true },
 ]
 
+/**
+ * The two pools, split by what each one teaches — the same split the automatic
+ * campaign research runs on.
+ *
+ * CRAFT leads and is the default. Scoped to the ICP's niches the eligible
+ * static pool is a few hundred ads; unscoped it is tens of thousands, and the
+ * craft gap shows on the first page. Breadth is only free for the DESIGN — a
+ * DTC ad sells a purchase in one line and a service ad sells a conversation
+ * over five — so the wider pool is labelled for what it is good for rather
+ * than quietly blended into the narrow one.
+ */
+const POOLS: { id: 'craft' | 'market'; label: string; blurb: string }[] = [
+  {
+    id: 'craft',
+    label: 'Best built',
+    blurb:
+      'The whole library, narrowed to the six static-ad archetypes and to ads carrying a real headline. Read these for construction — layout, proof placement, hierarchy — not for the argument.',
+  },
+  {
+    id: 'market',
+    label: 'Your market',
+    blurb:
+      'Scoped to this focus’s niches. A smaller and rougher pool, but these are the arguments, objections and offers your buyer actually responds to.',
+  },
+]
+
+/**
+ * Ordering. Duration-first is the proof-of-life sort and stays the default,
+ * but it is deterministic: the top of a bounded pool is the same rows every
+ * time, which is what makes a browse feed feel frozen. Newest-first is how the
+ * same pool yields something unseen.
+ */
+const SORTS: { id: 'longest' | 'newest'; label: string }[] = [
+  { id: 'longest', label: 'Longest running' },
+  { id: 'newest', label: 'Newest first' },
+]
+
 const FORMATS: { id: AdFormat | 'all'; label: string }[] = [
   { id: 'image', label: 'Static' },
   { id: 'all', label: 'All formats' },
@@ -109,6 +146,8 @@ export function AdLibrary({
   // design read behind "Design" needs a still to read.
   const [format, setFormat] = useState<AdFormat | 'all'>('image')
   const [tier, setTier] = useState<'winning' | 'proven' | 'all'>('all')
+  const [pool, setPool] = useState<'craft' | 'market'>('craft')
+  const [sort, setSort] = useState<'longest' | 'newest'>('longest')
   const [query, setQuery] = useState('')
   const [ads, setAds] = useState<ProvenAd[]>([])
   const [loading, setLoading] = useState(false)
@@ -135,6 +174,8 @@ export function AdLibrary({
           focus,
           format,
           tier,
+          pool,
+          sort,
           page: String(nextPage),
           limit: '12',
         })
@@ -154,7 +195,7 @@ export function AdLibrary({
         setLoading(false)
       }
     },
-    [focus, format, tier, query],
+    [focus, format, tier, pool, sort, query],
   )
 
   // Filters refetch; typing in the search box does not. A search that fires on
@@ -165,7 +206,7 @@ export function AdLibrary({
   }, [load])
   useEffect(() => {
     if (tab === 'proven') void loadRef.current(1, false)
-  }, [tab, focus, format, tier])
+  }, [tab, focus, format, tier, pool, sort])
 
   // Turn arbitrary ad text into an editable Creative DNA via SPARK + classifier.
   const extractToEditor = useCallback(
@@ -329,15 +370,41 @@ export function AdLibrary({
           />
 
           <div className="space-y-5 p-5">
-            {/* Focus — services and e-commerce are never blended into one feed */}
+            {/* Pool — construction and argument are different questions, so the
+                library is never one averaged feed. Craft leads; the focus chips
+                below only bite on the market pool. */}
             <div>
+              <div className="inline-flex rounded-lg border border-white/10 bg-black/30 p-0.5">
+                {POOLS.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setPool(p.id)}
+                    className={`rounded-md px-3.5 py-1.5 text-[13px] font-medium transition-colors ${
+                      pool === p.id
+                        ? 'bg-cyan/15 text-cyan'
+                        : 'text-white/50 hover:text-white/85'
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-[12px] text-white/40">
+                {POOLS.find((p) => p.id === pool)?.blurb}
+              </p>
+            </div>
+
+            {/* Focus — services and e-commerce are never blended into one feed */}
+            <div className={pool === 'craft' ? 'opacity-40' : undefined}>
               <div className="flex flex-wrap gap-2">
                 {ICP_FOCUSES.map((f) => (
                   <button
                     key={f.id}
                     type="button"
                     onClick={() => setFocus(f.id)}
-                    className={`rounded-full border px-4 py-1.5 text-sm font-medium transition-colors ${
+                    disabled={pool === 'craft'}
+                    className={`rounded-full border px-4 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed ${
                       focus === f.id
                         ? 'border-cyan/50 bg-cyan/15 text-cyan'
                         : 'border-white/10 bg-white/[0.03] text-white/60 hover:border-white/20 hover:text-white/85'
@@ -347,7 +414,14 @@ export function AdLibrary({
                   </button>
                 ))}
               </div>
-              {activeFocus && <p className="mt-2 text-[12px] text-white/40">{activeFocus.blurb}</p>}
+              {pool === 'craft' ? (
+                <p className="mt-2 text-[12px] text-white/40">
+                  Focus does not apply to Best built — dropping the niche filter is what
+                  makes that pool worth having. Switch to Your market to scope it.
+                </p>
+              ) : (
+                activeFocus && <p className="mt-2 text-[12px] text-white/40">{activeFocus.blurb}</p>
+              )}
             </div>
 
             {/* Search + filters */}
@@ -364,6 +438,11 @@ export function AdLibrary({
                 value={tier}
                 onChange={(v) => setTier(v as 'winning' | 'proven' | 'all')}
                 options={TIERS}
+              />
+              <Select
+                value={sort}
+                onChange={(v) => setSort(v as 'longest' | 'newest')}
+                options={SORTS}
               />
               <button
                 type="button"

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { searchProvenAds, gethookdConfigured, isIcpFocus } from '@/lib/gethookd'
+import { searchProvenAds, gethookdConfigured, isIcpFocus, CRAFT_ARCHETYPES } from '@/lib/gethookd'
 import type { AdFormat, ProvenAd, ProvenAdQuery, ProvenAdResult } from '@/lib/gethookd'
 
 export const runtime = 'nodejs'
@@ -22,7 +22,18 @@ export const dynamic = 'force-dynamic'
  * Never throws. An empty feed always carries a `note` saying why, so the
  * paste-to-clone path stays the obvious next move.
  *
- * Query: q, focus (services|ecommerce|all), format, tier, geo, limit, page.
+ * Query: q, focus (services|ecommerce|all), format, tier, geo, limit, page,
+ * pool (market|craft), sort (longest|newest).
+ *
+ * POOL is the split the automatic research layer already runs on, brought to
+ * the manual surface. MARKET is scoped to the focus's niches and carries the
+ * ARGUMENT — what this buyer responds to. CRAFT drops the niche filter for the
+ * whole library and narrows on the static-ad archetypes instead, carrying the
+ * CONSTRUCTION — roughly 60x the pool and visibly better made, because
+ * construction transfers across verticals even though the argument does not.
+ *
+ * Craft additionally requires an on-ad headline: the library files untreated
+ * product photos under an archetype at the same tier as a properly built ad.
  */
 
 const GRAPH_BASE = 'https://graph.facebook.com'
@@ -160,6 +171,8 @@ export async function GET(req: Request) {
   // proven here is the launch window plus run time, applied in lib/gethookd.
   const rawTier = searchParams.get('tier') ?? 'all'
   const geo = (searchParams.get('geo') ?? '').trim()
+  const craft = (searchParams.get('pool') ?? 'market') === 'craft'
+  const sort = searchParams.get('sort') === 'newest' ? ('newest' as const) : ('longest' as const)
 
   if (!gethookdConfigured()) {
     const country = (geo.split(',')[0] || 'AU').trim().toUpperCase()
@@ -172,8 +185,16 @@ export async function GET(req: Request) {
     format: isFormat(rawFormat) ? rawFormat : 'all',
     tier: isTier(rawTier) ? rawTier : 'all',
     geo: geo || undefined,
+    sort,
     limit,
     page,
+    ...(craft
+      ? {
+          scope: 'library' as const,
+          creativeCategories: [...CRAFT_ARCHETYPES],
+          requireHeadline: true,
+        }
+      : {}),
   })
 
   return NextResponse.json(result)

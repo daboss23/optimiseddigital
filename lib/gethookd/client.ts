@@ -192,7 +192,29 @@ async function gethookdGetOnce<T>(
 const PARAM_ALIASES: Record<string, string[]> = {
   geo: ['location', 'countries', 'country'],
   location: ['geo', 'countries', 'country'],
+  // Refused by `explore` in production while the MCP wrapper takes it happily
+  // — the same wrapper-vs-REST split that hid behind `geo`. Losing it does not
+  // empty the feed, which is why it went unnoticed: it silently serves video
+  // and carousel rows to an operator who selected Image, and the design read
+  // behind every card needs a still.
+  ad_format: ['format', 'ad_formats', 'formats', 'asset_type', 'display_format'],
+  // The more expensive of the two. This is the 90-day "has actually been
+  // running" bar — half of what this platform means by PROVEN. Dropped, the
+  // feed still looks plausible because the duration sort puts long-running ads
+  // on top anyway, so nothing appears broken while the bar is simply absent.
+  run_time: ['min_days_active', 'days_active_min', 'min_run_time', 'days_active'],
 }
+
+/**
+ * How many rename rounds the ladder may walk before it gives up and drops.
+ *
+ * Bounded on purpose. A refused request is rejected by name BEFORE the search
+ * runs and is therefore never billed, so walking a few spellings costs round
+ * trips and nothing else — but an unbounded walk over guesses is how a client
+ * ends up strip-mining its way to an unfiltered, fully billed search. Three is
+ * enough for a vendor rename and small enough to stay honest.
+ */
+const MAX_ALIAS_ROUNDS = 3
 
 /**
  * One GET, retried once without any filter the API refused by name.
@@ -205,9 +227,14 @@ const PARAM_ALIASES: Record<string, string[]> = {
  * asked for, and `npm run gethookd:params` finds the endpoint's current name so
  * the filter can be restored with an env var rather than a deploy.
  *
- * Exactly one retry. A second would mean the API is refusing something we send
- * unconditionally, and quietly stripping our way down to an unfiltered, fully
- * billed search is worse than one honest failure.
+ * The ladder is BOUNDED and NAMED at every step: try the name, try its known
+ * spellings (at most MAX_ALIAS_ROUNDS deep, and only while the endpoint keeps
+ * blaming those spellings), then drop it. Every step is decided by names the
+ * API itself reported, so it can never become an open-ended strip toward an
+ * unfiltered, fully billed search. Refused requests are rejected before the
+ * search runs and are never billed, which is what makes walking a few
+ * spellings free; an ACCEPTED one bills, so the ladder stops the moment one
+ * works.
  */
 export async function gethookdGet<T>(
   path: string,
@@ -217,37 +244,60 @@ export async function gethookdGet<T>(
   const refused = (first.droppedParams ?? []).filter((name) => name in params)
   if (first.ok || refused.length === 0) return first
 
-  // Attempt 2 — RENAME. A refused name is usually a rename, and dropping the
-  // country filter is what served ads from every market on earth to an account
-  // scoped to US + AU.
-  const renamed: Record<string, string> = {}
-  const aliased: Record<string, string | number | undefined | null> = { ...params }
-  for (const name of refused) {
-    const value = aliased[name]
-    delete aliased[name]
-    const alias = (PARAM_ALIASES[name] ?? []).find((a) => !(a in params))
-    if (alias && value !== undefined && value !== null && String(value).trim()) {
+  // Attempt 2 — RENAME, up to MAX_ALIAS_ROUNDS spellings deep. A refused name
+  // is usually a rename, and dropping the country filter is what served ads
+  // from every market on earth to an account scoped to US + AU. One spelling
+  // was not enough in practice: `ad_format` and `run_time` are both refused
+  // here under the name their own MCP wrapper accepts, and the run_time bar is
+  // half of what this platform means by "proven".
+  const triedAlias: Record<string, Set<string>> = {}
+
+  for (let round = 0; round < MAX_ALIAS_ROUNDS; round += 1) {
+    const renamed: Record<string, string> = {}
+    const aliased: Record<string, string | number | undefined | null> = { ...params }
+
+    for (const name of refused) {
+      const value = params[name]
+      delete aliased[name]
+      if (value === undefined || value === null || !String(value).trim()) continue
+
+      const seen = (triedAlias[name] ??= new Set())
+      const alias = (PARAM_ALIASES[name] ?? []).find((a) => !(a in params) && !seen.has(a))
+      if (!alias) continue
+
+      seen.add(alias)
       aliased[alias] = value
       renamed[name] = alias
     }
-  }
 
-  if (Object.keys(renamed).length) {
-    const second = await gethookdGetOnce<T>(path, aliased)
-    const refusedAgain = new Set(second.droppedParams ?? [])
-    const survived = Object.entries(renamed).filter(([, alias]) => !refusedAgain.has(alias))
+    // Every spelling for every refused name is spent.
+    if (Object.keys(renamed).length === 0) break
+
+    const attempt = await gethookdGetOnce<T>(path, aliased)
 
     // The rename worked: the filter WAS applied, just under the endpoint's own
     // spelling. Not reported as dropped — warning about a filter that ran
     // trains the operator to ignore a banner that means something.
-    if (second.ok) {
-      const stillDropped = refused.filter((name) => !renamed[name])
+    if (attempt.ok) {
+      const refusedAgain = new Set(attempt.droppedParams ?? [])
+      const survived = Object.entries(renamed).filter(([, alias]) => !refusedAgain.has(alias))
+      const stillDropped = refused.filter(
+        (name) => !renamed[name] || refusedAgain.has(renamed[name]!),
+      )
       return {
-        ...second,
+        ...attempt,
         droppedParams: stillDropped,
         appliedAliases: survived.map(([name, alias]) => ({ name, alias })),
       }
     }
+
+    // Keep walking ONLY while the endpoint is still objecting to the names we
+    // just tried. A failure it did not blame on our spellings is a different
+    // problem, and retrying it is how a bounded ladder turns into a loop.
+    const blamedOurs = (attempt.droppedParams ?? []).some((d) =>
+      Object.values(renamed).includes(d),
+    )
+    if (!blamedOurs) break
   }
 
   // Attempt 3 — DROP. Every spelling refused, so the filter genuinely cannot
