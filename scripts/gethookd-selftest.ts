@@ -486,7 +486,10 @@ async function main() {
     '`compact` is MCP payload shaping and the REST endpoint refuses it',
   )
 
-  stubRefusing(['geo'], {
+  // `location` is the confirmed default now, so THAT is the name a drifting
+  // vendor would refuse — and `geo`, which its MCP wrapper takes, is the first
+  // spelling the ladder reaches for.
+  stubRefusing(['location'], {
     data: CAPTURED_ROWS.slice(0, 1),
     meta: { total: 12, has_more: false },
     used_credits: 0.01,
@@ -497,14 +500,14 @@ async function main() {
   check('a refused filter triggers exactly one retry', urls.length === 2, `${urls.length} requests`)
   check(
     'the retry stops sending the name that was refused',
-    new URL(urls[1]!).searchParams.get('geo') === null,
+    new URL(urls[1]!).searchParams.get('location') === null,
   )
   // A refused name is usually a RENAME, not a missing capability. Dropping the
   // country filter outright is what served ads from every market on earth to an
   // account scoped to US + AU, so the alternate spelling is tried FIRST.
   check(
     'the country filter is retried under its other name, not abandoned',
-    new URL(urls[1]!).searchParams.get('location') === 'US,AU',
+    new URL(urls[1]!).searchParams.get('geo') === 'US,AU',
     'dropping it silently widens a billed search to the whole world',
   )
   check(
