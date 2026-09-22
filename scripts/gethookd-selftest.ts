@@ -405,9 +405,21 @@ async function main() {
     })(),
     `sent ${startedAfter}`,
   )
+  // The run-time bar was a request param until the endpoint was probed and
+  // refused every spelling of it. Launched-recently alone is not proof;
+  // still-running-since is — so the bar moved to the rows rather than being
+  // dropped, and THAT is what has to hold.
+  stubFetch({
+    data: [
+      { id: 91, title: 'Ran a quarter', description: 'b', days_active: 120, status: 'active', display_format: 'image' },
+      { id: 92, title: 'Ran a week', description: 'b', days_active: 7, status: 'active', display_format: 'image' },
+    ],
+    meta: {},
+  })
+  const barred = await searchProvenAds({ focus: 'services' })
   check(
-    'a minimum run time is sent',
-    Number(param('run_time')) > 0,
+    'a minimum run time is enforced',
+    barred.ads.length === 1 && (barred.ads[0]!.daysActive ?? 0) >= 90,
     'launched-recently alone is not proof; still-running-since is',
   )
 
@@ -823,13 +835,14 @@ async function main() {
     `${marketUrls().length} market requests — every one of them is billed`,
   )
   check(
-    'every rung asked for at least ninety days',
-    urls.every((u) => Number(new URL(u).searchParams.get('run_time')) >= 90),
-    'the bar is never lowered to fill a feed',
+    'no rung lowered the bar to fill a feed',
+    climbed.ads.every((a) => (a.daysActive ?? 0) >= 90),
+    'this layer re-checks every row itself — the API cannot be trusted to have',
   )
   check(
-    'every rung asked for images only',
-    urls.every((u) => new URL(u).searchParams.get('ad_format') === 'images'),
+    'every reference is a static image',
+    climbed.ads.every((a) => a.format === 'image'),
+    'the design read needs a still, and the endpoint has no format filter to ask',
   )
   check(
     'every rung asked for live ads only',
@@ -1008,32 +1021,26 @@ async function main() {
 
   /* ------------------- the ladder walks past the first alias ---------------- */
 
-  const FORMAT_SPELLINGS = ['ad_format', 'format', 'ad_formats', 'formats', 'asset_type']
-  const RUN_TIME_SPELLINGS = ['run_time', 'min_days_active', 'days_active_min', 'min_run_time']
+  // Depth matters: `geo` was refused, and so was the first spelling tried
+  // after it. A ladder one rename deep would have dropped the country filter
+  // and served ads from every market on earth to an account scoped to US + AU.
+  const COUNTRY_SPELLINGS = ['geo', 'location', 'countries', 'country']
 
-  stubAcceptingOnly('formats', FORMAT_SPELLINGS, { data: [], meta: {} })
-  const formatRenamed = await searchProvenAds({ focus: 'services', format: 'image' })
+  stubAcceptingOnly('countries', COUNTRY_SPELLINGS, { data: [], meta: {} })
+  const deepRename = await searchProvenAds({ focus: 'services' })
   check(
-    'a format filter refused twice is found on the third spelling',
-    new URL(lastUrl).searchParams.get('formats') === 'images',
+    'a filter refused twice is found on the third spelling',
+    new URL(lastUrl).searchParams.get('countries') === 'US,AU',
     'one alias was not enough against the live endpoint',
   )
   check(
     'a rename that WORKED is not reported as dropped',
-    !(formatRenamed.note ?? '').includes('ad_format'),
+    !(deepRename.note ?? '').toLowerCase().includes('all markets'),
     'warning about a filter that ran trains the operator to ignore the banner',
   )
 
-  stubAcceptingOnly('min_days_active', RUN_TIME_SPELLINGS, { data: [], meta: {} })
-  await searchProvenAds({ focus: 'services' })
-  check(
-    'the 90-day proof bar survives a vendor rename',
-    new URL(lastUrl).searchParams.get('min_days_active') === '90',
-    'losing this silently drops half of what "proven" means here',
-  )
-
-  stubRefusingAlways(FORMAT_SPELLINGS, { data: [], meta: {} })
-  const allRefused = await searchProvenAds({ focus: 'services', format: 'image' })
+  stubRefusingAlways(COUNTRY_SPELLINGS, { data: [], meta: {} })
+  const allRefused = await searchProvenAds({ focus: 'services' })
   check(
     'every spelling refused still returns a feed',
     Array.isArray(allRefused.ads),
@@ -1041,8 +1048,8 @@ async function main() {
   )
   check(
     'and says the results are wider than asked for',
-    (allRefused.note ?? '').includes('ad_format'),
-    'silently serving video to someone who picked Static looks like success',
+    (allRefused.note ?? '').toLowerCase().includes('all markets'),
+    'silently serving global ads to someone who picked their markets looks like success',
   )
   check(
     'the ladder is bounded, not an open walk',
@@ -1104,6 +1111,62 @@ async function main() {
     noRule.ads.length >= withHeadline.ads.length,
     'the argument matters more than the treatment there',
   )
+
+  /* ------------- the bars the endpoint cannot apply, applied here ---------- */
+
+  const MIXED = {
+    data: [
+      { id: 11, title: 'Static that qualifies', description: 'b', days_active: 200, status: 'active', display_format: 'image' },
+      { id: 12, title: 'Video row', description: 'b', days_active: 200, status: 'active', display_format: 'video' },
+      { id: 13, title: 'Too new', description: 'b', days_active: 30, status: 'active', display_format: 'image' },
+      { id: 14, title: 'No run time reported', description: 'b', status: 'active', display_format: 'image' },
+    ],
+    meta: { total: 4, has_more: false },
+    used_credits: 0.04,
+  }
+
+  stubFetch(MIXED)
+  const statics = await searchProvenAds({ focus: 'services', format: 'image' })
+  check(
+    'a video row is not served to a page that asked for Static',
+    statics.ads.every((a) => a.format === 'image'),
+    'the endpoint refuses every spelling of the format filter, so this is the only place it can hold',
+  )
+  check(
+    'an ad short of the 90-day bar is not served',
+    statics.ads.every((a) => (a.daysActive ?? 0) >= 90),
+    'the other half of what "proven" means here',
+  )
+  check(
+    'a row reporting no run time gets no benefit of the doubt',
+    !statics.ads.some((a) => a.daysActive === undefined),
+    'it cannot clear a bar it does not report against',
+  )
+  check('exactly the qualifying row survives', statics.ads.length === 1 && statics.ads[0]!.id.endsWith('11'))
+  check(
+    'and the rows billed-for-then-binned are counted out loud',
+    (statics.note ?? '').includes('3 of 4'),
+    'the operator pays per returned row — a page that spent four to show one owes them that number',
+  )
+
+  stubFetch(MIXED)
+  await searchProvenAds({ focus: 'services', format: 'image' })
+  check(
+    'no refused filter is sent at all by default',
+    new URL(lastUrl).searchParams.get('ad_format') === null &&
+      new URL(lastUrl).searchParams.get('run_time') === null,
+    'probed dead under every spelling — sending them cost a round trip per search and bought nothing',
+  )
+
+  process.env.GETHOOKD_FORMAT_PARAM = 'display_format'
+  stubFetch(MIXED)
+  await searchProvenAds({ focus: 'services', format: 'image' })
+  check(
+    'a name confirmed by the probe narrows the search server-side',
+    new URL(lastUrl).searchParams.get('display_format') === 'images',
+    'so the feed stops paying for rows it is about to discard',
+  )
+  delete process.env.GETHOOKD_FORMAT_PARAM
 
   /* ---------------------------------- done -------------------------------- */
   restoreFetch()
