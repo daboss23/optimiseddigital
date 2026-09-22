@@ -475,6 +475,26 @@ export const audienceOptions: DirectiveOption[] = [
   },
 ]
 
+/**
+ * Campaign Offer — the TYPE of next step, not its name.
+ *
+ * It sets three things at once, which is why it is a strategic input rather
+ * than a label: the FRICTION of the ask, the PROOF BURDEN required to earn it,
+ * and the CTA FRAME the concepts are written to. An ad selling a free teardown
+ * and an ad selling a retainer are not the same ad with a different button.
+ *
+ * Ordered by friction, lowest first, so the list reads as the ladder it is.
+ *
+ * The set is written for a DIGITAL MARKETING AGENCY and the offers one
+ * actually runs — its own and its clients'. The original five were generic
+ * info-marketer offers and missed the agency ladder almost entirely: no audit,
+ * no case study, no DM trigger, no pilot, no retainer, no risk reversal. A
+ * missing offer type is not a missing menu item; it is a campaign written to
+ * the wrong friction, with the wrong proof and the wrong button.
+ *
+ * ATLAS appends whatever offers it derives from the connected website on top
+ * of these (`/api/strategy-options`), so this is a seed ladder, not a ceiling.
+ */
 export const offerOptions: DirectiveOption[] = [
   {
     label: NO_PREFERENCE,
@@ -482,29 +502,70 @@ export const offerOptions: DirectiveOption[] = [
       'The user has no offer preference — select the most appropriate offer type and CTA frame based on the campaign brief, angle, and awareness stage.',
   },
   {
-    label: 'Strategy Call / Application',
+    label: 'Free Lead Magnet',
+    description: 'A guide, template, swipe file or checklist — delivered instantly.',
     directive:
-      'High-commitment next step. The concept must qualify hard — state exactly who this is for and who it is not. Carry heavy social proof with named results. Pre-frame the call as valuable and selective, not a sales pitch. High proof burden.',
+      'Low friction, easy yes. Lead with the specific tangible promise of the asset — name what it IS and what it saves them. Light proof burden, heavy emphasis on the concrete deliverable they receive immediately. Do not sell the service behind it; the asset is the whole offer at this stage.',
+  },
+  {
+    label: 'Free Audit / Teardown',
+    description: 'A personalised review of THEIR account, funnel, site or ads.',
+    directive:
+      'Low friction to accept, high perceived value, and personalised — this is not a downloadable. The concept must name exactly what will be examined and what they will SEE as a result ("where the leak is", "which ad is carrying the account"). Demonstrate competence in the ad itself: a specific observation about how businesses like theirs get this wrong earns the audit far better than adjectives about the team. Never imply a guarantee of results. Medium proof burden — credibility, not case studies.',
+  },
+  {
+    label: 'DM / Comment Trigger',
+    description: 'Comment or message a keyword to get it — conversation, not a click.',
+    directive:
+      'The lowest-friction ask on the platform and a different CTA frame entirely: the next step happens INSIDE Meta, not on a landing page. State the trigger word plainly and once, make the thing they receive specific and immediate, and write the primary text so the instruction survives the 125-character fold. The CTA button is a message/send action, never "Learn more". Minimal proof burden — the ask is a word, not a commitment.',
+  },
+  {
+    label: 'Case Study / Proof Asset',
+    description: 'One named result, shown in full — the proof IS the offer.',
+    directive:
+      'The result carries the ad. Lead with the specific, attributable outcome — who, what changed, over what period — and let the mechanism explain itself second. Highest proof burden of any offer here and the least tolerance for vagueness: an unnamed "client" and a round number read as invented. Use only outcomes the brief or the Vault actually supplies; never manufacture a figure to fill this shape, and never borrow one from a reference ad. The CTA asks to see the whole story, not to buy.',
   },
   {
     label: 'Webinar / Masterclass',
+    description: 'A scheduled session that trades an hour for one insight.',
     directive:
       'Medium friction. Sell the ONE insight or transformation they will walk away with. Curiosity and outcome-driven. The CTA promise is the discovery, not the product.',
   },
   {
-    label: 'Free Lead Magnet',
+    label: 'Low-Ticket Offer',
+    description: 'A productised deliverable at a price that needs no call.',
     directive:
-      'Low friction, easy yes. Lead with the specific tangible promise of the asset. Light proof burden, heavy emphasis on the concrete deliverable they receive immediately.',
+      'Transactional. Lead with value-to-price asymmetry and the immediate outcome they receive. Price anchoring matters here.',
+  },
+  {
+    label: 'Free Trial / Pilot',
+    description: 'A bounded first engagement — one campaign, one month, one build.',
+    directive:
+      'The offer is REDUCED RISK, not reduced price, so the creative must make the boundary explicit: what is included, how long it runs, and what happens at the end. Name the smallest unit of work that still proves something. Medium-high proof burden — they are committing time and access, not just an email. Address the real objection, which is being locked in.',
+  },
+  {
+    label: 'Strategy Call / Application',
+    description: 'A booked call, qualified before it is offered.',
+    directive:
+      'High-commitment next step. The concept must qualify hard — state exactly who this is for and who it is not. Carry heavy social proof with named results. Pre-frame the call as valuable and selective, not a sales pitch. High proof burden.',
+  },
+  {
+    label: 'Done-For-You Retainer',
+    description: 'The service itself, sold directly — usually to warm or retargeted traffic.',
+    directive:
+      'Selling the engagement, not a step toward it. Assume familiarity: this is a warm or retargeting frame and problem education is wasted space. Lead with the mechanism and what is handled FOR them, then the proof, then the terms. Name the scope concretely enough that the wrong prospect disqualifies themselves. Highest friction here — the ad must earn a commercial conversation, so every claim needs evidence behind it.',
+  },
+  {
+    label: 'Performance / Risk Reversal',
+    description: 'A guarantee or pay-on-results structure — the risk moves to us.',
+    directive:
+      'The STRUCTURE is the hook: what they do not pay for, and when. State the reversal in the first line, then make it credible — an unqualified guarantee reads as desperation, a specific and bounded one reads as confidence. The conditions must appear in the ad package, never only in the fine print, and never rendered on the image where they cannot be read. This offer carries real compliance exposure: no earnings claims, no implied income, no promise of a specific result, and every guarantee stated as the brief states it and not one degree stronger.',
   },
   {
     label: 'Live Event / In-Person',
+    description: 'A room, a date and a seat count.',
     directive:
       'Lead with scarcity, the room, and who else will be there. Urgency is primary. Date, location, and limited seats are the creative levers.',
-  },
-  {
-    label: 'Low-Ticket Offer',
-    directive:
-      'Transactional. Lead with value-to-price asymmetry and the immediate outcome they receive. Price anchoring matters here.',
   },
 ]
 

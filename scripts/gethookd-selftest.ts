@@ -29,6 +29,11 @@ import {
   searchProvenAds,
 } from '@/lib/gethookd'
 import {
+  CRAFT_ARCHETYPES,
+  MARKETING_NICHE_IDS,
+} from '@/lib/gethookd'
+import { offerOptions, NO_PREFERENCE } from '@/lib/reactor-inputs'
+import {
   MIN_DAYS_ACTIVE,
   echoEvidence,
   isEligible,
@@ -38,6 +43,7 @@ import {
   researchTerms,
   shortlist,
   sparkEvidence,
+  researchSummary,
 } from '@/lib/gethookd/research'
 
 let failures = 0
@@ -244,7 +250,13 @@ async function main() {
     services.every((id) => !ecom.includes(id)),
     'a niche id is in both focuses, so "Both" would double-count it',
   )
-  check('"all" is the union', all.length === services.length + ecom.length)
+  check(
+    '"all" is the union of every focus',
+    services.every((id) => all.includes(id)) &&
+      ecom.every((id) => all.includes(id)) &&
+      MARKETING_NICHE_IDS.every((id) => all.includes(id)),
+    'a focus the operator can select must be reachable from "Everything" too',
+  )
   check('"all" carries no duplicate ids', new Set(all).size === all.length)
   check(
     'every focused id is a real niche',
@@ -544,20 +556,33 @@ async function main() {
     ...extra,
   })
 
-  /** Serve `body` only when the request carries no `query`, and count requests. */
-  function stubQueryless(body: unknown) {
+  /**
+   * Serve `body` only when the request carries no `query`, and count requests.
+   * `craftBody`, when given, answers the craft rung instead — the one that
+   * drops the niche filter and asks for the static archetypes.
+   */
+  function stubQueryless(body: unknown, craftBody?: unknown) {
     urls = []
     globalThis.fetch = (async (input: RequestInfo | URL) => {
       lastUrl = typeof input === 'string' ? input : input.toString()
       urls.push(lastUrl)
       const sent = new URL(lastUrl).searchParams
-      const payload = sent.get('query') ? { data: [], meta: {} } : body
+      const isCraft = sent.get('creative_categories') !== null
+      const payload = sent.get('query')
+        ? { data: [], meta: {} }
+        : isCraft
+          ? (craftBody ?? { data: [], meta: {} })
+          : body
       return new Response(JSON.stringify(payload), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       })
     }) as typeof fetch
   }
+
+  /** Requests that belong to each track, by the filters they carry. */
+  const craftUrls = () => urls.filter((u) => new URL(u).searchParams.get('creative_categories') !== null)
+  const marketUrls = () => urls.filter((u) => new URL(u).searchParams.get('creative_categories') === null)
 
   // --- the bar itself -----------------------------------------------------
   const proven = {
@@ -630,6 +655,126 @@ async function main() {
     researchFocus({ brief: 'make it good' }) === 'all',
   )
 
+  // --- the operator's OWN category ---------------------------------------
+  // The deployment is a digital marketing agency, so it runs two kinds of
+  // campaign: its clients' and its own. They are not the same research
+  // problem — an ad selling roof repairs and an ad selling a funnel build
+  // share no buyer, no objection and no proof.
+  check(
+    'an agency campaign researches the marketing category',
+    researchFocus({ industry: 'digital marketing agency', offerName: 'Funnel Build-Out' }) ===
+      'marketing',
+  )
+  check(
+    'named martech routes there too',
+    researchFocus({ brief: 'Done-for-you funnel builds on ClickFunnels and Kajabi' }) === 'marketing',
+  )
+  check(
+    'and a client brief still does not',
+    researchFocus({ brief: 'more leads for our roofing campaign targeting homeowners' }) ===
+      'services',
+    'the agency sells TO roofers; the ads worth studying for a roofing campaign are roofing ads',
+  )
+  check(
+    'the marketing focus carries martech, info and agencies',
+    MARKETING_NICHE_IDS.includes(3) && MARKETING_NICHE_IDS.includes(9),
+    'App/Software is the martech itself; Info is where funnel advertising is most developed',
+  )
+  check(
+    'the everything focus lists no niche twice',
+    new Set(nicheCsvFor('all').split(',')).size === nicheCsvFor('all').split(',').length,
+    'the focuses overlap on purpose — Service Business sits in both services and marketing',
+  )
+
+  // --- provenance: a marketing word is noise, except when it is the subject -
+  check(
+    'a marketing word in the BRIEF BODY is still noise',
+    !researchTerms({ brief: 'we need a better funnel for our marketing campaign' }).includes(
+      'funnel',
+    ),
+    'every client brief is full of this vocabulary; searching it bills per row for nothing',
+  )
+  check(
+    'but the same word NAMED in the offer is the subject',
+    researchTerms({ offerName: 'Funnel Build-Out', industry: 'digital marketing agency' }).includes(
+      'funnel',
+    ),
+    'an agency researching its own market must be able to search its own vocabulary',
+  )
+  check(
+    'a real market noun still outranks trade vocabulary beside it',
+    researchTerms({ offerName: 'Roof Replacement Quote' }).includes('roof') &&
+      !researchTerms({ offerName: 'Roof Replacement Quote' }).includes('quote'),
+    '"quote" is the mechanism; searching it returns every lead-gen ad in the library',
+  )
+  check(
+    'a martech brand name survives intact',
+    researchTerms({ offerName: 'ClickFunnels & Kajabi setup' }).includes('clickfunnels'),
+  )
+  check(
+    'a three-letter market acronym is not lost to the length floor',
+    researchTerms({ offerName: 'Local SEO retainer', industry: 'marketing agency' }).includes('seo'),
+    'it should not lose a tiebreak to a longer, vaguer word like "local"',
+  )
+  check(
+    'the offer TYPE reaches the term pool',
+    researchTerms({ offerType: 'Free Audit / Teardown', industry: 'digital marketing agency' }).includes(
+      'audit',
+    ),
+    'an audit campaign used to search everything except the word audit',
+  )
+  check(
+    'a generic industry cannot supply every campaign its search terms',
+    !researchTerms({
+      industry: 'digital marketing agency',
+      brief: 'Free ad account audit for founders spending over 10k a month',
+    }).includes('digital'),
+    '"digital marketing agency" is true of the business and useless for telling one campaign from another',
+  )
+  check(
+    'plain filler never becomes a search term',
+    !researchTerms({
+      offerName: 'Funnel Build-Out',
+      brief: 'business owners who already run ads but their funnel leaks',
+    }).some((t) => ['already', 'owners', 'their'].includes(t)),
+  )
+
+  /* -------- the offer ladder an agency actually sells against ------------- */
+  const offerLabels = offerOptions.map((o) => o.label)
+  for (const required of [
+    'Free Audit / Teardown',
+    'DM / Comment Trigger',
+    'Case Study / Proof Asset',
+    'Free Trial / Pilot',
+    'Done-For-You Retainer',
+    'Performance / Risk Reversal',
+  ]) {
+    check(`the offer ladder carries "${required}"`, offerLabels.includes(required))
+  }
+  check(
+    'every offer type states its own friction, proof burden and CTA frame',
+    offerOptions.every((o) => o.directive.trim().length > 80),
+    'the label is the menu item; the directive is what actually reaches the orchestrator',
+  )
+  check(
+    'every offer but the sentinel explains itself in the picker',
+    offerOptions.filter((o) => o.label !== NO_PREFERENCE).every((o) => Boolean(o.description)),
+  )
+  check(
+    'the risk-reversal offer carries its compliance constraint',
+    /no earnings claims|compliance/i.test(
+      offerOptions.find((o) => o.label === 'Performance / Risk Reversal')?.directive ?? '',
+    ),
+    'a guarantee offer is the one most likely to write an unlawful claim',
+  )
+  check(
+    'the case-study offer forbids borrowing a result',
+    /never (manufacture|borrow)/i.test(
+      offerOptions.find((o) => o.label === 'Case Study / Proof Asset')?.directive ?? '',
+    ),
+    'the proof IS the offer here, which is exactly when one gets invented',
+  )
+
   // --- the ladder ---------------------------------------------------------
   stubQueryless({
     data: [row(1, 'Alpha', 300), row(2, 'Beta', 200), row(3, 'Gamma', 150), row(4, 'Delta', 95)],
@@ -638,11 +783,11 @@ async function main() {
     remaining_credits: 50,
   })
   const climbed = await researchProvenAds({ offerName: 'Roofing Lead Machine' })
-  check('the ladder falls back to the unqueried browse', climbed.ads.length === 4)
+  check('the ladder falls back to the unqueried browse', climbed.market.length >= 3)
   check(
     'and it stops the moment it has enough',
-    urls.length <= 3,
-    `${urls.length} requests — every one of them is billed`,
+    marketUrls().length <= 3,
+    `${marketUrls().length} market requests — every one of them is billed`,
   )
   check(
     'every rung asked for at least ninety days',
@@ -663,10 +808,11 @@ async function main() {
     'page size is the cost ceiling, and it is set before anything runs',
   )
   check('the path taken is reported', climbed.steps.length >= 1)
+  check('every step names the pool it was filling', climbed.steps.every((s) => s.pool))
   check('credits spent are carried back', (climbed.credits?.used ?? 0) > 0)
   check(
     'the shortlist is ordered by run time',
-    climbed.ads[0]!.daysActive === 300,
+    climbed.market[0]!.daysActive === 300,
     'the longest-running ad leads — that is the only direct evidence here',
   )
 
@@ -674,11 +820,12 @@ async function main() {
   stubFetch({ data: [row(9, 'Fresh', 5)], meta: {} })
   const none = await researchProvenAds({ offerName: 'Roofing Lead Machine' })
   check('a corpus of fresh ads yields no references', none.ads.length === 0)
+  check('and neither pool is filled', none.market.length === 0 && none.craft.length === 0)
   check('and it says so rather than lowering the bar', Boolean(none.note))
   check('the note names the bar', (none.note ?? '').includes('90'))
   check(
     'the ladder is bounded even when every rung is empty',
-    urls.length <= 3,
+    urls.length <= 4,
     `${urls.length} billed requests`,
   )
   check(
@@ -706,6 +853,87 @@ async function main() {
     spread.ads.map((a) => a.brand).join(', '),
   )
   check('a second advertiser still makes it in', spread.ads.some((a) => a.brand === 'Quiet'))
+
+  /* ------------ the two pools: breadth for design, not for copy ----------- */
+
+  stubQueryless(
+    { data: [row(41, 'Local Plumber', 200), row(42, 'Local Legal', 150)], meta: {} },
+    {
+      data: [
+        row(51, 'Supplement Co', 600),
+        row(52, 'Skincare Co', 500),
+        // No headline. The archetype tag does not make an untreated product
+        // photo a construction worth learning from.
+        row(53, 'Watch Reseller', 480, { title: null }),
+      ],
+      meta: {},
+    },
+  )
+  const split = await researchProvenAds({ offerName: 'Roofing Lead Machine' })
+
+  check(
+    'the craft rung drops the niche filter',
+    craftUrls().every((u) => new URL(u).searchParams.get('niche') === null),
+    'construction transfers between verticals; the market scope is what keeps the ARGUMENT honest',
+  )
+  check(
+    'and narrows on static archetypes instead',
+    craftUrls().every(
+      (u) => new URL(u).searchParams.get('creative_categories') === CRAFT_ARCHETYPES.join(','),
+    ),
+    'breadth without the archetypes returns the market at large, most of it an untreated photo',
+  )
+  check(
+    'the market rungs keep the niche filter',
+    marketUrls().every((u) => (new URL(u).searchParams.get('niche') ?? '').length > 0),
+  )
+  check('exactly one craft search is ever run', craftUrls().length === 1, `${craftUrls().length}`)
+  check('the craft pool is filled', split.craft.length > 0)
+  check('the market pool is filled', split.market.length > 0)
+  check(
+    'a craft row with no headline is rejected',
+    !split.craft.some((a) => a.brand === 'Watch Reseller'),
+    'the library files untreated product photos under an archetype too',
+  )
+  check(
+    'the pools never share a row',
+    split.craft.every((c) => !split.market.some((m) => m.id === c.id)),
+  )
+
+  check(
+    'ECHO is given the on-market ads ONLY',
+    split.market.every((a) => echoEvidence(split).includes(a.brand)) &&
+      split.craft.every((a) => !echoEvidence(split).includes(a.brand)),
+    'a DTC ad sells a purchase in one line; a service ad sells a conversation. Widening this pool is the one widening that makes the ads worse',
+  )
+  check(
+    'SPARK is given both, in labelled sets',
+    split.market.every((a) => sparkEvidence(split).includes(a.brand)) &&
+      split.craft.every((a) => sparkEvidence(split).includes(a.brand)),
+  )
+  check(
+    'and SPARK is told the craft set is construction only',
+    /CONSTRUCTION ONLY/.test(sparkEvidence(split)),
+  )
+  check(
+    'OPUS is told which set carries the argument and which the construction',
+    /ARGUMENT/.test(provenAdBlock(split)) && /CONSTRUCTION/.test(provenAdBlock(split)),
+  )
+  check(
+    'the telemetry line names the mix',
+    /on-market/.test(researchSummary(split)) && /best-built/.test(researchSummary(split)),
+  )
+
+  // Craft alone is a real state, and it must not be passed off as market fit.
+  stubQueryless({ data: [], meta: {} }, { data: [row(61, 'Supplement Co', 600)], meta: {} })
+  const craftOnly = await researchProvenAds({ offerName: 'Roofing Lead Machine' })
+  check('craft can stand alone when nothing on-market qualifies', craftOnly.craft.length === 1)
+  check('ECHO gets nothing rather than the wrong market', echoEvidence(craftOnly) === '')
+  check(
+    'and the gap is stated, not hidden',
+    /construction only/i.test(craftOnly.note ?? ''),
+    craftOnly.note ?? '(no note)',
+  )
 
   // --- deduplication ------------------------------------------------------
   const dupes = shortlist(

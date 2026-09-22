@@ -65,6 +65,27 @@ export interface ProvenAdQuery {
    * row itself rather than trusting the sort.
    */
   launchWindowDays?: number | null
+  /**
+   * Which slice of the library to search.
+   *
+   * `icp` (default) scopes to the focus's niches — the right answer when the
+   * question is "what is working in MY market". `library` removes the niche
+   * filter entirely, which is the right answer when the question is "what does
+   * a well-built static ad look like": construction transfers across verticals
+   * even though the argument does not, and the unscoped pool is roughly 60x
+   * larger and visibly better made.
+   */
+  scope?: 'icp' | 'library'
+  /**
+   * Static-ad archetype ids — the filter the product calls "Static ad style"
+   * (Before and After, Testimonial, Us vs Them, Facts and Stats, Reasons Why,
+   * Features and Benefits). Ids come from `list_creative_categories`.
+   *
+   * This is the filter that makes breadth worth having: it buys CONSTRUCTION
+   * rather than noise. Removing the niche filter without it returns the whole
+   * market, most of which is an untreated product photo.
+   */
+  creativeCategories?: number[]
   geo?: string
   limit?: number
   page?: number

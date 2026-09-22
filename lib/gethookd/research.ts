@@ -50,7 +50,7 @@
  * ---------------------------------------------------------------------------
  */
 
-import { searchProvenAds } from './index'
+import { searchProvenAds, CRAFT_ARCHETYPES } from './index'
 import { defaultGeo, type IcpFocus } from './icp'
 import type { CreditUsage, ProvenAd } from './types'
 
@@ -89,14 +89,30 @@ const LAUNCH_WINDOW_DAYS = (() => {
 /** References handed to the agents. More than this is noise in a prompt. */
 const SHORTLIST = Number(process.env.GETHOOKD_RESEARCH_SHORTLIST) || 5
 
+/**
+ * How the shortlist splits between the two pools.
+ *
+ * MARKET is the larger share because it is the one that can be wrong in a way
+ * that matters: a craft reference that does not fit teaches a layout nobody
+ * uses, while a market reference that does not fit teaches the wrong argument
+ * to the wrong buyer.
+ */
+const MARKET_SHORTLIST = Math.max(1, Math.round(SHORTLIST * 0.6))
+const CRAFT_SHORTLIST = Math.max(1, SHORTLIST - MARKET_SHORTLIST)
+
 /** Below this the briefing is reported as thin rather than presented as proof. */
 const MIN_REFERENCES = 3
 
 /** Rows requested per rung of the ladder. Every row is billed. */
-const PER_STEP = 8
+const PER_STEP = 6
 
-/** Hard ceiling on requests per campaign — the cost bound, before anything runs. */
-const MAX_STEPS = 3
+/**
+ * Hard ceiling on requests per campaign — the cost bound, before anything runs.
+ * Three market rungs plus one craft rung, at PER_STEP rows each: 24 billed
+ * rows, the same ceiling as before the pools were split.
+ */
+const MAX_MARKET_STEPS = 3
+const MAX_STEPS = MAX_MARKET_STEPS + 1
 
 /** One advertiser must not teach the whole campaign. */
 const MAX_PER_BRAND = 2
@@ -124,8 +140,19 @@ export interface ResearchBrief {
 
 /* ----------------------------- the research out --------------------------- */
 
+/**
+ * The two things a reference can teach.
+ *
+ * Splitting them is the whole design: breadth makes the DESIGN better and the
+ * COPY worse, so neither "search my niche" nor "search everything" is the
+ * right answer on its own.
+ */
+export type ReferencePool = 'market' | 'craft'
+
 /** One rung of the ladder, kept so the telemetry can show the actual path. */
 export interface ResearchStep {
+  /** Which pool this rung was filling. */
+  pool: ReferencePool
   /** Human line for the telemetry feed. */
   label: string
   query: string | null
@@ -139,7 +166,27 @@ export interface ResearchStep {
 
 export interface AdResearch {
   configured: boolean
-  /** The shortlist, strongest first. Every one clears eligibility. */
+  /**
+   * ON-MARKET references: ads running in the ICP this brief sits in. They
+   * teach WHAT TO SAY and to whom — the argument, the objection, the proof a
+   * buyer in this category needs. ECHO sees only these.
+   */
+  market: ProvenAd[]
+  /**
+   * CRAFT references: the best-constructed long-running statics in the whole
+   * library, regardless of vertical, filtered to the static-ad archetypes.
+   * They teach HOW TO BUILD ONE — the layout, the hierarchy, the contrast
+   * device. SPARK sees these; ECHO never does.
+   *
+   * Measured, not assumed. Scoped to the service niches the library holds ~355
+   * eligible statics; unscoped it holds ~22,000, and the difference shows in
+   * the craft. What does NOT transfer is the persuasion: a DTC ad sells a
+   * purchase and a service ad sells a conversation, so handing "Grab our BOGO
+   * deal" to a lead-gen campaign is how breadth becomes a liability. Hence two
+   * pools rather than one wider one.
+   */
+  craft: ProvenAd[]
+  /** Both pools, market first. For telemetry, banking and dedup only. */
   ads: ProvenAd[]
   steps: ResearchStep[]
   focus: IcpFocus
@@ -154,6 +201,8 @@ export interface AdResearch {
 
 const EMPTY: AdResearch = {
   configured: false,
+  market: [],
+  craft: [],
   ads: [],
   steps: [],
   focus: 'all',
@@ -164,46 +213,86 @@ const EMPTY: AdResearch = {
 /* --------------------------- term construction ---------------------------- */
 
 /**
- * Words that describe MARKETING rather than a MARKET.
- *
- * Every brief is full of them — "leads", "campaign", "offer", "conversions" —
- * and every one of them matches tens of thousands of ads, so searching on one
- * is the same as not searching at all while still being billed per row. What
- * we want out of a brief is the noun that names the business: roofing, dental,
- * solar, skincare, conveyancing.
+ * Ordinary English filler. Four letters or more, so the length floor below
+ * lets them through — and a search for "need" or "from" is a fully billed
+ * search for nothing. Always stripped, from every source.
  */
-const GENERIC = new Set([
-  // Ordinary English filler. Four letters or more, so the length floor below
-  // lets them through — and a search for "need" or "from" is a fully billed
-  // search for nothing.
+const FILLER = new Set([
   'also','because','been','before','being','between','both','doing','done','down','each','even',
   'ever','every','from','gets','give','gives','going','have','here','into','just','keep','know',
   'like','made','make','makes','many','most','much','must','only','other','over','own','really',
   'right','same','should','some','such','sure','take','takes','than','that','their','them','then',
   'there','these','thing','things','those','through','under','very','want','wants','well','were',
-  'will','would','yours',
-
-  'ad','ads','advert','adverts','advertising','agency','angle','audience','awareness','brand',
-  'branding','brief','business','businesses','buy','call','calls','campaign','campaigns','client',
-  'clients','cold','company','concept','concepts','content','conversion','conversions','copy',
-  'creative','creatives','custom','customer','customers','digital','drive','ecommerce','engine',
-  'facebook','feed','free','funnel','generation','google','growth','help','high','hook','hooks',
-  'image','images','instagram','launch','lead','leads','learn','local','looking','market',
-  'marketing','media','meta','more','need','new','offer','offers','online','optimised','optimized',
-  'owner','owners','page','paid','people','performance','platform','post','price','product',
-  'products','profit','promo','prospect','prospects','quality','quote','quotes','reach','result',
-  'results','retargeting','revenue','roas','sale','sales','scale','sell','selling','service',
-  'services','shop','social','solution','solutions','static','store','strategy','system','systems',
-  'target','targeting','testimonial','they','this','time','traffic','trust','video','want','warm',
-  'website','what','when','where','which','with','work','working','your',
+  'will','would','yours','what','when','where','which','with','work','working','your','they','this',
+  'more','need','new','best','high','looking','help','people','drive','reach','scale','sell',
+  'selling','buy','target','trust','quality','time',
+  // A second pass, all of it seen in real briefs. None of these names a
+  // market, and each one is long enough to clear the length floor and short
+  // enough on specificity to win a tiebreak it should lose.
+  'about','after','again','against','already','always','another','anyone','anything','around',
+  'because','better','cannot','could','currently','days','different','does','doesnt','during',
+  'else','enough','everything','getting','goes','good','great','hard','having','instead','isnt',
+  'itself','less','little','long','month','months','never','nothing','often','once','perhaps',
+  'possible','rather','ready','runs','said','says','seen','several','since','someone','something',
+  'sometimes','soon','still','stop','thats','them','they','though','together','using','usually',
+  'week','weeks','whether','while','whole','without','year','years','yet',
 ])
 
-function words(text: string | undefined): string[] {
+/**
+ * Words that describe MARKETING rather than a MARKET — but only sometimes.
+ *
+ * In a client brief they are pure noise: "we want more leads for our roofing
+ * campaign" is about ROOFING, and searching "leads" or "campaign" matches tens
+ * of thousands of ads while being billed per row. What we want out of that
+ * brief is the noun that names the business.
+ *
+ * But this deployment is a digital marketing agency, and when the campaign is
+ * its OWN, these words stop being noise and become the vertical: an offer
+ * named "Funnel Build-Out" or an industry of "digital marketing agency" is
+ * literally about funnels and agencies. So they are stripped by PROVENANCE
+ * rather than outright — see `words()`. Getting this wrong in either direction
+ * is expensive: strip them everywhere and the agency can never research its
+ * own market; strip them nowhere and every client brief searches "leads".
+ */
+const TRADE_TERMS = new Set([
+  'ad','ads','advert','adverts','advertising','agency','angle','audience','awareness','brand',
+  'branding','brief','business','businesses','call','calls','campaign','campaigns','client',
+  'clients','cold','company','concept','concepts','content','conversion','conversions','copy',
+  'creative','creatives','custom','customer','customers','digital','ecommerce','engine','facebook',
+  'feed','free','funnel','funnels','generation','google','growth','hook','hooks','image','images',
+  'launch','lead','leads','learn','local','magnet','magnets','market','marketing','media','meta',
+  'offer','offers','online','optimised','optimized','owner','owners','page','paid','platform',
+  'post','price','product','products','profit','promo','prospect','prospects','quote','quotes',
+  'result','results','retargeting','revenue','roas','sale','sales','service','services','shop',
+  'social','solution','solutions','static','store','strategy','system','systems','testimonial',
+  'traffic','video','website',
+])
+
+/**
+ * Three-letter terms that genuinely name a market, kept against the length
+ * floor. Without these an agency brief loses SEO, PPC and CRM — the exact
+ * words that would find the ads worth studying.
+ */
+const SHORT_MARKET_TERMS = new Set(['seo', 'ppc', 'crm', 'cro', 'b2b', 'b2c', 'dtc', 'ugc'])
+
+/**
+ * Pull candidate market nouns out of a piece of text.
+ *
+ * `trade` says whether marketing vocabulary counts here. It is true only for
+ * the high-provenance fields — what the operator NAMED the offer, and what the
+ * connected website says the business does — because a word chosen that
+ * deliberately is a subject, not filler.
+ */
+function words(text: string | undefined, opts: { trade?: boolean } = {}): string[] {
   return (text ?? '')
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, ' ')
     .split(/\s+/)
-    .filter((w) => w.length >= 4 && !GENERIC.has(w))
+    .filter((w) => {
+      if (!w || FILLER.has(w)) return false
+      if (w.length < 4) return SHORT_MARKET_TERMS.has(w)
+      return opts.trade ? true : !TRADE_TERMS.has(w)
+    })
 }
 
 /**
@@ -216,15 +305,43 @@ function words(text: string | undefined): string[] {
  */
 export function researchTerms(brief: ResearchBrief): string[] {
   const scored = new Map<string, number>()
-  const add = (text: string | undefined, weight: number) => {
-    for (const w of words(text)) scored.set(w, (scored.get(w) ?? 0) + weight)
+  const add = (text: string | undefined, weight: number, trade = false) => {
+    for (const w of words(text, { trade })) {
+      // Trade vocabulary is ALLOWED in a high-provenance field but never
+      // preferred within it. "Roof Replacement Quote" is about roof
+      // replacement; "quote" is the mechanism, and searching it returns every
+      // lead-gen ad in the library. Halving it means a real market noun in the
+      // same field always outranks it, while "Funnel Build-Out" still finds
+      // "funnel" when there is nothing better beside it.
+      const isTrade = trade && TRADE_TERMS.has(w)
+      // Weighted BELOW a plain noun from the brief body on purpose. An
+      // industry of "digital marketing agency" would otherwise supply the two
+      // best-scoring words on every one of that agency's campaigns, and every
+      // brief would search "marketing, digital" — true of the business, and
+      // useless as a way to tell one campaign from another.
+      // An acronym that survived the length floor is there because it names a
+      // market and nothing else does. It should not then lose a tiebreak to a
+      // longer, vaguer word — which is exactly how "Local SEO retainer" came
+      // back searching "local".
+      const isAcronym = SHORT_MARKET_TERMS.has(w)
+      const value = weight * (isTrade ? 0.3 : isAcronym ? 1.5 : 1)
+      scored.set(w, (scored.get(w) ?? 0) + value)
+    }
   }
 
-  // Provenance order: what she named > what the site says she sells > the brief.
-  add(brief.offerName, 6)
-  add(brief.industry, 5)
-  add(brief.audienceDescriptor, 4)
-  for (const k of brief.keywords ?? []) add(k, 4)
+  // Provenance order: what she named > what the site says she sells > the
+  // brief. The first four allow marketing vocabulary, because a word placed in
+  // an offer name or read off the connected website is the subject; the last
+  // two do not, because a brief body is full of it by nature.
+  add(brief.offerName, 6, true)
+  add(brief.industry, 5, true)
+  // The offer TYPE is a chosen strategic input, not prose, and it often
+  // carries the sharpest noun in the whole brief: "audit", "teardown",
+  // "retainer", "webinar". Leaving it out meant an audit campaign searched
+  // everything except the word audit.
+  add(brief.offerType, 3, true)
+  add(brief.audienceDescriptor, 4, true)
+  for (const k of brief.keywords ?? []) add(k, 4, true)
   add(brief.campaignName, 2)
   add(brief.brief, 2)
 
@@ -258,8 +375,20 @@ export function researchFocus(brief: ResearchBrief): IcpFocus {
     .join(' ')
     .toLowerCase()
 
+  // Checked FIRST, and deliberately so. This deployment IS a digital marketing
+  // agency, so a brief about funnels, martech or lead generation is most
+  // likely the agency's own campaign rather than a client's — and the ads
+  // worth studying for it are other agencies, the software and the info
+  // offers, not the roofers and dentists it sells TO. A brief that is
+  // genuinely a client's names the client's trade, which the services and
+  // e-commerce tests below catch.
+  const marketing =
+    /\b(agency|agencies|marketing|martech|funnel|funnels|clickfunnels|gohighlevel|highlevel|kajabi|kartra|hubspot|mailchimp|klaviyo|activecampaign|convertkit|lead magnet|lead-magnet|opt-?in|landing page|email list|drip|nurture sequence|crm|seo|ppc|paid ads|ad spend|media buying|media buyer|copywriting|course|cohort|mastermind|saas|retainer|white label|white-label|done-for-you|dfy|teardown|ad account|account audit|funnel audit)\b/.test(
+      hay,
+    )
+
   const service =
-    /\b(call|consult|consultation|application|appointment|booking|quote|audit|clinic|agency|contractor|installer|dental|dentist|legal|lawyer|accountant|coach|coaching|roofing|plumbing|hvac|landscap|solar|salon|spa|fitness|studio|practice|realtor|real estate|mortgage|insurance|b2b|lead magnet|webinar|masterclass)\b/.test(
+    /\b(call|consult|consultation|application|appointment|booking|quote|audit|clinic|contractor|installer|dental|dentist|legal|lawyer|accountant|coach|coaching|roofing|plumbing|hvac|landscap|solar|salon|spa|fitness|studio|practice|realtor|real estate|mortgage|insurance|webinar|masterclass)\b/.test(
       hay,
     )
   const ecom =
@@ -267,8 +396,9 @@ export function researchFocus(brief: ResearchBrief): IcpFocus {
       hay,
     )
 
+  if (marketing && !ecom) return 'marketing'
   if (service && !ecom) return 'services'
-  if (ecom && !service) return 'ecommerce'
+  if (ecom && !service && !marketing) return 'ecommerce'
   return 'all'
 }
 
@@ -284,13 +414,23 @@ export function researchFocus(brief: ResearchBrief): IcpFocus {
  * nothing and is the difference between "90+ days" being a promise and being
  * a parameter we happened to send.
  */
-export function isEligible(ad: ProvenAd, minDays = MIN_DAYS_ACTIVE): boolean {
+export function isEligible(
+  ad: ProvenAd,
+  minDays = MIN_DAYS_ACTIVE,
+  pool: ReferencePool = 'market',
+): boolean {
   if (ad.format !== 'image') return false
   if (!ad.imageUrl) return false
   if (typeof ad.daysActive !== 'number' || ad.daysActive < minDays) return false
   if (LAUNCH_WINDOW_DAYS !== null && ad.daysActive > LAUNCH_WINDOW_DAYS) return false
-  // A reference with no words teaches ECHO nothing and gives OPUS no structure
-  // to read. The still alone is a mood board, not evidence.
+  // A craft reference must carry a HEADLINE, not merely words. The archetype
+  // tag does not guarantee construction — the library will happily return an
+  // untreated product photo filed under "Features and Benefits", with the same
+  // performance tier as a properly built ad beside it. A headline is the
+  // cheapest available proof that somebody designed the thing.
+  if (pool === 'craft') return Boolean(ad.title.trim())
+  // A market reference with no words teaches ECHO nothing and gives OPUS no
+  // structure to read. The still alone is a mood board, not evidence.
   return Boolean(ad.title.trim() || ad.body.trim())
 }
 
@@ -360,6 +500,7 @@ export function shortlist(ads: ProvenAd[], terms: string[], limit = SHORTLIST): 
 /* --------------------------------- the run -------------------------------- */
 
 interface Rung {
+  pool: ReferencePool
   label: string
   query: string | null
   geo: string | undefined
@@ -368,6 +509,18 @@ interface Rung {
 
 /**
  * Research the proven-ad library for one campaign.
+ *
+ * TWO TRACKS, because the honest answer to "should the search be broader?" is
+ * "broader for one thing and narrower for the other":
+ *
+ *   MARKET — scoped to the ICP this brief sits in, so the argument, the
+ *     objection and the proof belong to a buyer who could actually be hers.
+ *     Climbs the term ladder, because a short literal term is how relevance
+ *     gets into a filtered corpus at all.
+ *   CRAFT — the whole library, filtered instead by static-ad ARCHETYPE and
+ *     ordered by run time, so breadth buys construction rather than noise.
+ *     One search, no term: with ~17,000 eligible rows the longest-running
+ *     archetypes are the shortlist, and a term would only narrow it back down.
  *
  * Never throws and never blocks a run: a source that is unkeyed, down, out of
  * credits or simply thin returns an `AdResearch` carrying an honest note, and
@@ -380,25 +533,46 @@ export async function researchProvenAds(
   const focus = researchFocus(brief)
   const terms = researchTerms(brief)
   const minDays = opts.minDaysActive ?? MIN_DAYS_ACTIVE
-  const want = opts.shortlist ?? SHORTLIST
   const geo = (brief.geo ?? defaultGeo()).trim() || undefined
+  const wantMarket = opts.shortlist
+    ? Math.max(1, Math.round(opts.shortlist * 0.6))
+    : MARKET_SHORTLIST
+  const wantCraft = opts.shortlist ? Math.max(1, opts.shortlist - wantMarket) : CRAFT_SHORTLIST
 
-  // The ladder, built before anything runs so the cost ceiling is a property of
-  // the plan rather than an outcome. Each rung widens the SEARCH; none of them
-  // widens the bar.
+  // The ladder, built before anything runs so the cost ceiling is a property
+  // of the plan rather than an outcome. Each rung widens the SEARCH; none of
+  // them widens the bar.
   const rungs: Rung[] = [
-    ...terms.map((t) => ({ label: `"${t}"`, query: t, geo, widened: [] as string[] })),
-    { label: 'the whole eligible market', query: null, geo, widened: ['query'] },
-    { label: 'every market', query: null, geo: undefined, widened: ['query', 'markets'] },
-  ].slice(0, MAX_STEPS)
+    ...terms.map((t) => ({
+      pool: 'market' as const,
+      label: `"${t}"`,
+      query: t,
+      geo,
+      widened: [] as string[],
+    })),
+    { pool: 'market' as const, label: 'the whole eligible market', query: null, geo, widened: ['query'] },
+    {
+      pool: 'market' as const,
+      label: 'every market',
+      query: null,
+      geo: undefined,
+      widened: ['query', 'markets'],
+    },
+  ].slice(0, MAX_MARKET_STEPS)
 
-  const pool: ProvenAd[] = []
+  const pools: Record<ReferencePool, ProvenAd[]> = { market: [], craft: [] }
   const steps: ResearchStep[] = []
   let credits: CreditUsage | undefined
   let configured = true
   let failure: string | undefined
 
-  for (const rung of rungs) {
+  const spend = (used: number | undefined, remaining: number | undefined) => {
+    if (used === undefined && remaining === undefined) return
+    credits = { used: (credits?.used ?? 0) + (used ?? 0), remaining: remaining ?? credits?.remaining ?? 0 }
+  }
+
+  /** One billed search. Returns false when the source itself is unusable. */
+  const run = async (rung: Rung, want: number): Promise<boolean> => {
     const res = await searchProvenAds({
       query: rung.query ?? undefined,
       focus,
@@ -407,35 +581,67 @@ export async function researchProvenAds(
       launchWindowDays: LAUNCH_WINDOW_DAYS,
       geo: rung.geo,
       limit: PER_STEP,
+      // The craft track is the whole library narrowed by CONSTRUCTION rather
+      // than by category. Removing the niche filter without the archetypes
+      // returns the market at large, most of which is an untreated photo.
+      ...(rung.pool === 'craft'
+        ? { scope: 'library' as const, creativeCategories: [...CRAFT_ARCHETYPES] }
+        : {}),
     })
 
     configured = res.configured
-    if (res.credits) {
-      credits = {
-        used: (credits?.used ?? 0) + res.credits.used,
-        remaining: res.credits.remaining,
-      }
+    spend(res.credits?.used, res.credits?.remaining)
+    if (!res.configured) {
+      failure = res.note
+      return false
     }
-    if (!res.configured) return { ...EMPTY, note: res.note, eligibility: EMPTY.eligibility }
     if (!res.ads.length && res.note) failure = res.note
 
-    const eligible = res.ads.filter((a) => isEligible(a, minDays))
-    pool.push(...eligible)
+    const eligible = res.ads.filter((a) => isEligible(a, minDays, rung.pool))
+    pools[rung.pool].push(...eligible)
     steps.push({
+      pool: rung.pool,
       label: rung.label,
       query: rung.query,
       returned: res.ads.length,
       eligible: eligible.length,
       widened: rung.widened,
     })
-
-    // Enough evidence in hand — stop climbing and stop spending.
-    if (shortlist(pool, terms, want).length >= want) break
+    return true
   }
 
-  const ads = shortlist(pool, terms, want)
+  for (const rung of rungs) {
+    if (!(await run(rung, wantMarket))) return { ...EMPTY, note: failure }
+    // Enough on-market evidence in hand — stop climbing and stop spending.
+    if (shortlist(pools.market, terms, wantMarket).length >= wantMarket) break
+  }
+
+  // The craft rung always runs, and runs LAST: it is the one search whose
+  // result does not depend on anything the market track found, so spending it
+  // first would mean paying for it even when the source turns out to be dead.
+  await run(
+    {
+      pool: 'craft',
+      label: 'best-built statics, any vertical',
+      query: null,
+      geo,
+      widened: ['query', 'vertical'],
+    },
+    wantCraft,
+  )
+
+  const market = shortlist(pools.market, terms, wantMarket)
+  // Craft is ranked WITHOUT the brief's terms: this pool is chosen for how it
+  // is built, and rewarding a vertical keyword here would quietly pull it back
+  // toward the market pool it exists to complement.
+  const craft = shortlist(
+    pools.craft.filter((a) => !market.some((m) => m.id === a.id)),
+    [],
+    wantCraft,
+  )
+  const ads = [...market, ...craft]
   const thin = ads.length < MIN_REFERENCES
-  const widened = steps.at(-1)?.widened ?? []
+  const marketWidened = steps.filter((s) => s.pool === 'market').at(-1)?.widened ?? []
 
   const notes: string[] = []
   if (!ads.length) {
@@ -448,12 +654,19 @@ export async function researchProvenAds(
       `Only ${ads.length} ad${ads.length === 1 ? '' : 's'} cleared the ${minDays}-day bar, so treat the reference set as direction rather than proof.`,
     )
   }
-  if (ads.length && widened.includes('markets')) {
+  if (!market.length && craft.length) {
+    notes.push(
+      'Nothing on-market qualified, so the references carry construction only — no evidence about what this buyer responds to.',
+    )
+  }
+  if (market.length && marketWidened.includes('markets')) {
     notes.push('Widened to every market — too few qualified in the markets this account sells into.')
   }
 
   return {
     configured,
+    market,
+    craft,
     ads,
     steps,
     focus,
@@ -482,10 +695,20 @@ function runLine(ad: ProvenAd): string {
   return bits.join(' · ')
 }
 
-/** Copy evidence — what ECHO reads. The words, and how long they have held up. */
+/**
+ * Copy evidence — what ECHO reads.
+ *
+ * ON-MARKET ONLY, and that restriction is the point. Craft references are
+ * chosen for how they are BUILT, across every vertical the library holds, and
+ * their persuasion does not travel with their layout: a DTC ad sells a
+ * purchase in one line and a service ad sells a conversation over five. Feed
+ * ECHO the wider pool and it learns "Grab our BOGO deal" for a campaign whose
+ * next step is a booked call. Widening this pool is the one widening that
+ * makes the ads worse.
+ */
 export function echoEvidence(research: AdResearch): string {
-  if (!research.ads.length) return ''
-  const rows = research.ads
+  if (!research.market.length) return ''
+  const rows = research.market
     .map((ad, i) => {
       const parts = [
         `${i + 1}. ${ad.brand} — ${runLine(ad)}`,
@@ -497,34 +720,61 @@ export function echoEvidence(research: AdResearch): string {
     })
     .join('\n\n')
 
-  return `LIVE PROVEN COPY — static Meta ads running ${research.eligibility.minDaysActive}+ days in this market right now, pulled from the proven-ad library for THIS brief. ${BORROW_RULE}\n\n${rows}`
+  return `LIVE PROVEN COPY — static Meta ads running ${research.eligibility.minDaysActive}+ days IN THIS MARKET right now, pulled from the proven-ad library for THIS brief. ${BORROW_RULE}\n\n${rows}`
 }
 
-/** Creative evidence — what SPARK reads. The same ads, read as construction. */
+/**
+ * Creative evidence — what SPARK reads. BOTH pools, labelled, because
+ * construction is the one thing that does travel between verticals.
+ *
+ * The two sections are kept apart rather than merged into one ranked list:
+ * an averaged set would let SPARK borrow a supplement ad's argument along with
+ * its layout, and the whole reason the craft pool is allowed to be broad is
+ * that it is read for geometry and nothing else.
+ */
 export function sparkEvidence(research: AdResearch): string {
   if (!research.ads.length) return ''
-  const rows = research.ads
-    .map((ad, i) => {
-      const parts = [
-        `${i + 1}. ${ad.brand} — ${runLine(ad)}`,
-        ad.title.trim() && `On-ad headline: "${ad.title.trim()}"`,
-        ad.body.trim() && `Supporting copy: "${ad.body.trim().slice(0, 400)}"`,
-        ad.ctaText?.trim() && `CTA: ${ad.ctaText.trim()}`,
-        ad.landingPage && `Destination: ${ad.landingPage}`,
-      ].filter(Boolean)
-      return parts.join('\n')
-    })
-    .join('\n\n')
 
-  return `LIVE PROVEN STATIC CREATIVE — image ads that have survived ${research.eligibility.minDaysActive}+ days of live spend in this market. Each is a construction that has already earned its scroll-stop. ${BORROW_RULE}\n\n${rows}`
+  const rows = (ads: ProvenAd[]) =>
+    ads
+      .map((ad, i) => {
+        const parts = [
+          `${i + 1}. ${ad.brand} — ${runLine(ad)}`,
+          ad.title.trim() && `On-ad headline: "${ad.title.trim()}"`,
+          ad.body.trim() && `Supporting copy: "${ad.body.trim().slice(0, 400)}"`,
+          ad.ctaText?.trim() && `CTA: ${ad.ctaText.trim()}`,
+          ad.landingPage && `Destination: ${ad.landingPage}`,
+        ].filter(Boolean)
+        return parts.join('\n')
+      })
+      .join('\n\n')
+
+  const sections: string[] = []
+  if (research.market.length) {
+    sections.push(
+      `IN THIS MARKET — statics that have survived ${research.eligibility.minDaysActive}+ days of live spend against the buyer this campaign is for. Read these for what earns attention in this category.\n\n${rows(
+        research.market,
+      )}`,
+    )
+  }
+  if (research.craft.length) {
+    sections.push(
+      `BEST-BUILT STATICS, ANY VERTICAL — long-running ads in the library's static archetypes (before/after, testimonial, us vs them, facts and stats, reasons why, features and benefits). Read these for CONSTRUCTION ONLY: layout, hierarchy, where the eye lands first, how the contrast device works, how proof is placed on the image. Their products, claims and offers are irrelevant here and must not travel into the concept.\n\n${rows(
+        research.craft,
+      )}`,
+    )
+  }
+
+  return `LIVE PROVEN STATIC CREATIVE, in two sets. ${BORROW_RULE}\n\n${sections.join('\n\n')}`
 }
 
 /**
  * The block OPUS receives, alongside its network's findings.
  *
  * Deliberately short. OPUS already has SPARK's and ECHO's reads of these same
- * ads; this exists so it can cite the source of a structure and knows the
- * borrowing rule applies to its own drafting, not only to the layers'.
+ * ads; this exists so it can cite the source of a structure, and so the
+ * division of labour between the two sets is stated once at the top rather
+ * than inferred from the rows.
  */
 export function provenAdBlock(research: AdResearch): string {
   if (!research.ads.length) {
@@ -533,12 +783,25 @@ export function provenAdBlock(research: AdResearch): string {
       : ''
   }
 
-  const rows = research.ads
-    .map(
-      (ad, i) =>
-        `${i + 1}. ${ad.brand} · ${runLine(ad)} — "${ad.title.trim() || ad.body.trim().slice(0, 70)}"`,
+  const list = (ads: ProvenAd[]) =>
+    ads
+      .map(
+        (ad, i) =>
+          `${i + 1}. ${ad.brand} · ${runLine(ad)} — "${ad.title.trim() || ad.body.trim().slice(0, 70)}"`,
+      )
+      .join('\n')
+
+  const sections: string[] = []
+  if (research.market.length) {
+    sections.push(`IN THIS MARKET (what to say, and to whom):\n${list(research.market)}`)
+  }
+  if (research.craft.length) {
+    sections.push(
+      `BEST-BUILT STATICS, ANY VERTICAL (how to build one — construction only, never their claims or offers):\n${list(
+        research.craft,
+      )}`,
     )
-    .join('\n')
+  }
 
   const caveat = research.thin
     ? ' This set is thin, so lead with the Vault and the brief and use these as direction.'
@@ -546,7 +809,9 @@ export function provenAdBlock(research: AdResearch): string {
 
   return `\n\nPROVEN-AD RESEARCH — ${research.ads.length} static Meta ad${
     research.ads.length === 1 ? '' : 's'
-  } currently running in this market, every one live for ${research.eligibility.minDaysActive}+ days. SPARK and ECHO have read these and their findings are above.${caveat}\n${rows}\n\n${BORROW_RULE} Where a concept is built on one of these structures, name it in the concept's basis.`
+  } currently running, every one live for ${research.eligibility.minDaysActive}+ days, in two sets. The first is scoped to this campaign's market and carries the ARGUMENT; the second is drawn from the whole library and carries the CONSTRUCTION, because a layout transfers between categories and a claim does not. SPARK and ECHO have read these and their findings are above.${caveat}\n\n${sections.join(
+    '\n\n',
+  )}\n\n${BORROW_RULE} Where a concept is built on one of these structures, name it in the concept's basis.`
 }
 
 /** One line for the telemetry feed — what was searched and what it cost. */
@@ -555,5 +820,8 @@ export function researchSummary(research: AdResearch): string {
     .map((s) => `${s.label} → ${s.eligible}/${s.returned}`)
     .join(' · ')
   const spend = research.credits ? ` · ${research.credits.used.toFixed(2)} credits` : ''
-  return `${research.ads.length} proven static ad${research.ads.length === 1 ? '' : 's'} (${research.eligibility.minDaysActive}+ days live) · searched ${path}${spend}`
+  const mix = `${research.market.length} on-market + ${research.craft.length} best-built`
+  return `${research.ads.length} proven static ad${
+    research.ads.length === 1 ? '' : 's'
+  } (${research.eligibility.minDaysActive}+ days live · ${mix}) · searched ${path}${spend}`
 }

@@ -1314,7 +1314,11 @@ async function readTopReference(
   research: AdResearch,
   accountId: string | null,
 ): Promise<CloneReference | null> {
-  const ad = research.ads.find((a) => a.imageUrl)
+  // The CRAFT pool first. This read drives the production brief — the layout
+  // the image oven builds from — and construction is exactly what that pool is
+  // selected for. An on-market ad is chosen for its argument, which this read
+  // does not use and must not import.
+  const ad = research.craft.find((a) => a.imageUrl) ?? research.market.find((a) => a.imageUrl)
   if (!ad?.imageUrl || !RESEARCH_DESIGN_READ) return null
 
   try {
@@ -1336,7 +1340,8 @@ async function readTopReference(
     if (!analysis.live || !analysis.ads.length) return null
 
     const [first] = analysis.ads
-    const label = `${ad.brand} · ${ad.daysActive ?? 0} days live`
+    const pool = research.craft.some((c) => c.id === ad.id) ? 'best-built' : 'on-market'
+    const label = `${ad.brand} · ${ad.daysActive ?? 0} days live · ${pool}`
 
     // Banked for every future brief. Fire-and-forget would be lost when the
     // function is reclaimed, so it is awaited — it is one insert.

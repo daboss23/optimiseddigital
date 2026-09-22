@@ -84,13 +84,28 @@ function fallback(brief: string, angle: string): RawSuggestion {
     : /warm|seen|content|follower/.test(t)
       ? 'Warm — saw content, didn’t convert'
       : 'Cold — new audience'
-  const offer = /webinar|masterclass|training/.test(t)
-    ? 'Webinar / Masterclass'
-    : /event|in person|in-person|live/.test(t)
-      ? 'Live Event / In-Person'
-      : /download|guide|lead magnet|free|pdf/.test(t)
-        ? 'Free Lead Magnet'
-        : 'Strategy Call / Application'
+  // Most specific first. `free` and `live` are broad enough to swallow half
+  // the ladder if they are tested early, which is how a brief asking for a
+  // free ACCOUNT AUDIT used to come back recommending a downloadable PDF.
+  const offer = /audit|teardown|review of your|account review|funnel review/.test(t)
+    ? 'Free Audit / Teardown'
+    : /case stud(y|ies)|client result|how we (got|took)|before and after/.test(t)
+      ? 'Case Study / Proof Asset'
+      : /\bdm\b|direct message|comment ["“']?\w+|send the word|message us/.test(t)
+        ? 'DM / Comment Trigger'
+        : /guarantee|risk[- ]rever|pay on result|performance[- ]based|don'?t pay/.test(t)
+          ? 'Performance / Risk Reversal'
+          : /retainer|done[- ]for[- ]you|\bdfy\b|ongoing management|managed service/.test(t)
+            ? 'Done-For-You Retainer'
+            : /trial|pilot|first month|test campaign|proof of concept/.test(t)
+              ? 'Free Trial / Pilot'
+              : /webinar|masterclass|training/.test(t)
+                ? 'Webinar / Masterclass'
+                : /event|in person|in-person|workshop|seats?\b/.test(t)
+                  ? 'Live Event / In-Person'
+                  : /download|guide|lead magnet|template|swipe|checklist|free|pdf/.test(t)
+                    ? 'Free Lead Magnet'
+                    : 'Strategy Call / Application'
 
   // Deliverables follow the medium implied by the brief.
   const wantsUgc = /ugc|testimonial|talking head|spokesperson|creator|selfie/.test(t)

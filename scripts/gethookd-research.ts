@@ -60,7 +60,9 @@ async function main() {
   console.log(bold('The ladder'))
   for (const step of research.steps) {
     const widened = step.widened.length ? dim(` (widened: ${step.widened.join(', ')})`) : ''
-    console.log(`  ${step.label} → ${step.eligible} eligible of ${step.returned} billed${widened}`)
+    console.log(
+      `  [${step.pool}] ${step.label} → ${step.eligible} eligible of ${step.returned} billed${widened}`,
+    )
   }
 
   console.log(
@@ -74,11 +76,12 @@ async function main() {
   )
   if (research.note) console.log(`${bold('Note')}       ${research.note}`)
 
+  const poolOf = (id: string) => (research.craft.some((c) => c.id === id) ? 'best-built' : 'on-market')
   for (const ad of research.ads) {
     console.log(
-      `\n  ${bold(ad.brand)} · ${ad.daysActive ?? 0} days live · ${ad.performanceTier ?? 'unrated'} · ${
-        ad.countries.join('/') || 'no country data'
-      }`,
+      `\n  ${bold(ad.brand)} · ${poolOf(ad.id)} · ${ad.daysActive ?? 0} days live · ${
+        ad.performanceTier ?? 'unrated'
+      } · ${ad.countries.join('/') || 'no country data'}`,
     )
     console.log(`  ${ad.title || dim('(no headline)')}`)
     console.log(dim(`  ${ad.body.replace(/\s+/g, ' ').slice(0, 160)}…`))

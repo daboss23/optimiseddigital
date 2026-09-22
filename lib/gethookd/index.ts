@@ -49,6 +49,26 @@ function geoParam(): string {
  */
 const COSMETIC_PARAMS = new Set(['collapse_variants'])
 
+/**
+ * The static-ad archetypes worth learning from, by id.
+ *
+ * From `list_creative_categories`, which is the filter the product shows as
+ * "Static ad style". Six of the eleven are here. The five left out are left
+ * out on purpose: Promotion and Discount, Holiday/Seasonal, Humor/Fun, FAQ
+ * Explainers and Media and Press are either DTC-specific or carry no
+ * transferable construction — a seasonal sale graphic teaches a lead-gen ad
+ * nothing, while a Before/After or an Us vs Them is the same machine whatever
+ * it is selling.
+ */
+export const CRAFT_ARCHETYPES = [
+  1, // Before and After
+  2, // Testimonial - Reviews
+  16, // Reasons why
+  17, // Facts and Stats
+  18, // Features and Benefits
+  20, // Us vs Them
+] as const
+
 /** Cap the grid. Every row costs credits, and nobody studies 50 ads at once. */
 const MAX_LIMIT = 24
 const DEFAULT_LIMIT = 12
@@ -265,7 +285,9 @@ export async function searchProvenAds(q: ProvenAdQuery = {}): Promise<ProvenAdRe
     // loan claims, phone plans. Those rows bill like any other, and a feed of
     // confidently wrong ads is worse than an empty one.
     strict_query: query ? 'true' : undefined,
-    niche: nicheCsvFor(focus),
+    // `library` scope drops the niche filter deliberately — see ProvenAdQuery.
+    niche: q.scope === 'library' ? undefined : nicheCsvFor(focus),
+    creative_categories: q.creativeCategories?.length ? q.creativeCategories.join(',') : undefined,
     [geoParam()]: (q.geo ?? defaultGeo()) || undefined,
     performance_scores: TIER_FILTER[q.tier ?? 'all'],
     ad_format: FORMAT_FILTER[q.format ?? 'all'],
