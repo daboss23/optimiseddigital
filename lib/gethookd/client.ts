@@ -192,17 +192,6 @@ async function gethookdGetOnce<T>(
 const PARAM_ALIASES: Record<string, string[]> = {
   geo: ['location', 'countries', 'country'],
   location: ['geo', 'countries', 'country'],
-  // Refused by `explore` in production while the MCP wrapper takes it happily
-  // — the same wrapper-vs-REST split that hid behind `geo`. Losing it does not
-  // empty the feed, which is why it went unnoticed: it silently serves video
-  // and carousel rows to an operator who selected Image, and the design read
-  // behind every card needs a still.
-  ad_format: ['format', 'ad_formats', 'formats', 'asset_type', 'display_format'],
-  // The more expensive of the two. This is the 90-day "has actually been
-  // running" bar — half of what this platform means by PROVEN. Dropped, the
-  // feed still looks plausible because the duration sort puts long-running ads
-  // on top anyway, so nothing appears broken while the bar is simply absent.
-  run_time: ['min_days_active', 'days_active_min', 'min_run_time', 'days_active'],
 }
 
 /**

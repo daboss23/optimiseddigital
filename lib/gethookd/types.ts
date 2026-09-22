@@ -98,6 +98,20 @@ export interface ProvenAdQuery {
    */
   requireHeadline?: boolean
   /**
+   * Apply the format and run-time bars to the RETURNED ROWS.
+   *
+   * On by default, because the endpoint refuses both filters under every
+   * spelling probed and something has to hold the line — a page asked for
+   * Static otherwise comes back carrying video.
+   *
+   * The automatic research layer turns it OFF: it re-checks eligibility on
+   * every row itself (`isEligible`) and reports a thin result in its own
+   * words. Filtering underneath it replaced that message with the source's,
+   * so a run that found nothing stopped being able to say the bar had not
+   * been lowered — which is the one thing it most needs to say.
+   */
+  enforceBars?: boolean
+  /**
    * Feed ordering.
    *
    * `longest` is duration-first — the proof-of-life sort, and the default.

@@ -39,7 +39,21 @@ const PAGE_SIZE_CANDIDATES = ['per_page', 'limit', 'page_size', 'results_per_pag
  * which silently serves video and carousel rows to an operator who selected
  * Image — and every card's design read needs a still.
  */
-const FORMAT_CANDIDATES = ['ad_format', 'format', 'ad_formats', 'formats', 'asset_type']
+const FORMAT_CANDIDATES = [
+  'ad_format',
+  'format',
+  'ad_formats',
+  'formats',
+  'asset_type',
+  // Round two, after all five above were refused. These are the names the
+  // ROWS carry, which is the likeliest vocabulary for a filter over them.
+  'display_format',
+  'asset_types',
+  'display_formats',
+  'media_type',
+  'creative_format',
+  'ad_type',
+]
 
 /**
  * Names for the minimum-run-time filter — the 90-day bar, half of what this
@@ -47,7 +61,20 @@ const FORMAT_CANDIDATES = ['ad_format', 'format', 'ad_formats', 'formats', 'asse
  * absence is invisible: the duration sort still puts long-running ads on top,
  * so the feed looks right while the bar is simply not applied.
  */
-const RUN_TIME_CANDIDATES = ['run_time', 'min_days_active', 'days_active_min', 'min_run_time']
+const RUN_TIME_CANDIDATES = [
+  'run_time',
+  'min_days_active',
+  'days_active_min',
+  'min_run_time',
+  // Round two. `days_active` is what the row calls the field and what
+  // sort_column accepts as a value, so it is the likeliest bare spelling —
+  // and it was missing from the first batch entirely.
+  'days_active',
+  'min_days',
+  'days_running',
+  'active_days',
+  'runtime',
+]
 
 interface Probe {
   ok: boolean
@@ -182,15 +209,18 @@ async function main() {
     ['run time', runTime, 'run_time'],
   ] as const) {
     if (found && found !== sent) {
+      const envVar = label === 'format' ? 'GETHOOKD_FORMAT_PARAM' : 'GETHOOKD_RUN_TIME_PARAM'
       console.log(
-        `\nThe ${label} filter answers to "${found}", not "${sent}".\n` +
-          `  PARAM_ALIASES in lib/gethookd/client.ts retries that spelling automatically —\n` +
-          `  confirm "${found}" is first in its list so the rename costs no round trip.\n`,
+        `\nThe ${label} filter answers to "${found}". Set this so the search narrows\n` +
+          `  server-side instead of paying for rows it discards:\n\n` +
+          `  ${envVar}=${found}\n`,
       )
     } else if (!found) {
       console.log(
-        `\nNo ${label} filter name was accepted. The feed is WIDER than asked for and\n` +
-          `  says so in the banner. That is the honest failure, not a broken tab.\n`,
+        `\nNo ${label} filter name was accepted — this endpoint does not appear to have\n` +
+          `  one. Nothing is sent, and the bar is enforced on the returned rows instead,\n` +
+          `  which is authoritative. The cost is that discarded rows were still billed;\n` +
+          `  the feed reports how many.\n`,
       )
     }
   }

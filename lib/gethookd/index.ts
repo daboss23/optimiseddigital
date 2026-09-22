@@ -51,6 +51,25 @@ export function geoParam(): string {
 }
 
 /**
+ * The endpoint's names for the format and minimum-run-time filters, IF it has
+ * them. It does not, as of the last probe: every spelling of both is refused,
+ * while its own MCP wrapper takes `ad_format` and `run_time` happily.
+ *
+ * So both default to EMPTY — not sent at all — and the bars they were meant to
+ * enforce are applied to the returned rows instead. Set either env var if a
+ * `npm run gethookd:params` run ever reports a name that works: the request
+ * narrows server-side, the row filter agrees with it, and the feed stops
+ * paying for rows it is about to discard.
+ */
+function formatParam(): string {
+  return (process.env.GETHOOKD_FORMAT_PARAM ?? '').trim()
+}
+
+function runTimeParam(): string {
+  return (process.env.GETHOOKD_RUN_TIME_PARAM ?? '').trim()
+}
+
+/**
  * Filters whose refusal costs tidiness, not scope.
  *
  * A dropped country filter changes WHICH ads come back and must be reported. A
@@ -301,13 +320,20 @@ export async function searchProvenAds(q: ProvenAdQuery = {}): Promise<ProvenAdRe
     creative_categories: q.creativeCategories?.length ? q.creativeCategories.join(',') : undefined,
     [geoParam()]: (q.geo ?? defaultGeo()) || undefined,
     performance_scores: TIER_FILTER[q.tier ?? 'all'],
-    ad_format: FORMAT_FILTER[q.format ?? 'all'],
+    // Probed against the live endpoint: `ad_format`, `format`, `ad_formats`,
+    // `formats` and `asset_type` are ALL refused by name, as are every
+    // spelling of the run-time bound. Those filters exist on the MCP wrapper,
+    // not here. Sending them anyway cost a refusal round trip on every search
+    // and bought nothing, so they are sent ONLY when an env var names a
+    // spelling that works — and both are enforced below on the rows instead,
+    // which is authoritative in a way a vendor filter never was.
+    [formatParam()]: formatParam() ? FORMAT_FILTER[q.format ?? 'all'] : undefined,
     // Proof of life, in two halves: launched inside the window, and running a
     // while since. Together they mean "someone is still paying for this".
     started_after: launchedAfter(
       q.launchWindowDays === undefined ? LAUNCH_WINDOW_DAYS : q.launchWindowDays,
     ),
-    run_time: q.minDaysActive ?? MIN_DAYS_ACTIVE,
+    [runTimeParam()]: runTimeParam() ? (q.minDaysActive ?? MIN_DAYS_ACTIVE) : undefined,
     status: 'active',
     // Ordering only bites when no query is set — a text query outranks the
     // sort column and this becomes a tiebreaker within a relevance tier.
@@ -341,13 +367,35 @@ export async function searchProvenAds(q: ProvenAdQuery = {}): Promise<ProvenAdRe
     return { configured: true, source: 'gethookd', ads: [], hasMore: false, credits, note: res.note }
   }
 
-  const ads = (res.data ?? [])
+  const wanted = q.format ?? 'all'
+  const minDays = q.minDaysActive ?? MIN_DAYS_ACTIVE
+
+  const normalised = (res.data ?? [])
     .map((r) => normalise(r, focus))
     .filter((a): a is ProvenAd => a !== null)
+
+  const enforce = q.enforceBars !== false
+  const ads = normalised
+    // Enforced HERE because the endpoint cannot enforce it: the format filter
+    // is refused under every name it has been probed for, so a page asked for
+    // Static comes back carrying video and carousel rows. The design read
+    // behind every card needs a still, so serving them is not a cosmetic miss.
+    .filter((a) => !enforce || wanted === 'all' || a.format === wanted)
+    // The 90-day bar — half of what this platform means by PROVEN, and the
+    // other half of what the endpoint will not apply. A row with no run time
+    // reported cannot clear a bar, so it does not get the benefit of the
+    // doubt: this is the same discipline `isEligible()` already applies to
+    // the automatic research, for the same reason.
+    .filter((a) => !enforce || minDays <= 0 || (a.daysActive ?? -1) >= minDays)
     // The archetype tag does not buy construction on its own — the library
     // files untreated product photos under one. A headline is the cheapest
     // evidence the ad was designed rather than uploaded.
     .filter((a) => !q.requireHeadline || a.title.trim().length > 0)
+
+  // Rows the source billed for and the bars above discarded. Reported rather
+  // than hidden: the operator is paying per returned row, so a page that spent
+  // twelve rows' worth of credit to show four owes them that number.
+  const discarded = normalised.length - ads.length
   const meta = res.meta ?? {}
   const total = typeof meta.total === 'number' ? meta.total : undefined
   const hasMore = meta.has_more === true
@@ -377,7 +425,14 @@ export async function searchProvenAds(q: ProvenAdQuery = {}): Promise<ProvenAdRe
     hasMore,
     credits,
     note: ads.length
-      ? widened
+      ? [
+          widened,
+          discarded > 0
+            ? `${discarded} of ${normalised.length} rows were filtered out after the search — this library cannot filter on format or run time, so those bars are applied here and the discarded rows were still billed.`
+            : undefined,
+        ]
+          .filter(Boolean)
+          .join(' ') || undefined
       : [
           query
             ? `No proven ads matched "${query}" in this focus. Terms are matched exactly, so try a single broader word — or clear it to browse what is running now.`

@@ -579,6 +579,11 @@ export async function researchProvenAds(
       format: 'image',
       minDaysActive: minDays,
       launchWindowDays: LAUNCH_WINDOW_DAYS,
+      // This layer re-checks every row with isEligible() and reports a thin
+      // result in its own words — "the bar was not lowered, the search
+      // widened". Letting the source filter underneath it replaced that
+      // message with the source's own.
+      enforceBars: false,
       geo: rung.geo,
       limit: PER_STEP,
       // The craft track is the whole library narrowed by CONSTRUCTION rather
