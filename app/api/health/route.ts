@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseUrl, getSupabaseAdmin } from '@/lib/supabase'
 import { demoDataEnabled } from '@/lib/demo-mode'
-import { gethookdConfigured, defaultGeo } from '@/lib/gethookd'
+import { gethookdConfigured, defaultGeo, geoParam } from '@/lib/gethookd'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -158,7 +158,11 @@ export async function GET() {
   const adLibrary = {
     source: keys.gethookd ? 'gethookd' : keys.meta ? 'meta-archive' : 'none',
     geo: defaultGeo(),
-    geoParam: (process.env.GETHOOKD_GEO_PARAM || 'geo').trim(),
+    // Read from the source, never re-declared here. A second copy of the
+    // default is how this line came to report `geo` on a build that was
+    // sending `location` — a dashboard whose job is to be checked instead
+    // quietly disagreeing with the code it reports on.
+    geoParam: geoParam(),
     baseOverridden: Boolean(process.env.GETHOOKD_API_BASE),
     /** Paste-to-clone never needed a key, so the tab is useful either way. */
     pasteToClone: true,
