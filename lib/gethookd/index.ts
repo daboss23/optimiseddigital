@@ -46,7 +46,7 @@ export { gethookdConfigured }
  * before it ran. Still env-overridable, because vendor names drift and a
  * confirmed name should never need a deploy.
  */
-function geoParam(): string {
+export function geoParam(): string {
   return (process.env.GETHOOKD_GEO_PARAM || 'location').trim()
 }
 
