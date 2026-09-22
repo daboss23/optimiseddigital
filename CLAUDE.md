@@ -151,6 +151,20 @@ MUAPIAPP_API_KEY             # Muapi unified image + video gateway — CURRENT D
                              #     veo-4-text-to-video each do it differently. Take them
                              #     verbatim; `npm run muapi:slugs -- --video` re-probes when a
                              #     vendor renames one)
+GETHOOKD_FORMAT_PARAM        # Optional — the endpoint's name for the creative-format
+                             #   filter, IF it ever gains one. Probed dead under every
+                             #   spelling (ad_format, format, ad_formats, formats,
+                             #   asset_type, display_format, media_type, ad_type...) while
+                             #   its own MCP wrapper takes `ad_format` happily. Unset, the
+                             #   filter is not sent and the bar is enforced on the RETURNED
+                             #   ROWS instead — authoritative, but the discarded rows were
+                             #   still billed, and the feed says how many.
+GETHOOKD_RUN_TIME_PARAM      # Optional — same story for the minimum-run-time bound (the
+                             #   90-day half of "proven"). Probed dead under run_time,
+                             #   min_days_active, days_active, min_days and more. Setting
+                             #   either narrows the search server-side and stops the feed
+                             #   paying for rows it is about to discard; run
+                             #   `npm run gethookd:params` to find a working name.
 GETHOOKD_API_KEY             # GetHookd proven-ad library — powers the Ad Library's
                              #   "Proven Ads" tab. Without it the tab falls back to Meta's
                              #   ads_archive, which outside the EU returns political/issue
