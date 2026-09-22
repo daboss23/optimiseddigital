@@ -136,13 +136,39 @@ that don't exist. The rule is about hardcoded styling, not arbitrary values.
 Pre-existing, App Router, not actually applicable. Leave it or suppress it
 deliberately; don't restructure the font loading to chase it.
 
-**Unconfigured providers.** `/api/health` currently reports `higgsfield`,
-`fal`, `openai`, `gemini` and `meta` as `false`. That is a deployment
-configuration matter, not a code defect. Every one of those paths is
-supposed to degrade gracefully rather than throw — **that is worth testing**.
-Click through video generation, the Meta push and the image model menu with
-those keys absent and confirm each shows an honest message rather than a
-spinner that never resolves or a blank panel.
+**Muapi is the primary provider for BOTH ovens — images and video.** It is
+configured (`/api/health` reports `muapi: true`). `higgsfield`, `fal`,
+`openai` and `gemini` reporting `false` is **deliberate**: they are fallbacks
+behind Muapi, not a gap to fill. Do not treat their absence as a defect and
+do not add keys for them.
+
+What that makes worth testing is **slug drift**, not missing keys. Muapi
+endpoint slugs are taken verbatim from `muapi.ai/llms.txt` and follow no
+single convention — bare (`nano-banana-pro`), mode-suffixed
+(`gpt-image-2-text-to-image`), versioned (`midjourney-v8`), vendor-prefixed
+(`bytedance-seedream-5.0-pro`). This has failed twice in production and both
+failures were SILENT:
+
+- Invented `-image` suffixes made every frontier model 404, so the oven fell
+  through to FLUX.1 Dev — the weakest text renderer in the menu — and shipped
+  ads with misspelled headlines.
+- Invented video slugs (`veo3`, `kling-pro`) 404'd, so a UGC ad ordered on
+  Veo 3 came back as a GPT Image 2 **still**.
+
+Check it with `npm run muapi:slugs` (probes the key, prints any override to
+set). Then confirm the visible guard still works: a render that does not run
+on the model it was asked for must show the warning under the still —
+`requestedModelId` / `fellBack` / `note` flow from `generateImageDetailed`
+through `/api/generate-image` to the concept card. **A silent downgrade is
+the bug; the warning is the feature.**
+
+`meta: false` is separate and real — it means "Push Creative to Meta" and the
+performance ingest are unavailable. Confirm that path reports itself honestly
+rather than hanging, but do not chase a key for it.
+
+**`REACTOR_STATIC_ONLY` defaults ON**, so the system recommends static formats
+only. Video is still selectable by hand. A missing video recommendation is
+correct behaviour, not a bug.
 
 ---
 
