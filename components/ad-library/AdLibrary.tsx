@@ -66,16 +66,25 @@ const DNA_FIELDS: { key: keyof CreativeDNA; label: string; long?: boolean }[] = 
 ]
 
 const FORMATS: { id: AdFormat | 'all'; label: string }[] = [
+  { id: 'image', label: 'Static' },
   { id: 'all', label: 'All formats' },
   { id: 'video', label: 'Video' },
-  { id: 'image', label: 'Static' },
   { id: 'carousel', label: 'Carousel' },
 ]
 
+/**
+ * The run-time filter leads and is the default, because it is the one that is
+ * actually true: an ad launched inside the window and still running after
+ * months is being paid for by somebody. The other two are the SOURCE's stored
+ * rating — useful, but recorded at index time and re-checked at display time,
+ * so asking for it has most of a page withheld as stale. Labelled as the
+ * source's opinion rather than as "Proven", which is what made the weaker
+ * filter look like the stronger one and left the grid looking empty.
+ */
 const TIERS: { id: 'winning' | 'proven' | 'all'; label: string }[] = [
-  { id: 'winning', label: 'Winning only' },
-  { id: 'proven', label: 'Proven' },
-  { id: 'all', label: 'Everything' },
+  { id: 'all', label: 'Still running' },
+  { id: 'proven', label: 'Source-rated: strong' },
+  { id: 'winning', label: 'Source-rated: winning' },
 ]
 
 /** What a design read banked, per ad id. */
@@ -96,8 +105,10 @@ export function AdLibrary({
 
   /* -------- proven ad library -------- */
   const [focus, setFocus] = useState<IcpFocus>('services')
-  const [format, setFormat] = useState<AdFormat | 'all'>('all')
-  const [tier, setTier] = useState<'winning' | 'proven' | 'all'>('proven')
+  // Static leads: this deployment's campaigns render static Meta ads, and the
+  // design read behind "Design" needs a still to read.
+  const [format, setFormat] = useState<AdFormat | 'all'>('image')
+  const [tier, setTier] = useState<'winning' | 'proven' | 'all'>('all')
   const [query, setQuery] = useState('')
   const [ads, setAds] = useState<ProvenAd[]>([])
   const [loading, setLoading] = useState(false)

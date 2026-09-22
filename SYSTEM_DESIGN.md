@@ -1,12 +1,16 @@
-# System Design — TPB Creative Reactor
+# System Design — Creative Reactor
 
 **Engineered For Performance.**
 
-A Creative Intelligence Command Center for The Professional Builder. It turns
-20+ years of winning creative assets, member wins, frameworks, SOPs, research,
-and performance data into the next winning campaign. It answers one question:
+A Creative Intelligence Command Center for a performance marketing operator. It
+turns a connected website, uploaded assets, proven ads that are live in the
+market, and measured performance data into the next winning campaign. It answers
+one question:
 
-> "What should TPB create next, based on everything that has already worked?"
+> "What should we create next, based on everything that has already worked?"
+
+The platform is white-labelled and ships blank — it names no business, and the
+tenant resolves at runtime from the connected website (`lib/tenant.ts`).
 
 This document is the build spec. Living draft (v0.2 — reflects the agentic
 Campaign Reactor).
@@ -17,7 +21,7 @@ Campaign Reactor).
 
 Think of the platform as three layers:
 
-1. **The Vault (memory)** — everything TPB knows: winning ads, hooks,
+1. **The Vault (memory)** — everything the account knows: winning ads, hooks,
    frameworks, member transformations, research, documented learnings. This is
    stored so it can be *searched by meaning*, not just keywords.
 2. **The Orchestrator (the agent / "strategist")** — an AI that, when you fire a

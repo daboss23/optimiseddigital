@@ -1,5 +1,5 @@
 {
-  "name": "theprobuilder",
+  "name": "optimised-digital",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -11,6 +11,7 @@
     "selftest:render": "tsx scripts/render-prompt-selftest.ts",
     "selftest:gethookd": "tsx scripts/gethookd-selftest.ts",
     "gethookd:params": "tsx scripts/gethookd-params.ts",
+    "gethookd:research": "tsx scripts/gethookd-research.ts",
     "muapi:slugs": "tsx scripts/muapi-slugs.ts",
     "verify": "./scripts/verify-reactor.sh",
     "vault:copy": "tsx scripts/vault-copy.ts",

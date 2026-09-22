@@ -244,7 +244,7 @@ export function ConceptResultCard({
           {image && (
             <a
               href={`/api/image/download?url=${encodeURIComponent(image)}&name=${encodeURIComponent(
-                `tpb-${c.type}`,
+                `optimised-${c.type}`,
               )}`}
               download
               className="flex items-center gap-1 text-[11px] text-white/40 hover:text-glow"

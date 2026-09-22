@@ -21,7 +21,7 @@
 
 import type { Concept } from '@/components/campaign-reactor/ReactorRunContext'
 
-const STORAGE_KEY = 'tpb.creative-ledger.v1'
+const STORAGE_KEY = 'od.creative-ledger.v1'
 
 /**
  * How many creatives the ledger holds before the oldest fall off. High enough

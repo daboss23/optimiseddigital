@@ -1,33 +1,42 @@
-# CLAUDE.md — Optimised Digital (TPB Creative Reactor)
+# CLAUDE.md — Optimised Digital
 ## Claude Code Project Rules — Read This First Every Session
 
 ---
 
 > **Repository identity:** This is **Optimised Digital** — the standalone
-> repository behind `optimiseddigital.vercel.app`. It was branched from the
-> **TPB Creative Reactor** project to run as its own independent product, and
-> it deploys from this repo's `main`. The platform architecture, rules, and
-> module names below are inherited from TPB Creative Reactor and still apply
-> verbatim; "TPB Creative Reactor" throughout this document refers to that
-> shared platform. The default branch here is `main` (not a `claude/*` working
+> repository behind `optimiseddigital.vercel.app`, and it deploys from this
+> repo's `main`. The default branch here is `main` (not a `claude/*` working
 > branch), so open PRs into `main` from your session branch.
+>
+> **The platform carries no business inside it.** It is white-labelled: a
+> company connects its website and the Reactor becomes theirs. Module names
+> (`Creative Reactor`, `OPUS`, `ORACLE`) are the ARCHITECTURE's names, not a
+> tenant's. Nothing in `lib/`, `app/`, `brand/` or `seeds/` may name a specific
+> company, industry or audience — `npm run selftest:blank-slate` fails the
+> build if it does, and `npm run selftest:tenant` proves one account cannot
+> read another's. When you need to say who the deployment IS, resolve it at
+> runtime through `lib/tenant.ts`; when you need to say who it RESEARCHES,
+> that is `lib/gethookd/icp.ts`. They are different questions and must stay
+> different files.
 
 ---
 
 ## PROJECT OVERVIEW
 
-This is a Next.js app: **TPB Creative Reactor** (running as **Optimised
-Digital**) — a premium AI-powered Creative
-Intelligence Command Center for The Professional Builder. It turns 20+ years of
-winning creative assets, member wins, frameworks, SOPs, research, and
-performance data into the next winning campaign, answering one question:
-"What should TPB create next, based on everything that has already worked?"
+This is a Next.js app: the **Creative Reactor** — an AI-powered Creative
+Intelligence Command Center for a performance marketing operator. It turns a
+connected website, uploaded assets, proven ads that are live in the market, and
+measured Meta performance into the next winning campaign, answering one
+question: "What should we create next, based on everything that has already
+worked?"
 
 It is built around nine intelligence systems (Reactor Dashboard, Knowledge
 Vault, Research, Creative, Copy, Strategic Memory (ORACLE), Campaign Reactor,
 Creative Learnings, Recommendations). The Campaign Reactor runs an **agentic
-orchestrator** (a Claude tool-use loop) over a RAG knowledge layer. See
-`SYSTEM_DESIGN.md` for the full architecture.
+orchestrator** (a Claude tool-use loop) over a RAG knowledge layer, and briefs
+its intelligence network — including with live proven ads researched from the
+brief — before a single concept is written. See `SYSTEM_DESIGN.md` for the full
+architecture.
 
 Tagline: **Engineered For Performance.**
 
@@ -69,7 +78,7 @@ Tagline: **Engineered For Performance.**
 summit-build-creative/
 ├── CLAUDE.md                        ← you are here (Claude Code rules)
 ├── brand/
-│   └── BRAND_MEMORY.md              ← Summit Build Co brand intelligence
+│   └── BRAND_MEMORY.md              ← brand template; blank until a site connects
 ├── skills/
 │   ├── meta-frameworks.md           ← Meta ad frameworks and knowledge
 │   └── hooks-library.md             ← Proven hooks swipe file
@@ -166,13 +175,41 @@ GETHOOKD_API_KEY             # GetHookd proven-ad library — powers the Ad Libr
                              #   duration without this bound returns the OLDEST ROWS IN THE
                              #   DATABASE — which is exactly what filled the Ad Library with
                              #   ripped-jeans dropshipping ads scored "Winning, 100"),
-                             #   GETHOOKD_MIN_DAYS_ACTIVE (default 21 — still-running-since,
-                             #   the other half of the proof)
+                             #   GETHOOKD_MIN_DAYS_ACTIVE (default 90 — still-running-since,
+                             #     the other half of the proof, and the SAME bar the
+                             #     automatic research uses so both surfaces mean one
+                             #     thing by "proven")
+                             #   Automatic campaign research (lib/gethookd/research.ts):
+                             #   GETHOOKD_RESEARCH_MIN_DAYS (default 90 — the eligibility
+                             #     bar. NEVER lowered inside a run: when too few ads
+                             #     qualify the SEARCH widens and says so),
+                             #   GETHOOKD_RESEARCH_LAUNCH_WINDOW_DAYS (default 1095 — there
+                             #     is deliberately no maximum AGE on a reference, an ad
+                             #     running two years is the best evidence this source has;
+                             #     the bound only keeps out rows the source never closed,
+                             #     which report ~3,200 days "live". Set 0 to remove it),
+                             #   GETHOOKD_RESEARCH_SHORTLIST (default 5),
+                             #   GETHOOKD_RESEARCH_TIMEOUT_MS (default 15000 — this step
+                             #     sits AHEAD of the briefing, so it costs the run latency
+                             #     directly; 8s on the fast path),
+                             #   GETHOOKD_RESEARCH_DESIGN_READ (default on — the vision
+                             #     read of the top reference, which also banks it),
+                             #   GETHOOKD_DESIGN_READ_TIMEOUT_MS (default 45000)
+REACTOR_STATIC_ONLY          # Optional — default ON. The system RECOMMENDS static formats
+                             #   only (Static Creative, Carousel Creatives): the proven-ad
+                             #   research is image-only, the design read needs a still, and
+                             #   proposing a medium with no oven behind it ships a concept
+                             #   with nothing under it. The operator can still select any
+                             #   format by hand — this gates the recommendation, not the
+                             #   choice. Set to `false` when the video ovens are wired.
 PIPEBOARD_API_TOKEN          # Meta Ads MCP (live ad performance) — optional
 META_ACCESS_TOKEN            # Meta Marketing API (System User token) — /meta dashboard + performance ingest + creative publish
 META_AD_ACCOUNT_ID           # Ad account for "Push Creative to Meta" (with or without act_ prefix)
 META_PAGE_ID                 # Facebook Page the pushed creatives run under
-META_LINK_URL                # Optional — destination link on pushed creatives (default https://theprobuilder.com)
+META_LINK_URL                # Optional — destination link on pushed creatives. Falls back
+                             #   to the connected website; there is deliberately NO default,
+                             #   so an ad with nowhere to send the click is refused rather
+                             #   than published to somebody else's domain.
 META_APP_SECRET              # Optional — adds appsecret_proof request signing
 META_INGEST_MIN_SPEND        # Optional — spend floor to grade an ad (default 50)
 META_INGEST_DATE_PRESET      # Optional — Graph date_preset for the sync (default last_30d)
@@ -261,7 +298,24 @@ end. For destructive writes (Supabase inserts), surface errors clearly.
 - **The REST endpoint's parameter names are NOT its MCP wrapper's names.** The wrapper takes `geo` / `limit` / `compact`; the endpoint answers `Unrecognized parameter(s): geo, limit, compact`. It is `per_page`, there is no `compact`, and the country filter's name is env-overridable (`GETHOOKD_GEO_PARAM`). That mismatch shipped a tab that authenticated perfectly and returned nothing — the expensive kind of bug, because everything looks connected.
 - **A refused filter costs the filter, not the feature.** `gethookdGet` reads the names out of the error, retries ONCE without them, and returns `droppedParams` so the surface can say the rows are wider than asked for. Exactly one retry: stripping our way down to an unfiltered, fully billed search would be worse than one honest failure. Never let this degrade silently — global ads shown to someone who picked their markets looks like success.
 - `npm run gethookd:params` probes a live key for the endpoint's current filter names and prints the env var to set, the same way `muapi:slugs` does for model slugs. Costs under 0.1 credits.
-- Guarded by `npm run selftest:gethookd` — 74 in-process checks against a stubbed transport and a captured real response. It never touches the network, because a suite that hit the live library would bill the account on every run.
+- Guarded by `npm run selftest:gethookd` — in-process checks against a stubbed transport and a captured real response. It never touches the network, because a suite that hit the live library would bill the account on every run.
+
+### Automatic campaign research (the agents' own evidence)
+- `lib/gethookd/research.ts` is the AUTOMATIC half of the source; the Ad Library is the manual half. Nobody types a search: a submitted brief is read, terms are constructed from it, and the shortlist reaches **SPARK and ECHO before they report to OPUS**. Ordering is the whole point — evidence that lands after the concepts are written is a filing cabinet, not evidence.
+- It exists because of one line in the orchestrator: when the Vault retrieves nothing, the layers are told to "reason from first principles". On a new account that is EVERY run, and first principles means the model's priors. This fills that gap with ads somebody is currently paying to keep running.
+- **Eligibility is never lowered.** Static image, still listed active, running ≥ `GETHOOKD_RESEARCH_MIN_DAYS` (90). Re-checked on every row in `isEligible()` rather than trusted to the API, because `status` is matched against a lagging index and a filter the endpoint refuses is dropped by the transport — either can hand back a row that does not meet the bar. When too few qualify, the SEARCH widens (broader term → no term → every market) and each widening is named in the result and the telemetry.
+- **A long query is what empties this feed, not the 90-day rule.** Measured against the live library: services + US/AU + static + active + 90 days holds ~355 brand-capped matches; add the phrase "service business lead generation" to that exact search and it returns ZERO. So the ladder searches SHORT (one or two words, matched literally) and falls back to the unqueried browse where the eligible corpus actually is. Never send a sentence.
+- **TWO POOLS, because "should the search be broader?" has two answers.** Measured: the same filters scoped to the service niches hold ~355 eligible statics; unscoped, ~22,000 — and the craft gap shows on the first page. But breadth is only free for the DESIGN. A DTC ad sells a purchase in one line and a service ad sells a conversation over five, so a wider pool teaches a lead-gen campaign to say "Grab our BOGO deal". So:
+  - **MARKET** — scoped to the brief's ICP focus, climbing the term ladder. Carries the ARGUMENT. **ECHO sees only this.** Widening it is the one widening that makes the ads worse.
+  - **CRAFT** — the whole library, niche filter dropped and replaced by the static-ad ARCHETYPES (`CRAFT_ARCHETYPES`: Before/After, Testimonial, Us vs Them, Facts and Stats, Reasons Why, Features and Benefits). Carries the CONSTRUCTION. SPARK sees it labelled "construction only", and the design read that drives the production brief prefers it.
+  - Breadth WITHOUT the archetypes is not an upgrade — it returns the market at large, most of it an untreated product photo. And the archetype tag alone is not enough: the library returned a headline-less phone photo of a watch filed under an archetype at the same performance tier as a properly built ad beside it. So a craft reference must also carry a HEADLINE.
+  - Craft standing alone is a real state and is reported as one — ECHO gets nothing rather than the wrong market.
+- **A third focus, because the operator IS a marketing agency.** `MARKETING_NICHE_IDS` (Info · App/Software · Business/Professional · Service Business, ~14k brands) is the agency's OWN category — other agencies, the martech they sell against (ClickFunnels, Kajabi, GoHighLevel) and the info offers that teach it. An agency runs two kinds of campaign, its clients' and its own, and they are not the same research problem: an ad selling roof repairs and an ad selling a funnel build share no buyer, no objection and no proof. `researchFocus()` checks marketing FIRST, since a brief naming funnels or martech is far more likely to be the agency's own.
+- **Marketing vocabulary is stripped by PROVENANCE, not outright.** In a client brief "leads", "funnel" and "campaign" are noise — searching them bills per row for nothing. In an offer NAME or the connected website's industry they are the subject. So `TRADE_TERMS` is applied to the brief body and campaign name, skipped for the offer name / type / industry / audience — and even there weighted BELOW a plain noun, or "digital marketing agency" would supply the two best terms on every campaign that agency ever runs. Three-letter market acronyms (seo, ppc, crm, cro, b2b, b2c, dtc, ugc) are kept against the length floor.
+- **Cost is bounded before the first request**: at most 4 searches × 6 rows = 24 billed rows per campaign (3 market rungs + 1 craft), the market track stopping the moment it has enough, and the craft search running last so a dead source is never paid for twice. Credits spent ride into the telemetry feed.
+- **A competitor's results are never our claims.** Every evidence block carries that rule verbatim — the references are read for STRUCTURE (hook shape, proof placement, offer framing, CTA), and lifting their figures or testimonials is a compliance failure wearing a proven layout. External evidence can lift a layer's confidence off the floor but never to High: a live competitor ad is direction, a retrieved Vault asset is this account's own intelligence.
+- **The loop closes itself.** The top reference's actual pixels are read once by SPARK (`extractVisualDNA`) and banked as a `design` chunk, which is exactly what `bestVisualReferenceFor` already reaches for at the top of a run — so the second campaign in an account gets that design for free and never pays for the read. The read is skipped entirely when a reference is already attached or the Vault already has one.
+- `npm run gethookd:research "<brief>"` runs the real ladder against the live library once and prints what SPARK, ECHO and OPUS would be handed, plus credits spent. It is the ONE command that talks to the live source — everything else is stubbed, because a suite that hit the library would bill the account on every run.
 
 ### Meta Ads (MCP connector)
 - Attach Pipeboard's hosted Meta Ads MCP to the orchestrator with Anthropic's **MCP connector** (`mcp_servers` + `mcp_toolset` on `anthropic.beta.messages.create`, beta header `mcp-client-2025-11-20`). Token auth via `PIPEBOARD_API_TOKEN` (`?token=` on the server URL).
@@ -337,7 +391,7 @@ Commit messages should describe what changed, not just say "update". Examples:
 ## IMPORTANT FILE NOTE
 
 `CLAUDE.md` (this file) = Claude Code rules only.
-`brand/BRAND_MEMORY.md` = Summit Build Co brand intelligence injected into the copy agent at runtime.
+`brand/BRAND_MEMORY.md` = the brand template injected into the copy agents at runtime. It ships BLANK — the real brand intelligence comes from the connected website via `lib/brand-memory.ts` / `lib/brand-context.ts`.
 
 Do not confuse them. Do not inject CLAUDE.md into API calls. Do not treat BRAND_MEMORY.md as project rules.
 
@@ -421,7 +475,7 @@ Full architecture: `docs/MIKE_DELIGHT.md`.
 ## CURRENT BUILD STATUS
 
 **Core platform**
-- [x] Platform redesigned as TPB Creative Reactor (9 intelligence systems)
+- [x] Platform built as the Creative Reactor (9 intelligence systems)
 - [x] Dark glass command-center UI + logo + sidebar/topbar shell
 - [x] RAG knowledge layer: pgvector schema + Voyage embeddings + ingest route
 - [x] Agentic Campaign Reactor (Claude Opus 4.8 tool-use loop, streamed)
@@ -627,7 +681,13 @@ Full architecture: `docs/MIKE_DELIGHT.md`.
 - [x] Ad Library "Proven Ads" tab — focus toggle (Service Businesses / E-commerce / Both), format and tier filters, longest-running-first ordering, credit accounting on screen
 - [x] Two actions per ad: **Clone** (headline + body + transcript → Creative DNA → Reactor) and **Design** (signed still → SPARK's visual reader → banked as a `design` chunk in the Vault, with an honest receipt when nothing was stored)
 - [x] The ICP is configuration, not prose: `lib/gethookd/icp.ts` defines services and e-commerce as separate niche sets, and the curated demo winners were rewritten off one construction account onto the real ICP
-- [x] `npm run selftest:gethookd` — 74 in-process checks: focus separation, the real payload shape, cost caps, and honest failure on an unkeyed / rejected / exhausted / dead source
+- [x] **Automatic campaign research** (`lib/gethookd/research.ts`) — a submitted brief now searches the proven-ad library on its own and hands the result to SPARK and ECHO BEFORE they report to OPUS. Static image, active, 90+ days running, no maximum age; a bounded ladder (short literal term → broader term → unqueried browse → every market) with a hard ceiling of 24 billed rows; the shortlist deduplicated by ad id, by copy and by advertiser. Eligibility is re-checked per row and never lowered — a thin result is reported as thin and OPUS is told not to claim external validation
+- [x] **Two reference pools, split by what each layer learns.** MARKET is scoped to the brief's ICP and carries the argument; CRAFT drops the niche filter for the whole library and narrows on the static-ad archetypes instead, carrying the construction. ECHO sees market only; SPARK sees both in labelled sets; the design read prefers craft. A craft reference must carry a headline, because the library files untreated product photos under an archetype too
+- [x] **The agency's own category is a first-class focus** (`MARKETING_NICHE_IDS`) — martech, info offers and other agencies, so a campaign for the agency itself researches the right market instead of its clients'. Marketing vocabulary is stripped by provenance rather than outright, so "funnel" is noise in a brief body and the subject in an offer name
+- [x] **The Campaign Offer ladder is the one an agency actually sells against** (`offerOptions`) — Free Audit / Teardown, DM / Comment Trigger, Case Study / Proof Asset, Free Trial / Pilot, Done-For-You Retainer and Performance / Risk Reversal join the original five, ordered by friction and each carrying its own proof burden and CTA frame. The risk-reversal directive carries its compliance constraint and the case-study directive forbids borrowing a result — those are the two offers most likely to invent one
+- [x] The reference set is banked as it is used — the top ad's design is read once and stored as a `design` chunk, so `bestVisualReferenceFor` serves it free on every later run in that account
+- [x] `npm run gethookd:research` — the one live probe: runs the real ladder, prints what each agent is handed and what it cost
+- [x] `npm run selftest:gethookd` — in-process checks: focus separation, the real payload shape, cost caps, the 90-day bar (including a 3,200-day zombie and an 89-day near-miss), the ladder's bounds, term extraction that never searches a marketing word, dedup by copy and by brand, the borrow rule on every block, and honest failure on an unkeyed / rejected / exhausted / dead source
 
 **Meta-native output + closed loop**
 - [x] Launch-ready Meta ad units on every concept (`lib/meta-ads.ts`): primary text with 125-char fold discipline, headline/description limits, CTA button types, compliance validator wired into the submit gate + concept cards ("Copy for Ads Manager")

@@ -206,7 +206,7 @@ export interface CloneReference {
 }
 
 /** sessionStorage key handing a clone reference from the Ad Library to the reactor. */
-export const CLONE_STORAGE_KEY = 'tpb:cloneReference'
+export const CLONE_STORAGE_KEY = 'od:cloneReference'
 
 /** First canonical value of each axis — the cold-start / demo lock defaults. */
 export function defaultLockedTaxonomy(): CreativeTaxonomy {

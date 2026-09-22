@@ -40,6 +40,35 @@ function geoParam(): string {
   return (process.env.GETHOOKD_GEO_PARAM || 'geo').trim()
 }
 
+/**
+ * Filters whose refusal costs tidiness, not scope.
+ *
+ * A dropped country filter changes WHICH ads come back and must be reported. A
+ * dropped variant-collapse changes only how many times the same creative is
+ * listed. The two must not share a banner.
+ */
+const COSMETIC_PARAMS = new Set(['collapse_variants'])
+
+/**
+ * The static-ad archetypes worth learning from, by id.
+ *
+ * From `list_creative_categories`, which is the filter the product shows as
+ * "Static ad style". Six of the eleven are here. The five left out are left
+ * out on purpose: Promotion and Discount, Holiday/Seasonal, Humor/Fun, FAQ
+ * Explainers and Media and Press are either DTC-specific or carry no
+ * transferable construction — a seasonal sale graphic teaches a lead-gen ad
+ * nothing, while a Before/After or an Us vs Them is the same machine whatever
+ * it is selling.
+ */
+export const CRAFT_ARCHETYPES = [
+  1, // Before and After
+  2, // Testimonial - Reviews
+  16, // Reasons why
+  17, // Facts and Stats
+  18, // Features and Benefits
+  20, // Us vs Them
+] as const
+
 /** Cap the grid. Every row costs credits, and nobody studies 50 ads at once. */
 const MAX_LIMIT = 24
 const DEFAULT_LIMIT = 12
@@ -73,12 +102,26 @@ const LAUNCH_WINDOW_DAYS = Number(process.env.GETHOOKD_LAUNCH_WINDOW_DAYS) || 54
  * WITHHELD as stale — six found, five thrown away, one rendered. That is why
  * the grid looked half-empty. Run time is computed from dates on the row and
  * cannot go stale between the two checks.
+ *
+ * Ninety days, so that BOTH surfaces mean the same thing by "proven": what the
+ * agents research automatically and what an operator browses by hand are the
+ * same bar. A quarter of continuous spend on one static creative is the
+ * strongest signal this source can give, and the library holds hundreds of
+ * them per focus — the bar is not what empties a feed here, a long free-text
+ * query is.
  */
-const MIN_DAYS_ACTIVE = Number(process.env.GETHOOKD_MIN_DAYS_ACTIVE) || 21
+const MIN_DAYS_ACTIVE = Number(process.env.GETHOOKD_MIN_DAYS_ACTIVE) || 90
 
-/** The earliest launch date still inside the window, as YYYY-MM-DD. */
-function launchedAfter(now: Date = new Date()): string {
-  const d = new Date(now.getTime() - LAUNCH_WINDOW_DAYS * 86_400_000)
+/**
+ * The earliest launch date still inside the window, as YYYY-MM-DD.
+ *
+ * `null` means no bound at all — the caller has taken responsibility for the
+ * zombie rows this guards against, which only the automatic research layer
+ * does (it re-checks run time on every row and caps the upper end itself).
+ */
+function launchedAfter(windowDays: number | null, now: Date = new Date()): string | undefined {
+  if (windowDays === null) return undefined
+  const d = new Date(now.getTime() - windowDays * 86_400_000)
   return d.toISOString().slice(0, 10)
 }
 
@@ -242,13 +285,17 @@ export async function searchProvenAds(q: ProvenAdQuery = {}): Promise<ProvenAdRe
     // loan claims, phone plans. Those rows bill like any other, and a feed of
     // confidently wrong ads is worse than an empty one.
     strict_query: query ? 'true' : undefined,
-    niche: nicheCsvFor(focus),
+    // `library` scope drops the niche filter deliberately — see ProvenAdQuery.
+    niche: q.scope === 'library' ? undefined : nicheCsvFor(focus),
+    creative_categories: q.creativeCategories?.length ? q.creativeCategories.join(',') : undefined,
     [geoParam()]: (q.geo ?? defaultGeo()) || undefined,
     performance_scores: TIER_FILTER[q.tier ?? 'all'],
     ad_format: FORMAT_FILTER[q.format ?? 'all'],
     // Proof of life, in two halves: launched inside the window, and running a
     // while since. Together they mean "someone is still paying for this".
-    started_after: launchedAfter(),
+    started_after: launchedAfter(
+      q.launchWindowDays === undefined ? LAUNCH_WINDOW_DAYS : q.launchWindowDays,
+    ),
     run_time: q.minDaysActive ?? MIN_DAYS_ACTIVE,
     status: 'active',
     // Ordering only bites when no query is set; sending it always is harmless
@@ -257,6 +304,11 @@ export async function searchProvenAds(q: ProvenAdQuery = {}): Promise<ProvenAdRe
     sort_column: 'days_active',
     sort_direction: 'desc',
     ads_per_brand_limit: ADS_PER_BRAND,
+    // One creative re-uploaded under several ad ids is one lesson, and every
+    // copy of it is billed like a separate ad. The source can collapse them
+    // per request; a filter it refuses is dropped by the transport, so this
+    // can only ever cost a round trip, never the feed.
+    collapse_variants: 'true',
     per_page: limit,
     page,
   })
@@ -279,7 +331,13 @@ export async function searchProvenAds(q: ProvenAdQuery = {}): Promise<ProvenAdRe
   // asked for. Saying so is the whole point: silently serving global ads to
   // someone who selected their own markets is a worse failure than an error,
   // because it looks like it worked.
-  const dropped = res.droppedParams ?? []
+  //
+  // Except for the ones that do not change the SCOPE. Refusing to collapse
+  // duplicate variants returns the same market with the same ads in it, just
+  // listed more than once — worth a wasted round trip, not worth a banner.
+  // Warning about a filter that changed nothing is how an operator learns to
+  // ignore a banner that means something.
+  const dropped = (res.droppedParams ?? []).filter((name) => !COSMETIC_PARAMS.has(name))
   const widened = dropped.length
     ? dropped.includes(geoParam())
       ? 'Showing ads from all markets — this endpoint did not accept the country filter. Run `npm run gethookd:params` to find its current name.'

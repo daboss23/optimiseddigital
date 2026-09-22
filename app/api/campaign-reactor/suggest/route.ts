@@ -8,7 +8,7 @@ import {
   type IntelSourceRecommendation,
   type ReactorSuggestion,
 } from '@/lib/reactor-inputs'
-import { reactorOutputTypes } from '@/lib/reactor-data'
+import { recommendableOutputTypes, staticOnly } from '@/lib/reactor-data'
 import { ORCHESTRATOR_FALLBACK_MODEL } from '@/lib/models'
 import { INTEL_SOURCES, recommendIntelSources } from '@/lib/intelligence-sources'
 import { angleEvidence } from '@/lib/outcomes'
@@ -32,7 +32,10 @@ const awarenessLabels = awarenessOptions.slice(1).map((o) => o.label)
 const sophisticationLabels = sophisticationOptions.slice(1).map((o) => o.label)
 const audienceLabels = audienceOptions.slice(1).map((o) => o.label)
 const offerLabels = offerOptions.slice(1).map((o) => o.label)
-const deliverableLabels = [...reactorOutputTypes]
+// What the system is allowed to PROPOSE — not what the operator may choose.
+// While this deployment ships static only, a video pick from the model is
+// filtered out here rather than talked out of it in the prompt.
+const deliverableLabels = recommendableOutputTypes()
 
 interface RawSuggestion {
   angle: string
@@ -81,13 +84,28 @@ function fallback(brief: string, angle: string): RawSuggestion {
     : /warm|seen|content|follower/.test(t)
       ? 'Warm — saw content, didn’t convert'
       : 'Cold — new audience'
-  const offer = /webinar|masterclass|training/.test(t)
-    ? 'Webinar / Masterclass'
-    : /event|in person|in-person|live/.test(t)
-      ? 'Live Event / In-Person'
-      : /download|guide|lead magnet|free|pdf/.test(t)
-        ? 'Free Lead Magnet'
-        : 'Strategy Call / Application'
+  // Most specific first. `free` and `live` are broad enough to swallow half
+  // the ladder if they are tested early, which is how a brief asking for a
+  // free ACCOUNT AUDIT used to come back recommending a downloadable PDF.
+  const offer = /audit|teardown|review of your|account review|funnel review/.test(t)
+    ? 'Free Audit / Teardown'
+    : /case stud(y|ies)|client result|how we (got|took)|before and after/.test(t)
+      ? 'Case Study / Proof Asset'
+      : /\bdm\b|direct message|comment ["“']?\w+|send the word|message us/.test(t)
+        ? 'DM / Comment Trigger'
+        : /guarantee|risk[- ]rever|pay on result|performance[- ]based|don'?t pay/.test(t)
+          ? 'Performance / Risk Reversal'
+          : /retainer|done[- ]for[- ]you|\bdfy\b|ongoing management|managed service/.test(t)
+            ? 'Done-For-You Retainer'
+            : /trial|pilot|first month|test campaign|proof of concept/.test(t)
+              ? 'Free Trial / Pilot'
+              : /webinar|masterclass|training/.test(t)
+                ? 'Webinar / Masterclass'
+                : /event|in person|in-person|workshop|seats?\b/.test(t)
+                  ? 'Live Event / In-Person'
+                  : /download|guide|lead magnet|template|swipe|checklist|free|pdf/.test(t)
+                    ? 'Free Lead Magnet'
+                    : 'Strategy Call / Application'
 
   // Deliverables follow the medium implied by the brief.
   const wantsUgc = /ugc|testimonial|talking head|spokesperson|creator|selfie/.test(t)
@@ -99,8 +117,18 @@ function fallback(brief: string, angle: string): RawSuggestion {
   if (wantsVideo) set.add('Video Creative')
   if (wantsCarousel) set.add('Carousel Creatives')
   if (wantsImage) set.add('Static Creative')
+  // The heuristic reads the brief's own words, so it can name a medium this
+  // deployment does not currently ship. Filtered here for the same reason the
+  // model's picks are: proposing a format with no oven behind it produces a
+  // concept with nothing under it.
+  const allowed = recommendableOutputTypes()
+  for (const d of Array.from(set)) if (!allowed.includes(d)) set.delete(d)
   // Sensible default when the brief doesn't signal a medium.
-  const deliverables = set.size ? Array.from(set) : ['Static Creative', 'Video Creative']
+  const deliverables = set.size
+    ? Array.from(set)
+    : staticOnly()
+      ? ['Static Creative']
+      : ['Static Creative', 'Video Creative']
 
   return {
     angle: pickAngle,
@@ -113,7 +141,9 @@ function fallback(brief: string, angle: string): RawSuggestion {
     deliverables,
     deliverablesReason: set.size
       ? `Brief signals ${deliverables.join(' + ')} — leading with those.`
-      : 'Balanced starter set across static and video creative.',
+      : staticOnly()
+        ? 'Static Meta creative — the format this account is set up to render and measure.'
+        : 'Balanced starter set across static and video creative.',
   }
 }
 

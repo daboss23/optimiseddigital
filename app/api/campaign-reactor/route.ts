@@ -60,6 +60,17 @@ import {
   type CloneReference,
 } from '@/lib/taxonomy'
 import { bestVisualReferenceFor } from '@/lib/visual-library'
+import {
+  researchProvenAds,
+  researchSummary,
+  sparkEvidence,
+  echoEvidence,
+  provenAdBlock,
+  type AdResearch,
+} from '@/lib/gethookd/research'
+import { gethookdConfigured } from '@/lib/gethookd'
+import { extractVisualDNA, storeCreativeDNA } from '@/lib/spark'
+import { fetchImage } from '@/lib/ad-image'
 import { getConnectedWebsite } from '@/lib/website-intelligence'
 import { websiteBrandBrief } from '@/lib/brand-context'
 import { getTenant, tenantDescriptor } from '@/lib/tenant'
@@ -1074,9 +1085,18 @@ function buildInputBlocks(inputs: ReactorInputs | undefined): string {
 
 /* ------------------------- Intelligence-layer runner ----------------------- */
 
-// Map hit volume to a builder-facing confidence band for the telemetry feed.
-function confidenceBand(hits: number): 'High' | 'Medium' | 'Exploratory' {
-  return hits >= 4 ? 'High' : hits >= 1 ? 'Medium' : 'Exploratory'
+/**
+ * Map evidence volume to an operator-facing confidence band for the feed.
+ *
+ * External proven ads can lift a layer off the floor but can never take it to
+ * High: a live competitor ad is direction, while a retrieved Vault asset is
+ * this account's own intelligence. Saying "High" off somebody else's creative
+ * would be the same mistake as treating their results as our proof.
+ */
+function confidenceBand(hits: number, external = false): 'High' | 'Medium' | 'Exploratory' {
+  if (hits >= 4) return 'High'
+  if (hits >= 1 || external) return 'Medium'
+  return 'Exploratory'
 }
 
 async function runIntelligence(
@@ -1085,6 +1105,17 @@ async function runIntelligence(
   id: IntelligenceId,
   question: string,
   accountId: string | null,
+  /**
+   * Evidence this layer was handed rather than retrieved — today, the live
+   * proven ads researched from the brief.
+   *
+   * It is appended to the retrieved evidence rather than replacing it, and it
+   * is what turns "no stored knowledge yet, reason from first principles" from
+   * the normal case on a new account into the genuinely last resort. A layer
+   * reasoning from priors reports its priors; a layer holding five static ads
+   * that have run ninety days reports what those ads do.
+   */
+  externalEvidence = '',
 ): Promise<string> {
   const agent = INTELLIGENCE[id]
   sse(controller, {
@@ -1117,9 +1148,12 @@ async function runIntelligence(
     })
   }
 
-  const evidence = hits.length
+  const stored = hits.length
     ? hits.map((h) => `[${h.system}] ${h.title}: ${h.content}`).join('\n\n')
-    : 'No stored knowledge yet — reason from first principles about this business and its market.'
+    : externalEvidence
+      ? 'Nothing stored in the Vault for this question yet.'
+      : 'No stored knowledge yet — reason from first principles about this business and its market.'
+  const evidence = externalEvidence ? `${stored}\n\n${externalEvidence}` : stored
 
   const tenantName = tenantDescriptor(await getTenant(await currentAccount()))
 
@@ -1150,10 +1184,198 @@ async function runIntelligence(
     label: agent.intelligenceLabel,
     status: 'done',
     summary,
-    confidence: confidenceBand(hits.length),
+    confidence: confidenceBand(hits.length, Boolean(externalEvidence)),
   })
 
   return findings
+}
+
+/* --------------------- Proven-ad research (the outside) ------------------- */
+
+/**
+ * Hard deadline on the whole research step, including the design read.
+ *
+ * Research is not output. Everything here is spent from the same wall clock
+ * that has to produce ads, so a slow source loses its turn rather than the run
+ * losing its budget. Whatever landed inside the window is used; whatever did
+ * not is reported and skipped.
+ */
+const RESEARCH_BUDGET_MS = Number(process.env.GETHOOKD_RESEARCH_TIMEOUT_MS) || 15_000
+
+/** Read the top reference's actual pixels, so the design is seen, not guessed. */
+const RESEARCH_DESIGN_READ = process.env.GETHOOKD_RESEARCH_DESIGN_READ !== 'false'
+
+/** Ceiling on that vision call. It runs beside the briefing, never past it. */
+const DESIGN_READ_BUDGET_MS = Number(process.env.GETHOOKD_DESIGN_READ_TIMEOUT_MS) || 45_000
+
+/**
+ * Search the proven-ad library from the submitted brief, before the network is
+ * briefed.
+ *
+ * Deliberately positioned ahead of the briefing rather than beside it: SPARK
+ * and ECHO are asked what a campaign should look like and sound like, and the
+ * answer is worth more when they are holding five static ads that somebody is
+ * currently paying to keep running than when they are reasoning from priors.
+ * Evidence that lands after the concepts are written is a filing cabinet.
+ *
+ * Never throws, never blocks: an unkeyed, slow, empty or broken source returns
+ * null and the run proceeds exactly as it did before this existed.
+ */
+async function researchForRun(
+  controller: ReadableStreamDefaultController,
+  ri: ReactorInputs | undefined,
+  angle: string,
+  accountId: string | null,
+  /**
+   * Wall clock this step may spend. It sits AHEAD of the briefing rather than
+   * beside it — the layers need the ads in their prompt — so it is the one
+   * piece of research that costs the run latency directly, and a short-ceiling
+   * host gets a shorter window rather than a skipped step.
+   */
+  deadlineMs = RESEARCH_BUDGET_MS,
+): Promise<AdResearch | null> {
+  if (!gethookdConfigured()) return null
+
+  sse(controller, {
+    type: 'step',
+    text: 'SPARK scanning the proven-ad library for static ads still running in this market…',
+  })
+
+  try {
+    const tenant = await getTenant(accountId).catch(() => null)
+    const research = await Promise.race([
+      researchProvenAds({
+        angle,
+        brief: ri?.brief,
+        campaignName: ri?.campaignName,
+        audienceType: ri?.audienceType,
+        offerType: ri?.offerType,
+        offerName: ri?.offerName,
+        industry: tenant?.industry,
+        audienceDescriptor: tenant?.audienceDescriptor,
+      }),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), deadlineMs)),
+    ])
+
+    if (!research) {
+      sse(controller, {
+        type: 'step',
+        text: 'Proven-ad library did not answer inside the research window — building from the Vault and the brief.',
+      })
+      return null
+    }
+
+    // Said out loud either way. A research step that found nothing and says so
+    // is information; one that goes quiet reads as one that never ran.
+    sse(controller, {
+      type: 'step',
+      text: research.ads.length
+        ? `Proven-ad research · ${researchSummary(research)}${research.note ? ` — ${research.note}` : ''}`
+        : `Proven-ad research found nothing eligible. ${research.note ?? ''}`.trim(),
+    })
+    for (const ad of research.ads) {
+      sse(controller, {
+        type: 'retrieval',
+        system: 'creative',
+        title: `${ad.brand} · ${ad.daysActive ?? 0} days live — ${
+          ad.title.trim() || ad.body.trim().slice(0, 60)
+        }`,
+        agent: INTELLIGENCE.spark.codename,
+        id: 'spark',
+      })
+    }
+    return research
+  } catch (err) {
+    console.error('Proven-ad research failed:', err)
+    sse(controller, {
+      type: 'step',
+      text: 'Proven-ad library unavailable for this run — building from the Vault and the brief.',
+    })
+    return null
+  }
+}
+
+/**
+ * Read the strongest reference's actual design, and bank it.
+ *
+ * Two jobs in one vision call, because the call is the expensive part:
+ *
+ *   1. THIS run gets a real layout to build its production brief from —
+ *      palette, zones, placement, contrast device — instead of inventing one.
+ *   2. EVERY later run gets it for free. The read is stored as a `design`
+ *      chunk, which is exactly what `bestVisualReferenceFor` already reaches
+ *      for at the top of a run. So the second campaign in this account never
+ *      pays for this read, and the Vault fills itself by being used.
+ *
+ * Returns the clone reference to attach, or null. Never throws.
+ */
+async function readTopReference(
+  controller: ReadableStreamDefaultController,
+  research: AdResearch,
+  accountId: string | null,
+): Promise<CloneReference | null> {
+  // The CRAFT pool first. This read drives the production brief — the layout
+  // the image oven builds from — and construction is exactly what that pool is
+  // selected for. An on-market ad is chosen for its argument, which this read
+  // does not use and must not import.
+  const ad = research.craft.find((a) => a.imageUrl) ?? research.market.find((a) => a.imageUrl)
+  if (!ad?.imageUrl || !RESEARCH_DESIGN_READ) return null
+
+  try {
+    const image = await fetchImage(ad.imageUrl, `${ad.brand} — proven static ad`)
+    if (!image) return null
+
+    // This runs beside the briefing, so it is free until it is slower than the
+    // briefing — at which point it is holding up generation, and a design the
+    // run never used is worth nothing. It loses its turn instead.
+    const analysis = await Promise.race([
+      extractVisualDNA([image], [ad.title, ad.body, ad.ctaText].filter(Boolean).join('\n')),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), DESIGN_READ_BUDGET_MS)),
+    ])
+    if (!analysis) return null
+    // `live` false means no vision model looked at it — the shape is a valid
+    // sample, not a read. Storing that as knowledge, or handing it to the image
+    // oven as a proven layout, would be inventing a design and calling it
+    // evidence.
+    if (!analysis.live || !analysis.ads.length) return null
+
+    const [first] = analysis.ads
+    const pool = research.craft.some((c) => c.id === ad.id) ? 'best-built' : 'on-market'
+    const label = `${ad.brand} · ${ad.daysActive ?? 0} days live · ${pool}`
+
+    // Banked for every future brief. Fire-and-forget would be lost when the
+    // function is reclaimed, so it is awaited — it is one insert.
+    await storeCreativeDNA(
+      first.dna,
+      {
+        title: `Proven static ad — ${label}`,
+        url: ad.shareUrl ?? ad.landingPage,
+        platform: 'Meta Ads',
+      },
+      accountId,
+      first.visual,
+    ).catch((err) => {
+      console.error('Banking the proven-ad design failed:', err)
+    })
+
+    sse(controller, {
+      type: 'step',
+      text: `SPARK read the design of ${label} — ${first.visual.layout} · ${first.visual.palette
+        .slice(0, 3)
+        .map((c) => c.hex)
+        .join(' ')} — driving the production brief and banked to the Vault.`,
+    })
+
+    return {
+      designOnly: true,
+      summary: first.dna.summary || `Proven static ad — ${label}`,
+      visual: first.visual,
+      sourceLabel: `Proven ad · ${label}`,
+    }
+  } catch (err) {
+    console.error('Proven-ad design read failed:', err)
+    return null
+  }
 }
 
 /* ------------------------- Pre-flight intelligence ------------------------ */
@@ -1279,13 +1501,21 @@ async function preflightBriefing(
    * left of the clock actually writing ads. Whatever landed in time is kept.
    */
   deadlineMs: number,
+  /**
+   * Evidence gathered outside the Vault, addressed to the layers that can use
+   * it: the proven static ads researched from this brief go to SPARK as
+   * construction and to ECHO as copy. ATLAS, NOVA and ORACLE are unaffected —
+   * they answer about this account's own assets, market and memory, and
+   * another advertiser's creative is not evidence about any of those.
+   */
+  externalEvidence: Partial<Record<IntelligenceId, string>> = {},
 ): Promise<string> {
   const results = await Promise.all(
     MANDATORY_LAYERS.map(async (id) => {
       const question = preflightQuestion(id, ctx)
       try {
         const findings = await Promise.race([
-          runIntelligence(anthropic, controller, id, question, accountId),
+          runIntelligence(anthropic, controller, id, question, accountId, externalEvidence[id] ?? ''),
           new Promise<null>((resolve) => setTimeout(() => resolve(null), deadlineMs)),
         ])
         if (findings === null) {
@@ -1836,15 +2066,30 @@ export async function POST(request: NextRequest) {
           })
         }
         if (useVideo) sse(controller, { type: 'step', text: `Video engine ready · models: ${availableVideoModels.join(', ')}` })
+        // The outside world, read BEFORE the network is briefed. SPARK and ECHO
+        // answer about creative and copy, and the answer is different when
+        // they are holding live ads that have survived ninety days of spend.
+        const research = await researchForRun(
+          controller,
+          ri,
+          ri?.angle ?? body.angle,
+          runAccount,
+          FAST_PATH ? 8_000 : RESEARCH_BUDGET_MS,
+        )
+        const externalEvidence = research?.ads.length
+          ? { spark: sparkEvidence(research), echo: echoEvidence(research) }
+          : {}
+
         sse(controller, {
           type: 'step',
           text: `Briefing ${MANDATORY_LAYERS.map((id) => INTELLIGENCE[id].codename).join(' · ')} in parallel…`,
         })
 
-        // ORACLE's memory lookup and the mandatory-layer briefing are
-        // independent, so they run against the same wall clock instead of
-        // queueing. Neither can fail the run.
-        const [winningConfigs, briefing, runLearnings] = await Promise.all([
+        // ORACLE's memory lookup, the mandatory-layer briefing and the design
+        // read of the strongest reference are independent, so they run against
+        // the same wall clock instead of queueing. None of them can fail the
+        // run.
+        const [winningConfigs, briefing, runLearnings, researchDesign] = await Promise.all([
           // ORACLE retrieves matching past winners and feeds them into OPUS's
           // reasoning — the Reactor reuses what worked instead of starting cold.
           retrieveWinningConfigs({
@@ -1882,12 +2127,21 @@ export async function POST(request: NextRequest) {
             },
             runAccount,
             Math.max(8_000, RUN_BUDGET_MS * PREFLIGHT_MAX_SHARE - elapsed()),
+            externalEvidence,
           ).catch(() => ''),
           // What THIS account has learned, ahead of the craft floor. An
           // independent read, so it runs against the same wall clock rather
           // than queueing behind the briefing.
           resolveCreativeLearnings().catch(() => [] as Learning[]),
+          // Only when nothing is already driving the design. A reference the
+          // operator attached, or one the Vault already holds, outranks a
+          // fresh vision call — and skipping it here is what keeps the second
+          // campaign in an account cheaper than the first.
+          research && !body.cloneReference && !FAST_PATH
+            ? readTopReference(controller, research, runAccount).catch(() => null)
+            : Promise.resolve(null),
         ])
+        if (researchDesign) body.cloneReference = researchDesign
         const learningsRubric = formatLearnings(runLearnings)
         const oracleMemory = memoryBlock(winningConfigs)
 
@@ -1905,7 +2159,9 @@ export async function POST(request: NextRequest) {
         const messages: Anthropic.Beta.Messages.BetaMessageParam[] = [
           {
             role: 'user',
-            content: `${angleClause}. Active intelligence inputs: ${(body.inputs ?? []).join(', ') || 'all'}. Requested output types: ${outputs.join(', ')}.${briefing}${fastClause}`,
+            content: `${angleClause}. Active intelligence inputs: ${(body.inputs ?? []).join(', ') || 'all'}. Requested output types: ${outputs.join(', ')}.${briefing}${
+              research ? provenAdBlock(research) : ''
+            }${fastClause}`,
           },
         ]
 

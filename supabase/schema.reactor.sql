@@ -1,4 +1,4 @@
--- TPB Creative Reactor — RAG knowledge layer
+-- Creative Reactor — RAG knowledge layer
 -- Requires the pgvector extension. Run in the Supabase SQL editor.
 -- Voyage `voyage-3` returns 1024-dimensional embeddings.
 

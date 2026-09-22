@@ -1,6 +1,6 @@
 # Creative Canvas — Product Specification
 
-**TPB Creative Reactor · the structured creative operating layer**
+**Creative Reactor · the structured creative operating layer**
 Engineered For Performance.
 
 This document defines the Creative Canvas: what it is, how it behaves, its
@@ -15,7 +15,7 @@ increments; everything else is live and browser-verified.
 
 ## 1. The role of Creative Canvas in the product
 
-TPB's core flow is a three-stage production line:
+The core flow is a three-stage production line:
 
 | Stage | Surface | Job | Output |
 |---|---|---|---|
@@ -209,13 +209,13 @@ Regeneration is per-node and strategy-coherent (`POST /api/canvas/regenerate`):
   snapshot** (angle, awareness, sophistication, audience, offer, offer name),
   the lane's **kept context** (locked + approved + primary neighbours), and
   an optional one-line **user steer**.
-- The system prompt is the TPB copy chief: brand voice rules, compliance
+- The system prompt is the copy chief: brand voice rules, compliance
   hard-nos, "produce a genuinely different take, not a paraphrase."
 - Locked nodes cannot regenerate. Proof nodes never regenerate.
 - A card that just changed role via reassignment (§15) regenerates **into
   its new kind explicitly** — the request never waits on a stale state
   read-back; kind, title, and current text are passed directly.
-- Zero-key mode serves curated TPB alternates so the loop always works.
+- Zero-key mode serves curated alternates so the loop always works.
 
 ---
 
@@ -429,7 +429,7 @@ could silently break a hard-won piece of copy if it happened by accident.
 
 1. **The differentiator is the spine — and now the semantic reassignment.**
    Every competitor canvas (free-form node tools, Figma/Miro-style boards) is
-   generic; TPB's is *ad anatomy with strategy-coherent regeneration and a
+   generic; this one is *ad anatomy with strategy-coherent regeneration and a
    card that knows what it's for*. Protect both: resist free-edge wiring
    forever, and never let reassignment silently auto-confirm.
 2. **Make montage's two-model split the template for future modes.**

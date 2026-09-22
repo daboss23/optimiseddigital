@@ -180,7 +180,7 @@ const PROBE = { prompt: 'a plain grey square', aspect_ratio: '1:1', num_images: 
  * signal clean: 404 means the path is wrong, anything else means it is right.
  */
 const I2V_PROBE_IMAGE =
-  process.env.MUAPI_PROBE_IMAGE_URL || 'https://picsum.photos/seed/tpbprobe/512/512'
+  process.env.MUAPI_PROBE_IMAGE_URL || 'https://picsum.photos/seed/reactorprobe/512/512'
 
 function probeBody(slug: string, kind: 'image' | 'video'): Record<string, unknown> {
   if (kind === 'image') return PROBE
