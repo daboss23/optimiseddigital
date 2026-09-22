@@ -18,11 +18,18 @@
         "source": "github",
         "repo": "thedotmack/claude-mem"
       }
+    },
+    "claude-video": {
+      "source": {
+        "source": "github",
+        "repo": "bradautomates/claude-video"
+      }
     }
   },
   "enabledPlugins": {
     "superpowers@superpowers-marketplace": true,
     "impeccable@impeccable": true,
-    "claude-mem@thedotmack": true
+    "claude-mem@thedotmack": true,
+    "watch@claude-video": true
   }
 }
