@@ -145,6 +145,36 @@ async function tierIsSendable(): Promise<boolean> {
   return lastUrl.includes('performance_scores=winning')
 }
 
+/**
+ * Refuse a parameter under a list of spellings, accepting only the one named.
+ *
+ * The rename ladder walks several spellings deep now, because ONE was not
+ * enough against the live endpoint: `ad_format` and `run_time` are both
+ * refused here under the very names their own MCP wrapper accepts. The run
+ * time bar is half of what this platform means by "proven", and losing it is
+ * invisible — the duration sort still puts long-running ads on top, so the
+ * feed looks right while the bar is simply not applied.
+ */
+function stubAcceptingOnly(accepted: string, refuse: string[], body: unknown) {
+  urls = []
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    lastUrl = typeof input === 'string' ? input : input.toString()
+    urls.push(lastUrl)
+    const sent = new URL(lastUrl).searchParams
+    const offending = refuse.filter((n) => n !== accepted && sent.get(n) !== null)
+    if (offending.length) {
+      return new Response(
+        JSON.stringify({ message: `Unrecognized parameter(s): ${offending.join(', ')}` }),
+        { status: 422, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }) as typeof fetch
+}
+
 function restoreFetch() {
   globalThis.fetch = realFetch
 }
@@ -972,6 +1002,105 @@ async function main() {
   )
   check('ECHO gets the primary text', echoEvidence(climbed).includes('Primary text'))
   check('SPARK gets the on-ad headline', sparkEvidence(climbed).includes('On-ad headline'))
+
+  /* ------------------- the ladder walks past the first alias ---------------- */
+
+  const FORMAT_SPELLINGS = ['ad_format', 'format', 'ad_formats', 'formats', 'asset_type']
+  const RUN_TIME_SPELLINGS = ['run_time', 'min_days_active', 'days_active_min', 'min_run_time']
+
+  stubAcceptingOnly('formats', FORMAT_SPELLINGS, { data: [], meta: {} })
+  const formatRenamed = await searchProvenAds({ focus: 'services', format: 'image' })
+  check(
+    'a format filter refused twice is found on the third spelling',
+    new URL(lastUrl).searchParams.get('formats') === 'images',
+    'one alias was not enough against the live endpoint',
+  )
+  check(
+    'a rename that WORKED is not reported as dropped',
+    !(formatRenamed.note ?? '').includes('ad_format'),
+    'warning about a filter that ran trains the operator to ignore the banner',
+  )
+
+  stubAcceptingOnly('min_days_active', RUN_TIME_SPELLINGS, { data: [], meta: {} })
+  await searchProvenAds({ focus: 'services' })
+  check(
+    'the 90-day proof bar survives a vendor rename',
+    new URL(lastUrl).searchParams.get('min_days_active') === '90',
+    'losing this silently drops half of what "proven" means here',
+  )
+
+  stubRefusingAlways(FORMAT_SPELLINGS, { data: [], meta: {} })
+  const allRefused = await searchProvenAds({ focus: 'services', format: 'image' })
+  check(
+    'every spelling refused still returns a feed',
+    Array.isArray(allRefused.ads),
+    'one honest failure beats an empty tab',
+  )
+  check(
+    'and says the results are wider than asked for',
+    (allRefused.note ?? '').includes('ad_format'),
+    'silently serving video to someone who picked Static looks like success',
+  )
+  check(
+    'the ladder is bounded, not an open walk',
+    urls.length <= 1 + 3 + 1,
+    'as-asked + MAX_ALIAS_ROUNDS + the final drop',
+  )
+
+  /* ------------------------ the craft pool and ordering -------------------- */
+
+  stubFetch({ data: [], meta: {} })
+  await searchProvenAds({ focus: 'services', scope: 'library' })
+  check(
+    'the craft pool drops the niche filter',
+    new URL(lastUrl).searchParams.get('niche') === null,
+    'breadth is the whole point of that pool',
+  )
+
+  stubFetch({ data: [], meta: {} })
+  await searchProvenAds({ focus: 'services', sort: 'newest' })
+  check('newest-first orders by launch date', new URL(lastUrl).searchParams.get('sort_column') === 'start_date')
+  check(
+    'an unqueried newest sort does not ask for strict ordering',
+    new URL(lastUrl).searchParams.get('sort_strict') === null,
+    'relevance never led, so there is nothing to override',
+  )
+
+  stubFetch({ data: [], meta: {} })
+  await searchProvenAds({ focus: 'services', sort: 'newest', query: 'roofing' })
+  check(
+    'a queried newest sort DOES, or relevance silently keeps the old order',
+    new URL(lastUrl).searchParams.get('sort_strict') === 'true',
+  )
+
+  stubFetch({ data: [], meta: {} })
+  await searchProvenAds({ focus: 'services' })
+  check(
+    'longest-running stays the default',
+    new URL(lastUrl).searchParams.get('sort_column') === 'days_active',
+  )
+
+  const headlineRows = {
+    data: [
+      { id: 1, title: 'Before and after in 14 days', description: 'body', days_active: 200, status: 'active', display_format: 'image' },
+      { id: 2, title: '', description: 'body', days_active: 200, status: 'active', display_format: 'image' },
+    ],
+    meta: {},
+  }
+  stubFetch(headlineRows)
+  const withHeadline = await searchProvenAds({ focus: 'services', requireHeadline: true })
+  check(
+    'a craft reference without a headline is not served',
+    withHeadline.ads.every((a) => a.title.trim().length > 0),
+    'the library files untreated product photos under an archetype too',
+  )
+  stubFetch(headlineRows)
+  const noRule = await searchProvenAds({ focus: 'services' })
+  check(
+    'and the market pool is left alone',
+    noRule.ads.length >= withHeadline.ads.length,
+    'the argument matters more than the treatment there',
+  )
 
   /* ---------------------------------- done -------------------------------- */
   restoreFetch()

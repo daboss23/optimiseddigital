@@ -266,6 +266,7 @@ export async function searchProvenAds(q: ProvenAdQuery = {}): Promise<ProvenAdRe
   const limit = Math.min(Math.max(Number(q.limit) || DEFAULT_LIMIT, 1), MAX_LIMIT)
   const page = Math.min(Math.max(Number(q.page) || 1, 1), 20)
   const query = (q.query ?? '').trim()
+  const sort = q.sort ?? 'longest'
 
   if (!gethookdConfigured()) {
     return {
@@ -298,11 +299,19 @@ export async function searchProvenAds(q: ProvenAdQuery = {}): Promise<ProvenAdRe
     ),
     run_time: q.minDaysActive ?? MIN_DAYS_ACTIVE,
     status: 'active',
-    // Ordering only bites when no query is set; sending it always is harmless
-    // and keeps the intent visible at the call site. Safe to sort on duration
-    // ONLY because started_after bounds what can appear.
-    sort_column: 'days_active',
+    // Ordering only bites when no query is set — a text query outranks the
+    // sort column and this becomes a tiebreaker within a relevance tier.
+    // Sending it always is harmless and keeps the intent visible at the call
+    // site. Safe to sort on duration ONLY because started_after bounds what
+    // can appear.
+    sort_column: sort === 'newest' ? 'start_date' : 'days_active',
     sort_direction: 'desc',
+    // With a query, relevance leads and the column above only breaks ties — so
+    // "newest" silently returns the same relevance-ordered page as "longest"
+    // unless strict ordering is demanded. Asked for only when the operator
+    // picked an order AND typed a term, because the trade is real: strict
+    // ordering can rank a weak match above a strong one.
+    sort_strict: sort === 'newest' && query ? 'true' : undefined,
     ads_per_brand_limit: ADS_PER_BRAND,
     // One creative re-uploaded under several ad ids is one lesson, and every
     // copy of it is billed like a separate ad. The source can collapse them
@@ -322,7 +331,13 @@ export async function searchProvenAds(q: ProvenAdQuery = {}): Promise<ProvenAdRe
     return { configured: true, source: 'gethookd', ads: [], hasMore: false, credits, note: res.note }
   }
 
-  const ads = (res.data ?? []).map((r) => normalise(r, focus)).filter((a): a is ProvenAd => a !== null)
+  const ads = (res.data ?? [])
+    .map((r) => normalise(r, focus))
+    .filter((a): a is ProvenAd => a !== null)
+    // The archetype tag does not buy construction on its own — the library
+    // files untreated product photos under one. A headline is the cheapest
+    // evidence the ad was designed rather than uploaded.
+    .filter((a) => !q.requireHeadline || a.title.trim().length > 0)
   const meta = res.meta ?? {}
   const total = typeof meta.total === 'number' ? meta.total : undefined
   const hasMore = meta.has_more === true

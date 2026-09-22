@@ -86,6 +86,30 @@ export interface ProvenAdQuery {
    * market, most of which is an untreated product photo.
    */
   creativeCategories?: number[]
+  /**
+   * Require an on-ad headline before a row is served.
+   *
+   * The library files an untreated phone photo of a product under a static-ad
+   * archetype at the same performance tier as a properly built ad beside it,
+   * so the archetype tag alone does not buy construction. A headline is the
+   * cheapest proof that somebody DESIGNED the thing. Used by the craft pool on
+   * both surfaces; never applied to the market pool, where the argument
+   * matters more than the treatment.
+   */
+  requireHeadline?: boolean
+  /**
+   * Feed ordering.
+   *
+   * `longest` is duration-first — the proof-of-life sort, and the default.
+   * It is also deterministic: the top of a bounded, filtered pool is the same
+   * rows today and next week, which is what makes a browse feed feel frozen.
+   * `newest` orders by launch date so the same pool yields ads the operator
+   * has not already seen.
+   *
+   * Duration-first is only sound INSIDE the launch window — applied to the
+   * whole corpus it returns the oldest rows in the database.
+   */
+  sort?: 'longest' | 'newest'
   geo?: string
   limit?: number
   page?: number
