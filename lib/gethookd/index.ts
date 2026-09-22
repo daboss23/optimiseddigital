@@ -36,8 +36,18 @@ export { gethookdConfigured }
  *             filter is the one thing still unconfirmed. `gethookd:params`
  *             probes a live key and prints the value to set.
  */
+/**
+ * The endpoint's name for the country filter.
+ *
+ * `location`, confirmed against the live API by `npm run gethookd:params`:
+ * `geo`, `countries` and `country` are all refused by name, and `geo` is what
+ * the MCP wrapper takes — the wrapper-vs-REST split again. The default used to
+ * be `geo`, so every search paid a wasted round trip to be refused and renamed
+ * before it ran. Still env-overridable, because vendor names drift and a
+ * confirmed name should never need a deploy.
+ */
 function geoParam(): string {
-  return (process.env.GETHOOKD_GEO_PARAM || 'geo').trim()
+  return (process.env.GETHOOKD_GEO_PARAM || 'location').trim()
 }
 
 /**
