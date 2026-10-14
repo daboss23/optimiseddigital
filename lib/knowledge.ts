@@ -17,7 +17,7 @@ import {
   vaultCategories,
   foundationAssets,
 } from '@/lib/reactor-data'
-import { demoDataEnabled } from '@/lib/demo-mode'
+import { demoDataEnabled, demoRetrievalEnabled } from '@/lib/demo-mode'
 
 export type KnowledgeSystem =
   | 'vault'
@@ -426,8 +426,10 @@ function buildDemoCorpus(): Doc[] {
      panel rendered honestly empty while every reactor run still retrieved
      another company's members, margins and market as evidence and grounded the
      campaign in them. The screen said "blank platform" and the ads said
-     otherwise. Same flag, same answer, everywhere. */
-  if (!demoDataEnabled()) {
+     otherwise. Retrieval therefore answers to its OWN half of the gate,
+     strictly opt-in: dressing the dashboards for a demo never changes what
+     the agents are handed. */
+  if (!demoRetrievalEnabled()) {
     demoCorpus = docs
     return docs
   }

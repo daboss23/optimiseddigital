@@ -154,7 +154,8 @@ function resultWord(type: PrimaryResultType): string {
 
 /**
  * The seeded Winning Intelligence panel — illustrative win indexes, test counts
- * and spend. Only reachable with NEXT_PUBLIC_REACTOR_DEMO_DATA=1; a live
+ * and spend. Shown while the demo display is on (the default; `=0` turns it
+ * off) and badged as such; a live
  * deployment computes these from graded outcomes or shows nothing.
  */
 function buildDemoWinning(cost: string): WinningIntelligence {
