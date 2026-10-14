@@ -66,7 +66,9 @@ Tagline: **Engineered For Performance.**
 | Database | Supabase |
 | Copy AI | Anthropic Claude API — orchestrator `claude-fable-5` (Opus 4.8 fallback), bulk `claude-sonnet-5` (see `lib/models.ts`) |
 | Embeddings | Voyage AI `voyage-3` (RAG retrieval) |
-| Vector store | Supabase `pgvector` (`knowledge_chunks`) |
+| Vector store | Supabase `pgvector` (`knowledge_chunks`) — HNSW + full-text, fused (`match_knowledge_hybrid`) |
+| Reranker | Voyage AI `rerank-2.5` (`lib/rerank.ts`) |
+| Long documents | PageIndex Cloud via `@pageindex/sdk` (`lib/documents/`) |
 | Image AI | fal.ai (FLUX) + Higgsfield Soul — direct Gemini/OpenAI image removed (fal + Kie only) |
 | Deployment | Vercel |
 
@@ -111,7 +113,19 @@ These live in `.env.local` — never commit this file.
 
 ```
 ANTHROPIC_API_KEY            # Campaign Reactor agent + copy generation
-VOYAGE_API_KEY               # Embeddings for the RAG knowledge layer
+VOYAGE_API_KEY               # Embeddings for the RAG knowledge layer — and the reranker, same key
+VOYAGE_RERANK_MODEL          # Optional — the reranker (default rerank-2.5; `off` disables it).
+                             #   VOYAGE_RERANK_TIMEOUT_MS (default 4000): past it a search keeps its
+                             #   fused order rather than wait — reranking improves retrieval, it is
+                             #   never the reason retrieval returned nothing.
+PAGEINDEX_API_KEY            # Optional — long-document reading (brand books, SOP manuals, offer docs)
+                             #   by STRUCTURE via PageIndex Cloud. Unset, the Vault's Long Documents
+                             #   panel says so and the Reactor never offers `read_document`.
+                             #   Needs Supabase + supabase/schema.documents.sql (the ledger).
+                             #   PAGEINDEX_API_BASE (default https://api.pageindex.ai),
+                             #   PAGEINDEX_TIMEOUT_MS (default 40000 per question — it sits inside
+                             #   the Reactor's run budget). The uploaded PDF LEAVES this deployment
+                             #   for PageIndex Cloud; the panel says so before it is sent.
 OPENAI_API_KEY               # Comparison copy / image (GPT Image)
 GEMINI_API_KEY               # Nano Banana 2 image model (Gemini) — or GOOGLE_API_KEY
 HF_CREDENTIALS               # Higgsfield image + video ("KEY_ID:KEY_SECRET")
@@ -286,6 +300,20 @@ end. For destructive writes (Supabase inserts), surface errors clearly.
 - Provider: **Voyage AI**, model `voyage-3` (1024-dim) — Anthropic has no embeddings model. See `lib/embeddings.ts`.
 - Stored in Supabase `pgvector` (`knowledge_chunks`); retrieved via `match_knowledge()`. See `lib/knowledge.ts` and `supabase/schema.reactor.sql`.
 - All retrieval degrades gracefully to a curated demo corpus when keys/DB are absent.
+
+### Retrieval pipeline (`searchKnowledge` in `lib/knowledge.ts`)
+- **Three stages, each degrading on its own:** (1) `match_knowledge_hybrid` — vector + full-text, fused with Reciprocal Rank Fusion (scores are never added across scales); falls back to `match_knowledge` (vector-only) when `supabase/schema.retrieval.sql` has not been run, re-checked every 10 minutes so applying the migration needs no redeploy. (2) The fused pool (24) goes to Voyage's reranker. (3) Top k (8) returned.
+- **Why hybrid:** ad craft lives in exact phrases ("free audit", a dollar figure, an offer name) that an embedding blurs. **Why rerank:** similarity is not relevance — a cross-encoder reads query and document together. **Why HNSW:** IVFFlat with `lists = 100` searched ~1% of the table at the default `probes = 1`, and the tenant filter applied after that, so a scoped query could come back short or empty.
+- **`similarity` is always cosine**, on every row, whichever branch found it — anything reading it means what it meant before. The reranker's score rides separately as `relevance` and is never interchangeable with it.
+- **The tenant predicate in both hybrid branches is `match_knowledge`'s, verbatim** — `npm run selftest:retrieval` compares the text and executes the SQL against real Postgres + pgvector (PGlite) to prove it: one account never sees another's rows, an unscoped row is seen by nobody, a null account sees global rows only.
+- The scope predicate is repeated in each branch rather than shared in a CTE on purpose: a CTE referenced twice is materialised and cannot use the HNSW index.
+- `/api/health` → `retrieval` reports which stages are live (`vector` / `hybrid` / `rerank` / `documents`), so "is the knowledge layer real or the keyword fallback?" is answered in one place.
+
+### Long documents (PageIndex)
+- **Not a replacement for the vector store — a second reader for one job.** The Vault's thousands of small, flat chunks stay on hybrid search. A long, structured PDF (brand book, SOP manual, offer document) loses the link between a rule and its heading when chunked, so it goes to PageIndex, which keeps a table-of-contents tree and answers by reasoning down it.
+- `lib/documents/pageindex.ts` is the transport (the SDK's REST `PageIndexApi`, never its MCP client — no long-lived connection in a serverless function); `lib/documents/index.ts` is the account-scoped ledger over `long_documents` (`supabase/schema.documents.sql`). **Tenancy is enforced on our side:** every query is `(account_id, id)`, and the provider's document id is read off the row, never accepted from a request.
+- Upload: `POST /api/vault/documents` (multipart PDF, ≤ 4 MB — Vercel's 4.5 MB body limit, and the key must never reach the browser, so the file passes through). Validated by name, size and `%PDF-` magic bytes before a byte is billed. A ledger insert that fails after the provider accepted the file deletes it there rather than orphaning it.
+- The Reactor gets a **`read_document`** tool only when the account has an indexed document, with the ids as an enum. Answers quote the document and cite section + page; a rule the document states binds the concept. `POST /api/vault/documents/ask` makes the same call so the operator can see what the agents will be told.
 
 ### Higgsfield (image + video)
 - Use the official SDK **`@higgsfield/client`** (v2) via `lib/higgsfield.ts` — never shell out to the CLI (it needs a browser login + long-running process and can't run in a Vercel serverless route). Auth is `HF_CREDENTIALS` ("KEY_ID:KEY_SECRET").
@@ -466,8 +494,11 @@ that *is* the agent thinking out loud.
   the next run can retrieve it.
 
 To run the *real* agent end to end: set `ANTHROPIC_API_KEY` (agent),
-`VOYAGE_API_KEY` (embeddings), and the Supabase keys (vector store), then run
-`supabase/schema.reactor.sql` in Supabase.
+`VOYAGE_API_KEY` (embeddings + reranker), and the Supabase keys (vector store),
+then run `supabase/schema.reactor.sql`, `schema.tenancy.sql` and
+`schema.retrieval.sql` in Supabase (plus `schema.documents.sql` with
+`PAGEINDEX_API_KEY` for long documents). `/api/health` → `retrieval` confirms
+which stages are live.
 
 ---
 
@@ -771,6 +802,22 @@ Full architecture: `docs/MIKE_DELIGHT.md`.
       the single case that still shows the "all markets" banner. Bounded and
       named at every step, so it can never strip its way down to an unfiltered,
       fully billed search. Guarded by `npm run selftest:gethookd` (82 checks)
+- [x] **Hybrid retrieval** (`supabase/schema.retrieval.sql`): HNSW replaces
+      IVFFlat, a weighted full-text column joins the vector, and
+      `match_knowledge_hybrid` fuses both with Reciprocal Rank Fusion under
+      `match_knowledge`'s exact tenant predicate. Falls back to vector-only
+      until the migration runs
+- [x] **Voyage reranking** (`lib/rerank.ts`) — the fused pool of 24 is
+      reranked by `rerank-2.5` to the top 8; a missing key, error or 4s timeout
+      keeps the fused order, and a partial response can reorder but never
+      shrink the result
+- [x] **Long documents via PageIndex** (`lib/documents/`, Vault → Long
+      Documents, `/api/vault/documents`) — PDFs read by structure, an
+      account-scoped ledger, and a `read_document` tool for the Reactor
+- [x] `npm run selftest:retrieval` — 41 in-process checks: the migration
+      executed against Postgres + pgvector (PGlite), tenant isolation in the
+      hybrid SQL, the reranker's documented REST shape and every degradation
+      path, PDF validation, ledger scoping, and the SDK surface this code uses
 - [x] `npm run selftest` (`scripts/reactor-selftest.ts`) — asserts every
       mandatory layer activates with real evidence, evidence is attributable,
       and deliverable counts match the brief

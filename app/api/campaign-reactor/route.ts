@@ -75,6 +75,7 @@ import { getConnectedWebsite } from '@/lib/website-intelligence'
 import { websiteBrandBrief } from '@/lib/brand-context'
 import { getTenant, tenantDescriptor } from '@/lib/tenant'
 import { currentAccount } from '@/lib/account'
+import { askDocument, readyDocuments, type LongDocument } from '@/lib/documents'
 
 // ORACLE strategic memory injected into OPUS at fire time — past winning
 // configurations matching the brief, so generation reuses what worked.
@@ -651,6 +652,7 @@ function buildTools(
   useImage: boolean,
   useVideo: boolean,
   useMetaAds: boolean,
+  documents: LongDocument[] = [],
 ): Anthropic.Beta.Messages.BetaToolUnion[] {
   // Built from the registry, never hand-written: a hardcoded menu goes stale
   // the moment a model is added or retired, and then the orchestrator is
@@ -830,6 +832,34 @@ function buildTools(
       required: ['concepts'],
     },
   })
+
+  // The account's long documents — brand books, SOP manuals, offer documents —
+  // read by STRUCTURE through PageIndex rather than retrieved as chunks. Only
+  // offered when the account has at least one indexed document, and the ids
+  // are an enum of exactly those, so the model can name nothing else.
+  if (documents.length > 0) {
+    tools.push({
+      name: 'read_document',
+      description: `Ask one of this account's own long documents a question. It is read section by section, so ask for a specific rule, requirement, restriction or section — not a summary. Answers quote the document and cite the section and page. Use it whenever a concept depends on what the brand or offer documents actually say (claims allowed, words banned, offer terms, tone rules). Available: ${documents
+        .map((d) => `"${d.name}"${d.pageCount ? ` (${d.pageCount} pages)` : ''} = ${d.id}`)
+        .join('; ')}.`,
+      input_schema: {
+        type: 'object',
+        properties: {
+          document_id: {
+            type: 'string',
+            enum: documents.map((d) => d.id),
+            description: 'The document to read',
+          },
+          question: {
+            type: 'string',
+            description: 'One focused question for that document',
+          },
+        },
+        required: ['document_id', 'question'],
+      },
+    })
+  }
 
   if (useMetaAds) {
     tools.push({ type: 'mcp_toolset', mcp_server_name: META_ADS_MCP_NAME })
@@ -1999,7 +2029,10 @@ export async function POST(request: NextRequest) {
         const useVideo = videoConfigured()
         const availableVideoModels = listVideoModels().filter((m) => m.configured).map((m) => m.id)
         const availableImageModels = listImageModels().filter((m) => m.configured).map((m) => m.id)
-        const tools = buildTools(useImage, useVideo, Boolean(mcpServer))
+        // Indexed long documents this account owns. Instant when PageIndex is
+        // not configured — the readiness check is in memory.
+        const runDocuments = await readyDocuments(runAccount)
+        const tools = buildTools(useImage, useVideo, Boolean(mcpServer), runDocuments)
         const inputBlocks = buildInputBlocks(body.reactorInputs)
 
         // Brand Intelligence → the ads. When On Brand is enabled we pull the
@@ -2453,6 +2486,39 @@ export async function POST(request: NextRequest) {
                 runAccount,
               )
               return { type: 'tool_result', tool_use_id: tu.id, content: findings }
+            }
+
+            if (tu.name === 'read_document') {
+              const { document_id, question } = tu.input as { document_id: string; question: string }
+              const doc = runDocuments.find((d) => d.id === document_id)
+              if (!doc || !runAccount) {
+                return {
+                  type: 'tool_result',
+                  tool_use_id: tu.id,
+                  content: 'That document is not available to this run.',
+                  is_error: true,
+                }
+              }
+              sse(controller, {
+                type: 'step',
+                text: `ATLAS — reading ${doc.name} by structure: “${question}”`,
+              })
+              const answered = await askDocument(runAccount, doc.id, question)
+              if (!answered.ok) {
+                sse(controller, { type: 'step', text: `└▸ ${doc.name} could not be read — ${answered.error}` })
+                return {
+                  type: 'tool_result',
+                  tool_use_id: tu.id,
+                  content: `Could not read ${doc.name}: ${answered.error} Proceed without it and do not claim what it says.`,
+                  is_error: true,
+                }
+              }
+              sse(controller, { type: 'step', text: `└▸ ${doc.name} answered, with citations` })
+              return {
+                type: 'tool_result',
+                tool_use_id: tu.id,
+                content: `From "${doc.name}" — this account's own document. Where it states a rule, the rule binds the concept: quote it, do not paraphrase it away.\n\n${answered.answer}`,
+              }
             }
 
             if (tu.name === 'get_learnings') {

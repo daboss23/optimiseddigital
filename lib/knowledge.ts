@@ -4,7 +4,8 @@
 // demo intelligence so the platform still works end to end.
 
 import { getSupabaseAdmin, supabaseUrl } from '@/lib/supabase'
-import { embed, embedOne, hasEmbeddings } from '@/lib/embeddings'
+import { embed, embedOne, hasEmbeddings, EMBED_DIM } from '@/lib/embeddings'
+import { rerankConfigured, rerankItems } from '@/lib/rerank'
 import {
   patterns,
   topHooks,
@@ -42,7 +43,15 @@ export interface KnowledgeHit {
   category: string | null
   title: string
   content: string
+  /** Cosine similarity to the query — the same scale whichever search found the row. */
   similarity: number
+  /**
+   * The reranker's relevance score, when the hit was reranked. A different
+   * scale from `similarity` and never interchangeable with it: similarity says
+   * how near two embeddings are, relevance says how well this document answers
+   * this query read together.
+   */
+  relevance?: number
 }
 
 /* -------------------------------- Chunking -------------------------------- */
@@ -154,6 +163,95 @@ export async function ingestKnowledge(input: IngestInput): Promise<IngestResult>
 
 /* ------------------------------- Retrieval -------------------------------- */
 
+/**
+ * How many candidates the database hands the reranker. Wide enough that the
+ * right row is in the pool when the fused order puts it 15th; narrow enough
+ * that the rerank call stays well inside its timeout.
+ */
+const RERANK_POOL = 24
+
+/**
+ * Whether `match_knowledge_hybrid` exists (supabase/schema.retrieval.sql).
+ *
+ * Checked by trying it: a project that has not run the migration answers
+ * "function not found", and every search then uses `match_knowledge` until the
+ * next re-check, so an un-migrated deployment pays one failed call per window
+ * rather than one per search. The window is short enough that running the
+ * migration takes effect without a redeploy.
+ */
+const HYBRID_RECHECK_MS = 10 * 60_000
+let hybridMissingSince: number | null = null
+
+function isMissingFunction(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false
+  // PGRST202: PostgREST could not find the function. 42883: Postgres itself.
+  return (
+    error.code === 'PGRST202' ||
+    error.code === '42883' ||
+    /match_knowledge_hybrid/i.test(error.message ?? '')
+  )
+}
+
+interface ScopedSearch {
+  queryEmbedding: number[]
+  queryText: string
+  count: number
+  system: KnowledgeSystem | null
+  builderId: string | null
+}
+
+/**
+ * One scoped database search: hybrid when the migration is in, pure vector
+ * otherwise. Both functions apply the same tenant predicate — a null account
+ * returns global rows only — so the fallback can never widen a result set.
+ */
+async function scopedSearch(search: ScopedSearch): Promise<KnowledgeHit[]> {
+  const admin = getSupabaseAdmin()
+  const scope = { filter_system: search.system, filter_builder: search.builderId }
+  const toHit = (d: KnowledgeHit): KnowledgeHit => ({
+    system: d.system,
+    category: d.category ?? null,
+    title: d.title,
+    content: d.content,
+    similarity: d.similarity,
+  })
+
+  const hybridDue =
+    hybridMissingSince === null || Date.now() - hybridMissingSince > HYBRID_RECHECK_MS
+  if (hybridDue) {
+    const { data, error } = await admin.rpc('match_knowledge_hybrid', {
+      query_embedding: search.queryEmbedding,
+      query_text: search.queryText,
+      match_count: search.count,
+      ...scope,
+    })
+    if (!error) {
+      hybridMissingSince = null
+      return (data ?? []).map(toHit)
+    }
+    if (isMissingFunction(error)) {
+      if (hybridMissingSince === null) {
+        console.warn(
+          'match_knowledge_hybrid is not installed — retrieval is vector-only. Run supabase/schema.retrieval.sql to add keyword matching.',
+        )
+      }
+      hybridMissingSince = Date.now()
+    } else {
+      // A real failure of the hybrid query is not a reason to fail the search:
+      // the vector path answers the same question, under the same scope.
+      console.error('Hybrid search failed, using vector search:', error)
+    }
+  }
+
+  const { data, error } = await admin.rpc('match_knowledge', {
+    query_embedding: search.queryEmbedding,
+    match_count: search.count,
+    ...scope,
+  })
+  if (error) throw error
+  return (data ?? []).map(toHit)
+}
+
 export async function searchKnowledge(
   query: string,
   opts: { k?: number; system?: KnowledgeSystem; builderId?: string | null } = {},
@@ -163,25 +261,22 @@ export async function searchKnowledge(
   if (dbReady()) {
     try {
       const queryEmbedding = await embedOne(query, 'query')
-      const { data, error } = await getSupabaseAdmin().rpc('match_knowledge', {
-        query_embedding: queryEmbedding,
-        match_count: k,
-        filter_system: opts.system ?? null,
-        filter_builder: opts.builderId ?? null,
+      // A wider pool is only worth fetching when something will reorder it.
+      const pool = rerankConfigured() ? Math.max(k, RERANK_POOL) : k
+      const candidates = await scopedSearch({
+        queryEmbedding,
+        queryText: query,
+        count: pool,
+        system: opts.system ?? null,
+        builderId: opts.builderId ?? null,
       })
-      if (error) throw error
       // A successful search that matched nothing is an ANSWER, not a failure.
       // Falling through to the demo corpus here would hand every tenant with an
       // empty vault the curated stand-in knowledge of whoever seeded it — the
       // agents would then ground a campaign in another company's frameworks and
       // report it as retrieved evidence. An empty vault must retrieve nothing.
-      return (data ?? []).map((d: KnowledgeHit) => ({
-        system: d.system,
-        category: d.category ?? null,
-        title: d.title,
-        content: d.content,
-        similarity: d.similarity,
-      }))
+      const { items } = await rerankItems(query, candidates, k, (h) => `${h.title}\n${h.content}`)
+      return items
     } catch (err) {
       console.error('Vector search failed, using demo knowledge:', err)
     }
@@ -191,6 +286,35 @@ export async function searchKnowledge(
   // or the query itself errored — i.e. demo mode, where the curated corpus is
   // the intended experience.
   return demoSearch(query, k, opts.system)
+}
+
+/**
+ * Is hybrid search installed? For the health check — one global-scope probe
+ * with a unit vector, which matches only platform rows and reads nothing that
+ * belongs to an account.
+ */
+export async function probeHybridSearch(): Promise<{ installed: boolean; error?: string }> {
+  if (!supabaseReady()) return { installed: false, error: 'Supabase not configured' }
+  try {
+    const probe = new Array<number>(EMBED_DIM).fill(0)
+    probe[0] = 1
+    const { error } = await getSupabaseAdmin().rpc('match_knowledge_hybrid', {
+      query_embedding: probe,
+      query_text: 'probe',
+      match_count: 1,
+      filter_system: null,
+      filter_builder: null,
+    })
+    if (!error) return { installed: true }
+    return {
+      installed: false,
+      error: isMissingFunction(error)
+        ? 'Run supabase/schema.retrieval.sql to install hybrid search.'
+        : error.message,
+    }
+  } catch (err) {
+    return { installed: false, error: err instanceof Error ? err.message : 'probe failed' }
+  }
 }
 
 /* ------------------------------ Vault stats ------------------------------- */
