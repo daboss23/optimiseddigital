@@ -1,7 +1,13 @@
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { Atom, Sparkles } from 'lucide-react'
-import { SESSION_COOKIE, credentialsAreDemo, expectedCredentials, readSessionToken } from '@/lib/auth'
+import {
+  SESSION_COOKIE,
+  credentialsAreDemo,
+  expectedCredentials,
+  loginRequired,
+  readSessionToken,
+} from '@/lib/auth'
 import { DEFAULT_IDENTITY } from '@/lib/brand-identity'
 import { getBrandIdentity } from '@/lib/brand-identity.server'
 import { LoginForm } from '@/components/login/LoginForm'
@@ -43,6 +49,10 @@ export default async function LoginPage({
   const params = await searchParams
   const raw = params.next
   const next = safeNext(Array.isArray(raw) ? raw[0] : raw)
+
+  // The gate is held open — there is no door to stand at. The middleware
+  // issues the operator session on the way through to the dashboard.
+  if (!loginRequired()) redirect(next)
 
   // Already signed in — the door is not a place to stand around in.
   const session = await readSessionToken(cookies().get(SESSION_COOKIE)?.value)

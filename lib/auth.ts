@@ -42,6 +42,25 @@ export const OPERATOR_NAME_COOKIE = 'reactor.operator.name'
 /** Thirty days. Long enough that a tester is not re-typing this all week. */
 export const SESSION_MAX_AGE = 60 * 60 * 24 * 30
 
+/* --------------------------------- the gate -------------------------------- */
+
+/**
+ * Whether the login page stands in front of the platform.
+ *
+ * OFF by default for now: every visitor is issued the operator session the
+ * login form would have issued and lands on the dashboard, so the door is
+ * open without the credential path being removed. Set
+ * `PLATFORM_LOGIN_REQUIRED=true` to close it again — the login page, the
+ * credential check and the user-row path are all still live behind it.
+ *
+ * The open gate never widens tenancy: the session it issues carries no
+ * account, so `currentAccount()` resolves the single-brand operator account
+ * only while the deployment has no user rows, exactly as a demo login does.
+ */
+export function loginRequired(): boolean {
+  return (process.env.PLATFORM_LOGIN_REQUIRED ?? '').trim().toLowerCase() === 'true'
+}
+
 /* ------------------------------- credentials ------------------------------- */
 
 const DEMO_NAME = 'Bamik'
