@@ -251,6 +251,14 @@ PLATFORM_LOGIN_REQUIRED      # Optional — default OFF. While off, the login pa
                              #   every visitor lands on the dashboard (/login forwards to /).
                              #   Set to `true` to put the login page back in front — the
                              #   credential code is untouched behind the switch.
+NEXT_PUBLIC_REACTOR_DEMO_DATA # Optional — the curated demo set, in two halves (lib/demo-mode.ts).
+                             #   unset (default): DISPLAY on — empty dashboards render the
+                             #     illustration, badged DEMO DATA, and a connected Meta account or
+                             #     filled Vault always replaces it. RETRIEVAL off — the agents never
+                             #     ground a campaign in the demo corpus.
+                             #   `0`: both off — every panel renders its real, empty state.
+                             #   `1`: both on — the agents may retrieve the demo corpus too.
+                             #   Build-time inlined: changing it needs a redeploy.
 NEXT_PUBLIC_SUPABASE_URL
 NEXT_PUBLIC_SUPABASE_ANON_KEY
 SUPABASE_SERVICE_ROLE_KEY

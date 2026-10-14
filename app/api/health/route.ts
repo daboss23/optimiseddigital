@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseUrl, getSupabaseAdmin } from '@/lib/supabase'
-import { demoDataEnabled } from '@/lib/demo-mode'
+import { demoDataEnabled, demoRetrievalEnabled } from '@/lib/demo-mode'
 import { gethookdConfigured, defaultGeo, geoParam } from '@/lib/gethookd'
 
 export const runtime = 'nodejs'
@@ -179,6 +179,7 @@ export async function GET() {
    */
   const display = {
     demoData: demoDataEnabled(),
+    demoRetrieval: demoRetrievalEnabled(),
     operatorSource:
       process.env.OPERATOR_SOURCE ?? process.env.NEXT_PUBLIC_OPERATOR_SOURCE ?? 'seeded',
   }

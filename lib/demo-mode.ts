@@ -1,20 +1,38 @@
 /**
- * Curated demo data — on or off.
+ * Curated demo data — what it may fill, and when.
  *
- * The dashboards ship with a full set of illustrative numbers, hooks, angles
- * and ad names. That set is written around one business, and on any other
- * deployment it is worse than useless: a new customer sees confident metrics
- * for campaigns they never ran, in a vocabulary that is not their market, and
- * has no way to tell which parts of the screen are real.
+ * The platform ships a full set of illustrative numbers, hooks, angles and ad
+ * names. That set was written around one business, so it is gated, and the
+ * gate has TWO halves because the set reaches two very different places:
  *
- * So it is off unless explicitly asked for. Set NEXT_PUBLIC_REACTOR_DEMO_DATA=1
- * on a deployment used for demos or screenshots; leave it unset everywhere else
- * and every panel renders its real state, empty until the platform has
- * something genuine to show.
+ *   · DISPLAY — the dashboards, the Vault inventory, the leaderboards. Shown
+ *     only where the real source is empty (a connected Meta account or a filled
+ *     Vault always wins) and badged DEMO DATA wherever it renders, so a viewer
+ *     can tell an illustration from a reading. ON by default while the platform
+ *     is being shown around; set NEXT_PUBLIC_REACTOR_DEMO_DATA=0 to render
+ *     every panel in its real, empty state.
+ *
+ *   · RETRIEVAL — the curated corpus the agents search. This is the path that
+ *     grounds a campaign, and another company's members, margins and market
+ *     retrieved as evidence becomes another company's ads written for you. So
+ *     it stays OFF unless explicitly asked for with
+ *     NEXT_PUBLIC_REACTOR_DEMO_DATA=1. A dashboard being dressed for a demo
+ *     must never quietly change what the Reactor writes.
  *
  * NEXT_PUBLIC_ because the dashboards that read it are client components; the
  * flag is not a secret, it only chooses which of two harmless states renders.
  */
+
+function demoFlag(): string {
+  return (process.env.NEXT_PUBLIC_REACTOR_DEMO_DATA ?? '').trim()
+}
+
+/** Whether empty dashboards render the curated illustration. On unless `0`. */
 export function demoDataEnabled(): boolean {
-  return process.env.NEXT_PUBLIC_REACTOR_DEMO_DATA === '1'
+  return demoFlag() !== '0'
+}
+
+/** Whether the agents may retrieve the curated corpus. Off unless `1`. */
+export function demoRetrievalEnabled(): boolean {
+  return demoFlag() === '1'
 }

@@ -30,7 +30,7 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import { foundationAssets, learnings } from '@/lib/reactor-data'
 import { searchKnowledge } from '@/lib/knowledge'
-import { demoDataEnabled } from '@/lib/demo-mode'
+import { demoRetrievalEnabled } from '@/lib/demo-mode'
 import { NEURO_SEED_PRINCIPLES } from '@/seeds/neuro/principles'
 import { getBrandMemory } from '@/lib/brand-memory'
 import { compileRenderPrompt } from '@/lib/render-prompt'
@@ -93,7 +93,10 @@ async function main() {
 
   console.log('\nRetrieval answers the same way the dashboards do')
 
-  check('the demo flag is off in this environment', !demoDataEnabled())
+  // The DISPLAY half of the demo flag may be on — dashboards dressed for a
+  // demo, badged as such. The RETRIEVAL half is what reaches the agents, and
+  // it must be off for anything below to mean anything.
+  check('demo retrieval is off in this environment', !demoRetrievalEnabled())
 
   for (const q of [
     'positioning voice audience proof',

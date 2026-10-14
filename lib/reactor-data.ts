@@ -12,7 +12,8 @@
 //     `vaultCategories`, `recommendations`) — a specific company's winning ads,
 //     its clients' margins, its market. Illustrative for demos and screenshots
 //     and WRONG for anyone else, so it is gated behind `demoDataEnabled()`
-//     (NEXT_PUBLIC_REACTOR_DEMO_DATA=1) on every surface, retrieval included.
+//     on every surface. Display defaults ON for demos (`=0` turns it off);
+//     RETRIEVAL is a separate, strictly opt-in half (`=1`) — see lib/demo-mode.ts.
 //
 // If you add to this file, decide which of the two it is first. Anything that
 // names an industry, a client, a figure or a market belongs in the second

@@ -230,7 +230,7 @@ async function fireReactor(payload: Record<string, unknown>): Promise<RunResult>
  * Whether this deployment has a knowledge corpus behind the agent layers.
  *
  * A blank platform is the SHIPPED state: the curated corpus belongs to one
- * company and is gated behind NEXT_PUBLIC_REACTOR_DEMO_DATA, so on a fresh
+ * company and its RETRIEVAL is opt-in (NEXT_PUBLIC_REACTOR_DEMO_DATA=1), so on a fresh
  * deployment with no vault of its own, NOVA/SPARK/ECHO/ORACLE genuinely have
  * nothing to retrieve. That is correct behaviour, not a failure — the layers
  * must still activate and must still report Exploratory rather than inventing
@@ -241,11 +241,14 @@ async function hasCorpus(): Promise<boolean> {
     const health = await fetch(`${BASE_URL}/api/health`, { headers: authHeaders() }).then((r) =>
       r.json(),
     )
-    if (health?.display?.demoData === true) return true
-    // A live vault with rows in it counts too.
+    // Retrieval, not display: the dashboards may be dressed with demo data
+    // while the agents correctly retrieve nothing from it.
+    if (health?.display?.demoRetrieval === true) return true
+    // A live vault with rows in it counts too — a curated count does not.
     const stats = await fetch(`${BASE_URL}/api/vault/stats`, { headers: authHeaders() }).then((r) =>
       r.json(),
     )
+    if (stats?.live !== true) return false
     return Number(stats?.data?.total ?? stats?.total ?? 0) > 0
   } catch {
     return false
