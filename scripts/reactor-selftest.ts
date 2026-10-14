@@ -299,22 +299,22 @@ async function main() {
   /* -- 1. Every mandatory layer activates and reports evidence -------------- */
   console.log(bold('1. Intelligence network activation'))
   const run = await fireReactor({
-    angle: 'Profit',
-    outputs: ['Hook', 'Static Creative', 'Video Creative'],
+    angle: 'Social Proof',
+    outputs: ['Static Creative', 'Video Creative'],
     reactorInputs: {
       campaignName: 'Reactor self-test',
       brief:
-        'Builders doing $2M–$3M who are still on the tools and losing margin they cannot see.',
-      angle: 'Profit',
-      outputTypes: ['Hook', 'Static Creative', 'Video Creative'],
+        'Cold traffic for our best-seller. Customers keep saying in reviews that it replaced three products. Lead with the reviews and push the starter bundle.',
+      angle: 'Social Proof',
+      outputTypes: ['Static Creative', 'Video Creative'],
       // Deliberately ASYMMETRIC: the whole point of the per-format system is
       // that Static and Video can differ. A regression back to one global count
       // would make these equal and fail the check below.
       variationCounts: { 'Static Creative': 3, 'Video Creative': 2 },
       variationMethods: { 'Static Creative': 'hooks', 'Video Creative': 'visual-execution' },
-      audienceType: 'Builders $1M–$3M',
+      audienceType: 'Cold — broad prospecting',
       awarenessStage: 'Problem-Aware',
-      offerType: 'Strategy Call',
+      offerType: 'Bundle / Buy More, Save More',
     },
   })
 
@@ -413,8 +413,9 @@ async function main() {
   )
   check('concepts were produced', run.concepts.length > 0, `${run.concepts.length} concepts`)
 
-  // One Hook (copy is single) plus the per-format variation counts asked for
-  // above — 3 statics under the Hooks lever, 2 videos under Visuals.
+  // The per-format variation counts asked for above — 3 statics under the
+  // Hooks lever, 2 videos under Visuals. (There is no copy-only deliverable any
+  // more: the platform makes the creative, and the words live on it.)
   const byType = run.concepts.reduce<Record<string, number>>((acc, c) => {
     acc[c.type] = (acc[c.type] ?? 0) + 1
     return acc

@@ -1,128 +1,179 @@
 import { NextResponse } from 'next/server'
-import { validateAdPackage, metaAdName, type MetaAdPackage } from '@/lib/meta-ads'
+import { metaAdName, validateCreativeCopy, type ShippableCreative } from '@/lib/meta-ads'
 import {
-  publishCreativeToMeta,
-  publishConfigured,
-  publishMissingEnv,
+  resolveUploadTarget,
+  uploadCreativeToMeta,
+  uploadStatus,
+  type UploadResult,
 } from '@/lib/meta-publish'
 import { recordOutcome } from '@/lib/outcomes'
+import { currentAccount } from '@/lib/account'
 import type { CreativeTaxonomy } from '@/lib/taxonomy'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+// A bulk upload moves a run's worth of finished creatives; each image is a
+// fetch plus a multipart POST. Fluid compute serves 300s on every plan.
+export const maxDuration = 300
 
 /**
- * Push Creative to Meta.
+ * Upload to Meta.
  *
- * GET  — connection status for the Studio button ({ configured, missing }).
- * POST — validate the configured ad server-side (same launch gate as the
- *        orchestrator), then create the ad creative in the connected account.
- *        Never throws: every failure returns 200 with a structured reason so
- *        the Studio renders it inline.
- *
- * When the concept carries test attribution (testId/variantId/taxonomy from an
- * isolation run), the creative name leads with the RXN token and a pending
- * outcome row is pre-seeded so the Meta performance ingest later attributes the
- * live result back to the exact hypothesis — no re-deriving the taxonomy.
+ * GET  — where this brand's uploads go ({ configured, adAccountId, reason }).
+ * POST — one creative, or `{ items: [...] }` for a whole run. Each is checked
+ *        against the on-creative compliance gate (words burned into pixels
+ *        cannot be edited after the upload), pushed into the brand's own ad
+ *        account media library, and pre-seeded as a pending outcome carrying
+ *        the image hash / video id the ingest grades it back by.
+ *        Never throws: every failure is a 200 with a structured reason.
  */
 
+/** A run is at most 4 variations × 5 formats; this caps one request well above it. */
+const MAX_BULK = 24
+/** Parallel uploads per request — enough to move a run, few enough to stay polite. */
+const CONCURRENCY = 3
+
 export async function GET() {
-  return NextResponse.json({ configured: publishConfigured(), missing: publishMissingEnv() })
+  return NextResponse.json(await uploadStatus(await currentAccount()))
 }
 
-interface PublishBody {
-  pkg?: MetaAdPackage
+interface UploadItem {
   imageUrl?: string
   videoUrl?: string
   name?: string
-  // Optional test attribution threaded from an isolation-run concept.
+  // Test attribution threaded from the concept.
   testId?: string
   variantId?: string
   isolatedAxis?: string
-  // The brief-configured variation lever and this version's concrete
-  // difference. Carried here because the ingest can only recover testId /
-  // variantId from an ad NAME — the lever has to be banked at push time or the
-  // graded outcome comes back knowing which version won but not what it tested.
   variationMethod?: string
   variationLabel?: string
   taxonomy?: CreativeTaxonomy
   angle?: string
   conceptType?: string
   conceptText?: string
+  /** The words the creative carries — checked before anything leaves. */
+  productionBrief?: ShippableCreative['productionBrief']
+}
+
+interface ItemResult extends UploadResult {
+  /** Echoed so the client can match a bulk result back to its card. */
+  ref?: string
+}
+
+async function mapPool<T, R>(items: T[], n: number, fn: (t: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length)
+  let next = 0
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++
+      out[i] = await fn(items[i])
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, worker))
+  return out
 }
 
 export async function POST(req: Request) {
-  let body: PublishBody
+  let body: UploadItem & { items?: (UploadItem & { ref?: string })[] }
   try {
-    body = (await req.json()) as PublishBody
+    body = (await req.json()) as typeof body
   } catch {
     return NextResponse.json({ ok: false, error: 'Invalid request body.' }, { status: 400 })
   }
 
-  const pkg = body.pkg
-  if (!pkg?.primaryText?.trim() || !pkg.headline?.trim()) {
-    return NextResponse.json({
-      ok: false,
-      error: 'The ad needs primary text and a headline before it can be pushed.',
-    })
+  const bulk = Array.isArray(body.items)
+  const items = (bulk ? body.items! : [body]).slice(0, MAX_BULK)
+  if (items.length === 0) {
+    return NextResponse.json({ ok: false, error: 'Nothing to upload.' })
   }
 
-  // Same hard launch gate as the reactor's submit path — compliance errors
-  // never ship, warnings pass through (they only truncate, not violate).
-  const issues = validateAdPackage(pkg)
-  const errors = issues.filter((i) => i.severity === 'error')
-  if (errors.length) {
-    return NextResponse.json({
-      ok: false,
-      error: `Fix the compliance issues first: ${errors.map((e) => e.message).join(' ')}`,
-      issues: errors,
-    })
+  const account = await currentAccount()
+  // One credential lookup for the whole batch — and one clear refusal when the
+  // brand has nowhere to upload to, instead of N identical ones.
+  const resolved = await resolveUploadTarget(account)
+  if (!resolved.ok) {
+    return NextResponse.json({ ok: false, notConfigured: resolved.notConfigured, error: resolved.error })
   }
 
-  // Lead the creative name with the RXN token so the ingest can auto-attribute
-  // the live ad back to its test; keep the caller's name as the descriptor.
-  const name = metaAdName({
-    variantId: body.variantId,
-    testId: body.testId,
-    taxonomy: body.taxonomy,
-    fallback: body.name || pkg.headline,
-  })
-
-  const result = await publishCreativeToMeta({
-    pkg,
-    imageUrl: body.imageUrl,
-    videoUrl: body.videoUrl,
-    name,
-  })
-
-  // Pre-seed a pending outcome row carrying the authoritative taxonomy + test
-  // IDs. Best-effort: the push already succeeded, so a memory hiccup here must
-  // never surface as a publish failure (route convention: never throw).
-  if (result.ok && body.variantId && process.env.NEXT_PUBLIC_SUPABASE_URL) {
-    try {
-      await recordOutcome({
-        angle: body.angle || pkg.headline,
-        concept: {
-          type: body.conceptType || 'Meta creative',
-          text: body.conceptText || pkg.primaryText,
-          basis: 'Pushed to Meta',
-        },
-        attributes: {
-          platform: 'meta',
-          testId: body.testId,
-          variantId: body.variantId,
-          isolatedAxis: body.isolatedAxis,
-          variationMethod: body.variationMethod,
-          variationLabel: body.variationLabel,
-          taxonomy: body.taxonomy,
-        },
-        verdict: 'pending',
-        notes: `Pushed to Meta as "${name}"${result.creativeId ? ` (creative ${result.creativeId})` : ''}`,
-      })
-    } catch (err) {
-      console.error('Pre-seed pending outcome failed (push still succeeded):', err)
+  const results: ItemResult[] = await mapPool(items, CONCURRENCY, async (item) => {
+    const ref = (item as { ref?: string }).ref
+    const blocking = validateCreativeCopy({
+      type: item.conceptType || 'Creative',
+      productionBrief: item.productionBrief,
+    }).filter((i) => i.severity === 'error')
+    if (blocking.length) {
+      return {
+        ok: false,
+        ref,
+        error: `Not uploaded — the creative carries a claim Meta rejects: ${blocking
+          .map((b) => b.message)
+          .join(' ')}`,
+      }
     }
-  }
 
-  return NextResponse.json(result)
+    // Lead the asset name with the RXN token so the ingest can attribute it.
+    const name = metaAdName({
+      variantId: item.variantId,
+      testId: item.testId,
+      taxonomy: item.taxonomy,
+      fallback: item.name || item.conceptType || 'Reactor creative',
+    })
+    const result = await uploadCreativeToMeta(
+      { imageUrl: item.imageUrl, videoUrl: item.videoUrl, name },
+      account,
+      resolved.target,
+    )
+
+    // Pre-seed the pending outcome that the asset grades back into. Best
+    // effort: the upload already succeeded, so a memory hiccup must never
+    // surface as an upload failure.
+    if (result.ok && result.asset && process.env.NEXT_PUBLIC_SUPABASE_URL) {
+      try {
+        await recordOutcome({
+          angle: item.angle || item.conceptType || 'Uploaded creative',
+          concept: {
+            type: item.conceptType || 'Meta creative',
+            text: item.conceptText || result.asset.name,
+            basis: 'Uploaded to Meta',
+          },
+          attributes: {
+            platform: 'meta',
+            testId: item.testId,
+            variantId: item.variantId,
+            isolatedAxis: item.isolatedAxis,
+            variationMethod: item.variationMethod,
+            variationLabel: item.variationLabel,
+            taxonomy: item.taxonomy,
+            metaImageHash: result.asset.imageHash,
+            metaVideoId: result.asset.videoId,
+          },
+          verdict: 'pending',
+          builderId: account,
+          notes: `Uploaded to Meta as "${result.asset.name}"${
+            result.asset.imageHash
+              ? ` (image ${result.asset.imageHash})`
+              : result.asset.videoId
+                ? ` (video ${result.asset.videoId})`
+                : ''
+          }`,
+        })
+      } catch (err) {
+        console.error('Pre-seed pending outcome failed (upload still succeeded):', err)
+      }
+    }
+
+    return { ...result, ref }
+  })
+
+  if (!bulk) return NextResponse.json(results[0])
+
+  const uploaded = results.filter((r) => r.ok).length
+  return NextResponse.json({
+    ok: uploaded === results.length,
+    adAccountId: resolved.target.adAccountId,
+    uploaded,
+    failed: results.length - uploaded,
+    truncated: (body.items?.length ?? 0) > MAX_BULK,
+    results,
+  })
 }

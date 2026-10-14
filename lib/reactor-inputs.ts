@@ -123,6 +123,15 @@ export const NEURO_AXES: { key: keyof Pick<NeuroScore, 'attention' | 'emotion' |
 export interface ReactorInputs {
   /** Human-facing campaign label (the first question in the guided flow). */
   campaignName?: string
+  /**
+   * The product this campaign sells, picked from the connected store's
+   * catalog (`lib/catalog`). Only the id is trusted: the server re-reads the
+   * product's facts — price, compare-at price, image, rating — from the
+   * account's own catalog, so a figure on a creative can never come from the
+   * request. `productName` is display and demo fallback only.
+   */
+  productId?: string
+  productName?: string
   brief: string
   angle: string
   angleIsAgentDecided: boolean
@@ -246,30 +255,90 @@ export function customDirective(field: 'angle' | 'audience' | 'offer', value: st
 
 export const defaultBrandSettings: BrandSettings = {
   voiceGuidelines:
-    'Voice: confident, specific, and native to the brand’s own market — peer to peer. Speak the audience’s language as the connected website evidences it. Lead with concrete numbers and named proof over adjectives. No hype, no fluff, no guru clichés.',
+    'Voice: confident, specific and native to the brand’s own customers — the words they use in their reviews, not the words a marketing team uses. Speak the language the connected website and its product pages evidence. Lead with the product, a concrete detail and real proof over adjectives. No hype, no fluff, no stock superlatives.',
   toneRules:
-    'Tone: direct, grounded, respectful of the reader’s intelligence. Short sentences. Identity-led, not hustle-led. Every claim is earned with evidence. Engineered for performance.',
+    'Tone: warm, direct, respectful of the buyer’s intelligence. Short lines that read at thumb size. The product is the hero and every claim is earned with evidence — a real review, a real figure, a detail you can see. Engineered for performance.',
 }
 
 /* ------------------------------- Slide 1 ---------------------------------- */
 
-export const angleOptions = [
-  NO_PREFERENCE,
-  'Profit',
-  'Time Freedom',
-  'Systems',
-  'Growth',
-  'Owner Identity',
-] as const
+/**
+ * The seed campaign angles — the lenses an e-commerce creative sells through.
+ *
+ * Each carries its own directive, so choosing "Us vs Them" tells OPUS what that
+ * angle demands rather than handing it a bare category name to interpret. ATLAS
+ * appends whatever angles it derives from the connected store on top of these
+ * (`/api/strategy-options`), so this is the floor, not the ceiling.
+ *
+ * They replaced a set written for a coaching business ("Profit", "Time
+ * Freedom", "Owner Identity") — angles no product brand runs, which every
+ * campaign then had to translate before it could start.
+ */
+export const angleSeeds: DirectiveOption[] = [
+  {
+    label: 'Problem → Solution',
+    description: 'Name the frustration the product ends, then show it ending.',
+    directive:
+      'Name the one everyday frustration this product ends, in the words customers use for it, then show the product ending it. The problem is the hook; the product in use is the turn. Never invent a symptom the product does not address, and never assert the viewer has a condition.',
+  },
+  {
+    label: 'Social Proof',
+    description: 'Lead with other customers — reviews, ratings, the crowd.',
+    directive:
+      'Lead with other customers: a review in their own words, a star rating, a units-sold or review-count figure — ONLY where the product facts, the website or the Vault supply it. The crowd sells; the brand stays quiet. A quote states the customer’s experience, never a promised result.',
+  },
+  {
+    label: 'Us vs Them',
+    description: 'The product beside the alternative the buyer already uses.',
+    directive:
+      'Put the product beside the alternative the buyer already uses — the generic version, the old habit, the category default — on two or three concrete, visible dimensions. Name the category, never a competitor brand. Every difference claimed must be true of the product.',
+  },
+  {
+    label: 'Offer-Led',
+    description: 'The deal is the hook — stated exactly, product beside it.',
+    directive:
+      'The offer is the hook: lead with the exact deal as configured (amount off, threshold, bundle, gift), the product visible beside it, and one real reason to act now. Never round a discount up, stack offers, or imply a deal that is not running.',
+  },
+  {
+    label: 'Quality & Craft',
+    description: 'What it is made of and how — the detail a cheaper one skips.',
+    directive:
+      'Sell what the product is made of and how: the material, the ingredient, the process, the detail a cheaper version skips — shown in macro. Specific beats premium: name the thing, never the adjective. Every material or process claim must come from the product facts or the website.',
+  },
+  {
+    label: 'Identity & Lifestyle',
+    description: 'Who the buyer is with it — the taste, the ritual, the world.',
+    directive:
+      'Sell who the buyer is with the product: the taste, the ritual, the world it belongs to. The product sits naturally inside a life the audience wants, and stays the hero of the frame. Aspirational, never preachy.',
+  },
+  {
+    label: 'Founder Story',
+    description: 'The maker, in their own words — why it exists.',
+    directive:
+      'The person who made it, on camera or in their own words: why the product exists and the one thing they refused to compromise on. Phone-shot and specific beats polished. Founder voice earns a trust that brand voice cannot — but only facts the brief or website supply.',
+  },
+  {
+    label: 'Gifting',
+    description: 'The product as the gift — who it’s for, the moment it’s opened.',
+    directive:
+      'Position the product as the gift: who it is for, the moment it is opened, why it beats the usual present. Name an occasion or a deadline only if the brief does.',
+  },
+]
 
+export const angleOptions = [NO_PREFERENCE, ...angleSeeds.map((a) => a.label)] as const
+
+/**
+ * What the orchestrator may choose from when the operator lets it pick the
+ * deliverables. Creative formats only: the platform makes the creative, not
+ * the caption, so copy-only outputs (hooks, headlines, VSL openers) are not
+ * deliverables any more — they live ON the creative, inside its brief.
+ */
 export const outputTypeOptions = [
-  'Hooks',
-  'Headlines',
-  'Static Concepts',
-  'Video Concepts',
-  'Founder Concepts',
-  'VSL Openers',
-  'Testimonial Concepts',
+  'Static Creative',
+  'Carousel Creatives',
+  'Video Creative',
+  'UGC Creative',
+  'Montage / Scene Flow',
 ] as const
 
 /* ---------------------------- Creative formats ---------------------------- *
@@ -361,21 +430,21 @@ export const awarenessOptions: DirectiveOption[] = [
     description:
       'They feel the pain but don’t know a fix exists. Name the pain, then reveal a path.',
     directive:
-      'The audience feels the pain but doesn’t know structured solutions exist. Open by naming the pain with precision and agitating the real cost of staying there — time, margin, relationships, identity. Then reveal that a path exists. Do not lead with the offer.',
+      'The audience feels the frustration but doesn’t know a product fixes it. Open by naming the frustration with precision — the moment it shows up in their day — and the real cost of putting up with it. Then reveal the product as the fix. Do not lead with the offer.',
   },
   {
     label: 'Solution-Aware',
     description:
       'They know solutions exist and are comparing. Lead with your mechanism, skip the problem build.',
     directive:
-      'The audience knows solutions exist and is comparing approaches — coaching, hiring, DIY systems. Lead with mechanism: the specific reason THIS approach beats the alternatives they are already weighing. Skip the problem build.',
+      'The audience knows products like this exist and is comparing — the generic version, a competitor, the habit they already have. Lead with mechanism: the specific, visible reason THIS product beats the alternatives they are already weighing. Skip the problem build.',
   },
   {
     label: 'Product-Aware',
     description:
       'They know the brand and haven’t committed. Lead with proof, risk reversal and a reason to act now.',
     directive:
-      'The audience knows the brand and has considered it but hasn’t committed. Lead with proof — named customer results, specific figures. Add risk reversal and a clear reason to act now. Minimise problem education.',
+      'The audience knows the brand and has looked at the product but hasn’t bought. Lead with proof — reviews in customers’ own words, a rating, the product in use. Add risk reversal and a clear reason to act now. Minimise problem education.',
   },
   {
     label: 'Most-Aware',
@@ -437,135 +506,159 @@ export const sophisticationOptions: DirectiveOption[] = [
   },
 ]
 
+/**
+ * Audience temperature — where the buyer sits in an e-commerce funnel, in the
+ * same segments a Meta account actually builds: broad prospecting, engaged
+ * audiences, product viewers, cart abandoners, purchasers and lapsed
+ * customers. Each one needs a different creative, so the directive says what
+ * the creative has to DO for that segment, not who they are.
+ */
 export const audienceOptions: DirectiveOption[] = [
   {
     label: NO_PREFERENCE,
     directive:
-      'The user has no audience preference — determine audience temperature and ad type from the brief and angle. If no clear signal, default to cold prospecting.',
+      'The user has no audience preference — determine audience temperature from the brief and angle. If no clear signal, default to cold, broad prospecting.',
   },
   {
-    label: 'Cold — new audience',
+    label: 'Cold — broad prospecting',
+    description: 'Never seen the brand. Broad or Advantage+ audience.',
     directive:
-      'Cold traffic with no prior exposure to the brand. The ad must earn attention from scratch, frame the problem, and build enough credibility to warrant the next step. Do not assume any familiarity with the brand or its methods.',
+      'Cold traffic in a broad or Advantage+ audience with no prior exposure to the brand. The creative must stop the scroll on the product and the problem alone, earn credibility fast, and make the product legible at a glance. Assume nothing — not the brand name, not the category.',
   },
   {
-    label: 'Warm — saw content, didn’t convert',
+    label: 'Warm — engaged, not yet shopped',
+    description: 'Watched, followed or engaged — never viewed a product.',
     directive:
-      'Warm audience. Has seen the brand’s content or ads but hasn’t taken action. Has some familiarity. Lead with proof, deepen the mechanism, and address the most likely objection holding them back from acting.',
+      'Engaged with the brand’s content, video or profile but never viewed a product. Familiar, not convinced. Lead with proof and the product in use, and answer the "is it worth it" doubt before asking for the click.',
   },
   {
-    label: 'Retargeting — visited sales page',
+    label: 'Product viewers — browsed, didn’t add',
+    description: 'Looked at a product page and left.',
     directive:
-      'Hot audience. Visited the sales or application page — they considered it. Lead with urgency, social proof, and objection handling. Short, direct, reason-to-act-now. Minimal problem education required.',
+      'Viewed product pages and left without adding to cart. They know what it is; something stopped them — price, fit, trust or timing. Show the product they looked at, answer the most likely objection, and lead with reviews.',
   },
   {
-    label: 'Retargeting — started application',
+    label: 'Cart abandoners — added, didn’t buy',
+    description: 'Added to cart or started checkout, then left.',
     directive:
-      'Hottest audience. Started the application and didn’t finish — they want in. The concept must remove the final friction and address the most likely reason someone stops mid-application. Direct CTA back to complete.',
+      'Added to cart and left. Intent is high; friction won. Remove it: the offer, the guarantee, free shipping or returns if the brand genuinely has them, and a short reason to finish now. Product front and centre, minimal education.',
   },
   {
-    label: 'Re-engagement — past lead',
+    label: 'Past purchasers — cross-sell & replenish',
+    description: 'Bought before. Sell the next thing.',
     directive:
-      'Audience who engaged previously but went cold. Pattern interrupt is key. Show what has changed or what they have missed. New proof, new angle, new urgency.',
+      'Bought before and know the product. Sell the next thing: the replenishment moment, the complementary product, the upgrade or the bundle. Speak like a brand they already trust; skip the problem education entirely.',
   },
   {
-    label: 'Re-engagement — past member',
+    label: 'Lapsed customers — win-back',
+    description: 'Bought once and went quiet.',
     directive:
-      'Former customers or alumni who know the brand well. Lead with transformation, what’s new in the offer, and what peers have achieved since they left. Nostalgia + social proof + FOMO.',
+      'Bought once and went quiet. Show what’s new or what they’re missing — a new product, a new formula, a returning favourite — with a real reason to come back now. Warm, never desperate.',
   },
 ]
 
 /**
- * Campaign Offer — the TYPE of next step, not its name.
+ * Campaign Offer — the DEAL, not its name.
  *
  * It sets three things at once, which is why it is a strategic input rather
- * than a label: the FRICTION of the ask, the PROOF BURDEN required to earn it,
- * and the CTA FRAME the concepts are written to. An ad selling a free teardown
- * and an ad selling a retainer are not the same ad with a different button.
+ * than a label: what the creative has to SHOW (one product, a bundle, a gift),
+ * how much margin it gives away, and the urgency it can honestly claim. A
+ * full-price ad and a BOGO ad are not the same ad with a different sticker.
  *
- * Ordered by friction, lowest first, so the list reads as the ladder it is.
+ * Ordered from the offer that gives away the least margin to the one that
+ * gives away the most, so the list reads as the ladder it is: a brand should
+ * reach for the top of it first.
  *
- * The set is written for a DIGITAL MARKETING AGENCY and the offers one
- * actually runs — its own and its clients'. The original five were generic
- * info-marketer offers and missed the agency ladder almost entirely: no audit,
- * no case study, no DM trigger, no pilot, no retainer, no risk reversal. A
- * missing offer type is not a missing menu item; it is a campaign written to
- * the wrong friction, with the wrong proof and the wrong button.
+ * Every directive carries the same rule in its own terms — the deal is stated
+ * EXACTLY as configured. A creative cannot be edited after the render, and a
+ * rounded-up discount burned into one is a compliance problem shipped at scale.
  *
- * ATLAS appends whatever offers it derives from the connected website on top
- * of these (`/api/strategy-options`), so this is a seed ladder, not a ceiling.
+ * ATLAS appends whatever offers it derives from the connected store on top of
+ * these (`/api/strategy-options`), so this is a seed ladder, not a ceiling.
  */
 export const offerOptions: DirectiveOption[] = [
   {
     label: NO_PREFERENCE,
     directive:
-      'The user has no offer preference — select the most appropriate offer type and CTA frame based on the campaign brief, angle, and awareness stage.',
+      'The user has no offer preference — select the most appropriate offer framing based on the campaign brief, angle and audience temperature. When nothing in the brief names a deal, sell at full price.',
   },
   {
-    label: 'Free Lead Magnet',
-    description: 'A guide, template, swipe file or checklist — delivered instantly.',
+    label: 'Full Price — Value-Led',
+    description: 'No deal attached — the product earns its price.',
     directive:
-      'Low friction, easy yes. Lead with the specific tangible promise of the asset — name what it IS and what it saves them. Light proof burden, heavy emphasis on the concrete deliverable they receive immediately. Do not sell the service behind it; the asset is the whole offer at this stage.',
+      'No discount: the product must justify its price on its own. Lead with the benefit and the proof, and let quality, reviews and specificity carry the value. Never imply a deal that is not running. The strongest test of a creative, and the one that protects margin.',
   },
   {
-    label: 'Free Audit / Teardown',
-    description: 'A personalised review of THEIR account, funnel, site or ads.',
+    label: 'New Launch / Drop',
+    description: 'A new product, colour or formula — newness is the hook.',
     directive:
-      'Low friction to accept, high perceived value, and personalised — this is not a downloadable. The concept must name exactly what will be examined and what they will SEE as a result ("where the leak is", "which ad is carrying the account"). Demonstrate competence in the ad itself: a specific observation about how businesses like theirs get this wrong earns the audit far better than adjectives about the team. Never imply a guarantee of results. Medium proof burden — credibility, not case studies.',
+      'Newness is the hook: what it is, what is different about it, why now. Show the product clearly — a launch ad that hides the product is a teaser nobody remembers. Claim early access or limited quantities only if the brief says so.',
   },
   {
-    label: 'DM / Comment Trigger',
-    description: 'Comment or message a keyword to get it — conversation, not a click.',
+    label: 'Limited Stock / Restock',
+    description: 'Back in stock or a limited run — scarcity that is real.',
     directive:
-      'The lowest-friction ask on the platform and a different CTA frame entirely: the next step happens INSIDE Meta, not on a landing page. State the trigger word plainly and once, make the thing they receive specific and immediate, and write the primary text so the instruction survives the 125-character fold. The CTA button is a message/send action, never "Learn more". Minimal proof burden — the ask is a word, not a commitment.',
+      'Scarcity is the lever, so it must be true: "back in stock", "last chance" or "limited run" only when the brief says so. Lead with the product and the reason it sold out — reviews, demand — then the urgency. Invented scarcity is a compliance and trust failure, never a tactic.',
   },
   {
-    label: 'Case Study / Proof Asset',
-    description: 'One named result, shown in full — the proof IS the offer.',
+    label: 'Quiz / Product Finder',
+    description: 'A short quiz that matches the buyer to the right product.',
     directive:
-      'The result carries the ad. Lead with the specific, attributable outcome — who, what changed, over what period — and let the mechanism explain itself second. Highest proof burden of any offer here and the least tolerance for vagueness: an unnamed "client" and a round number read as invented. Use only outcomes the brief or the Vault actually supplies; never manufacture a figure to fill this shape, and never borrow one from a reference ad. The CTA asks to see the whole story, not to buy.',
+      'The next step is a short quiz, not a purchase — the lowest-friction ask an e-commerce brand has. Sell the outcome of the quiz (the right product for THEM), show the range it chooses from, and make the first question feel effortless.',
   },
   {
-    label: 'Webinar / Masterclass',
-    description: 'A scheduled session that trades an hour for one insight.',
+    label: 'Free Shipping',
+    description: 'Remove the most common reason a cart is abandoned.',
     directive:
-      'Medium friction. Sell the ONE insight or transformation they will walk away with. Curiosity and outcome-driven. The CTA promise is the discovery, not the product.',
+      'Free shipping removes the most common checkout objection. State the terms exactly as configured (always, or over a threshold) and pair them with the product — free shipping on nothing sells nothing. Light proof burden; the friction removal is the message.',
   },
   {
-    label: 'Low-Ticket Offer',
-    description: 'A productised deliverable at a price that needs no call.',
+    label: 'Money-Back Guarantee / Risk-Free Trial',
+    description: 'Try it — the risk moves to the brand.',
     directive:
-      'Transactional. Lead with value-to-price asymmetry and the immediate outcome they receive. Price anchoring matters here.',
+      'The guarantee is the hook: state it as the brief states it — the period and the condition — and not one degree stronger. It sells the TRY, never a result: no promised outcome, no implied refund the policy does not give. Pair it with proof so it reads as confidence, not desperation. This offer carries real compliance exposure.',
   },
   {
-    label: 'Free Trial / Pilot',
-    description: 'A bounded first engagement — one campaign, one month, one build.',
+    label: 'Subscribe & Save',
+    description: 'The routine, delivered — and cheaper every time.',
     directive:
-      'The offer is REDUCED RISK, not reduced price, so the creative must make the boundary explicit: what is included, how long it runs, and what happens at the end. Name the smallest unit of work that still proves something. Medium-high proof burden — they are committing time and access, not just an email. Address the real objection, which is being locked in.',
+      'Sell the routine first, the saving second: the product arriving before it runs out, the discount on every order, the freedom to skip or cancel — ONLY the terms the brand actually offers. Name the cadence if the brief does. Answer the real objection, which is being locked in.',
   },
   {
-    label: 'Strategy Call / Application',
-    description: 'A booked call, qualified before it is offered.',
+    label: 'Free Gift With Purchase',
+    description: 'A gift with the order — desirable in its own right.',
     directive:
-      'High-commitment next step. The concept must qualify hard — state exactly who this is for and who it is not. Carry heavy social proof with named results. Pre-frame the call as valuable and selective, not a sales pitch. High proof burden.',
+      'Show the gift beside the product and name exactly what it is. The gift sells the order, so make it desirable in its own right, and state any threshold exactly as configured. Never let the gift read as the product.',
   },
   {
-    label: 'Done-For-You Retainer',
-    description: 'The service itself, sold directly — usually to warm or retargeted traffic.',
+    label: 'Spend Threshold / Amount Off',
+    description: 'Spend over a basket size, unlock a reward — the AOV lever.',
     directive:
-      'Selling the engagement, not a step toward it. Assume familiarity: this is a warm or retargeting frame and problem education is wasted space. Lead with the mechanism and what is handled FOR them, then the proof, then the terms. Name the scope concretely enough that the wrong prospect disqualifies themselves. Highest friction here — the ad must earn a commercial conversation, so every claim needs evidence behind it.',
+      'A fixed amount off, or a reward unlocked above a basket size. Reaching the threshold is the creative’s job: make it feel easy by showing the products that get there. State the terms exactly as configured — a threshold ad that hides the threshold is a bait-and-switch.',
   },
   {
-    label: 'Performance / Risk Reversal',
-    description: 'A guarantee or pay-on-results structure — the risk moves to us.',
+    label: 'Bundle / Buy More, Save More',
+    description: 'Two or more products together, for less than apart.',
     directive:
-      'The STRUCTURE is the hook: what they do not pay for, and when. State the reversal in the first line, then make it credible — an unqualified guarantee reads as desperation, a specific and bounded one reads as confidence. The conditions must appear in the ad package, never only in the fine print, and never rendered on the image where they cannot be read. This offer carries real compliance exposure: no earnings claims, no implied income, no promise of a specific result, and every guarantee stated as the brief states it and not one degree stronger.',
+      'Show every item in the bundle, physically together, and the saving against buying them separately — only the real figures from the product facts, never manufactured or borrowed from a reference ad. Sell the set or the routine, not the arithmetic; the bundle should look like one obvious decision.',
   },
   {
-    label: 'Live Event / In-Person',
-    description: 'A room, a date and a seat count.',
+    label: 'BOGO / Buy X Get Y',
+    description: 'Buy one, get one free or discounted.',
     directive:
-      'Lead with scarcity, the room, and who else will be there. Urgency is primary. Date, location, and limited seats are the creative levers.',
+      'State the mechanic plainly — buy one, get one free or at a stated discount — with BOTH products in frame. The second item must be visible: an unseen freebie is not an offer. Terms exactly as configured, with no implied limits that do not exist.',
+  },
+  {
+    label: 'Percent Off',
+    description: 'A straight percentage off — first order, sitewide or one product.',
+    directive:
+      'State the exact percentage as configured and what it applies to — first order, sitewide or one product — never rounded up, never "up to" unless the brief says so, never manufactured or borrowed from a reference ad. Put the product beside the number so the discount sells THIS product, not discounting in general. A reason to act now only if the offer genuinely ends.',
+  },
+  {
+    label: 'Sale Event / Seasonal',
+    description: 'A dated event — a holiday sale, a season, an anniversary.',
+    directive:
+      'The event and its end date are the frame: name the event and the deal exactly as configured, with the product as the hero of the frame. The urgency is real here because the date is real — use it once, clearly, and never extend it in the creative.',
   },
 ]
 

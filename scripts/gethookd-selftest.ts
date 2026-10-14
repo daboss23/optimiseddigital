@@ -784,15 +784,17 @@ async function main() {
     }).some((t) => ['already', 'owners', 'their'].includes(t)),
   )
 
-  /* -------- the offer ladder an agency actually sells against ------------- */
+  /* -------- the offer ladder an e-commerce brand actually runs ----------- */
   const offerLabels = offerOptions.map((o) => o.label)
   for (const required of [
-    'Free Audit / Teardown',
-    'DM / Comment Trigger',
-    'Case Study / Proof Asset',
-    'Free Trial / Pilot',
-    'Done-For-You Retainer',
-    'Performance / Risk Reversal',
+    'Full Price — Value-Led',
+    'Free Shipping',
+    'Money-Back Guarantee / Risk-Free Trial',
+    'Subscribe & Save',
+    'Free Gift With Purchase',
+    'Bundle / Buy More, Save More',
+    'BOGO / Buy X Get Y',
+    'Percent Off',
   ]) {
     check(`the offer ladder carries "${required}"`, offerLabels.includes(required))
   }
@@ -806,18 +808,25 @@ async function main() {
     offerOptions.filter((o) => o.label !== NO_PREFERENCE).every((o) => Boolean(o.description)),
   )
   check(
-    'the risk-reversal offer carries its compliance constraint',
-    /no earnings claims|compliance/i.test(
-      offerOptions.find((o) => o.label === 'Performance / Risk Reversal')?.directive ?? '',
+    'the guarantee offer carries its compliance constraint',
+    /no promised outcome|compliance/i.test(
+      offerOptions.find((o) => o.label === 'Money-Back Guarantee / Risk-Free Trial')?.directive ?? '',
     ),
     'a guarantee offer is the one most likely to write an unlawful claim',
   )
   check(
-    'the case-study offer forbids borrowing a result',
-    /never (manufacture|borrow)/i.test(
-      offerOptions.find((o) => o.label === 'Case Study / Proof Asset')?.directive ?? '',
+    'the discount offer forbids inventing a discount',
+    /never (rounded|manufactured|borrowed)/i.test(
+      offerOptions.find((o) => o.label === 'Percent Off')?.directive ?? '',
     ),
-    'the proof IS the offer here, which is exactly when one gets invented',
+    'a rounded-up discount burned into a creative is a compliance problem shipped at scale',
+  )
+  check(
+    'the bundle offer forbids borrowing a saving from a reference ad',
+    /never manufactured or borrowed/i.test(
+      offerOptions.find((o) => o.label === 'Bundle / Buy More, Save More')?.directive ?? '',
+    ),
+    'the saving IS the offer here, which is exactly when one gets invented',
   )
 
   // --- the ladder ---------------------------------------------------------

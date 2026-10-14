@@ -289,14 +289,27 @@ export interface OfferResultRule {
   judgedBy: string
 }
 
+/**
+ * Every e-commerce offer on the brief is judged on the purchase — its cost and
+ * the revenue it returns — except the one whose next step is not a purchase:
+ * a quiz optimises for the completed quiz (a lead), and is judged on that.
+ */
 export const OFFER_RESULT_RULES: OfferResultRule[] = [
-  { offer: 'Strategy Call / Application', defaultResult: 'booked_call', judgedBy: 'Cost per chosen result' },
-  { offer: 'Webinar / Masterclass', defaultResult: 'registration', judgedBy: 'Cost per registration' },
-  { offer: 'Free Lead Magnet', defaultResult: 'lead', judgedBy: 'CPL' },
-  { offer: 'Live Event / In-Person', defaultResult: 'registration', judgedBy: 'Cost per registration' },
-  { offer: 'Low-Ticket Offer', defaultResult: 'purchase', judgedBy: 'Purchase CPA and ROAS' },
+  { offer: 'Full Price — Value-Led', defaultResult: 'purchase', judgedBy: 'Purchase CPA and ROAS' },
+  { offer: 'New Launch / Drop', defaultResult: 'purchase', judgedBy: 'Purchase CPA and ROAS' },
+  { offer: 'Limited Stock / Restock', defaultResult: 'purchase', judgedBy: 'Purchase CPA and ROAS' },
+  { offer: 'Quiz / Product Finder', defaultResult: 'lead', judgedBy: 'Cost per completed quiz' },
+  { offer: 'Free Shipping', defaultResult: 'purchase', judgedBy: 'Purchase CPA and ROAS' },
+  { offer: 'Money-Back Guarantee / Risk-Free Trial', defaultResult: 'purchase', judgedBy: 'Purchase CPA and ROAS' },
+  { offer: 'Subscribe & Save', defaultResult: 'purchase', judgedBy: 'Purchase CPA and first-order ROAS' },
+  { offer: 'Free Gift With Purchase', defaultResult: 'purchase', judgedBy: 'Purchase CPA and AOV' },
+  { offer: 'Spend Threshold / Amount Off', defaultResult: 'purchase', judgedBy: 'ROAS and AOV' },
+  { offer: 'Bundle / Buy More, Save More', defaultResult: 'purchase', judgedBy: 'ROAS and AOV' },
+  { offer: 'BOGO / Buy X Get Y', defaultResult: 'purchase', judgedBy: 'ROAS and AOV' },
+  { offer: 'Percent Off', defaultResult: 'purchase', judgedBy: 'Purchase CPA and ROAS' },
+  { offer: 'Sale Event / Seasonal', defaultResult: 'purchase', judgedBy: 'Purchase CPA and ROAS' },
   { offer: 'Custom', defaultResult: 'custom', judgedBy: 'User-selected target' },
-  { offer: 'No Preference', defaultResult: null, judgedBy: 'Confirm the result target before launch' },
+  { offer: 'No Preference', defaultResult: 'purchase', judgedBy: 'Purchase CPA and ROAS' },
 ]
 
 export function defaultResultForOffer(offer: string): PrimaryResultType | null {

@@ -52,7 +52,7 @@ export const INTELLIGENCE: Record<IntelligenceId, AgentDef> = {
     codename: 'ATLAS',
     role: 'Knowledge Intelligence',
     mission:
-      'Turn uploaded assets — frameworks, SOPs, calls, webinars, VSLs — and the connected company website into retrievable intelligence.',
+      'Turn uploaded assets — frameworks, SOPs, brand books, winning ads — the connected store and its product catalog into retrievable intelligence.',
     systems: ['vault', 'website'],
     intelligenceLabel: 'Knowledge Intelligence',
     accent: '#38BDF8',
@@ -85,7 +85,7 @@ export const INTELLIGENCE: Record<IntelligenceId, AgentDef> = {
     codename: 'ECHO',
     role: 'Copy Intelligence',
     mission:
-      'Study persuasive communication and extract Copy DNA — messaging patterns, emotions, offers, objection handling.',
+      'Study persuasive communication and extract Copy DNA — the words that sell ON the creative: headlines, offers, objection handling and the customer’s own language from reviews.',
     systems: ['copy', 'website'],
     intelligenceLabel: 'Copy Intelligence',
     accent: '#34D399',

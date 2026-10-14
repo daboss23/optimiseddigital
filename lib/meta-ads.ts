@@ -1,166 +1,36 @@
 /**
- * Meta ad unit layer — the contract that turns a generated concept into a
- * LAUNCH-READY Meta ad, not a copy fragment.
+ * Meta creative layer — the contract for what this platform hands to Meta.
  *
- * A Meta ad is a structured unit: primary text (with the hook inside the
- * ~125-character "See more" fold on mobile), a ≤40-character headline, an
- * optional ≤30-character description, and a CTA button from Meta's enum. This
- * module owns that shape end to end: the type, Meta's real constraints, the
- * validator (including the platform's hard compliance phrases), the Ads-Manager-ready
- * clipboard format, the orchestrator prompt block, the submit_concepts JSON
- * schema fragment, and the demo-mode generator.
+ * THE PLATFORM MAKES THE CREATIVE, NOT THE CAPTION.
  *
- * Kept framework-agnostic (pure data + functions) so the server route and the
- * client concept cards share one source of truth for what "Meta-ready" means.
+ * It used to ship every concept as a full Meta ad unit — primary text,
+ * headline, description, CTA button — with an editor and a mock Facebook feed
+ * to polish it in. That layer was removed on purpose. For an e-commerce
+ * account the caption is the cheap part: a media buyer runs a handful of
+ * proven primary texts across dozens of creatives, and Meta's own Advantage+
+ * text variations rewrite captions for free. What is scarce is the CREATIVE —
+ * enough genuinely different, product-true visuals to feed delivery — so that
+ * is the whole job now, and everything an ad must SAY has to be said by the
+ * creative itself.
+ *
+ * This module owns what remains of the contract, in one place:
+ *   - the RXN test token that threads a hypothesis through Meta and back
+ *     (`metaAdName`, `metaAssetName`, `parseTestToken`);
+ *   - the on-creative compliance gate — words burned into pixels cannot be
+ *     edited in Ads Manager, so they are checked BEFORE the render;
+ *   - the creative craft block injected into every orchestrator run;
+ *   - the placement map the Launch Bay reads a finished creative against.
+ *
+ * Kept framework-agnostic (pure data + functions) so the server route, the
+ * upload, the ingest and the client cards share one definition.
  */
 
 import type { CreativeTaxonomy } from '@/lib/taxonomy'
 
-/* --------------------------------- Limits ---------------------------------- */
-
-/** Characters of primary text visible before Meta's "See more" fold on mobile. */
-export const PRIMARY_TEXT_FOLD = 125
-/** Meta truncates headlines beyond ~40 characters in most placements. */
-export const HEADLINE_MAX = 40
-/** Meta truncates link descriptions beyond ~30 characters. */
-export const DESCRIPTION_MAX = 30
-
-/**
- * The CTA button types the platform offers — the subset of Meta's
- * call_to_action enum that maps to a standard funnel (learn → subscribe → apply).
- */
-export const META_CTA_OPTIONS = [
-  'LEARN_MORE',
-  'APPLY_NOW',
-  'SIGN_UP',
-  'BOOK_NOW',
-  'GET_OFFER',
-  'DOWNLOAD',
-  'SUBSCRIBE',
-  'CONTACT_US',
-  'WATCH_MORE',
-] as const
-
-export type MetaCta = (typeof META_CTA_OPTIONS)[number]
-
-/** Builder-facing button labels, as Meta renders them. */
-export const META_CTA_LABELS: Record<MetaCta, string> = {
-  LEARN_MORE: 'Learn More',
-  APPLY_NOW: 'Apply Now',
-  SIGN_UP: 'Sign Up',
-  BOOK_NOW: 'Book Now',
-  GET_OFFER: 'Get Offer',
-  DOWNLOAD: 'Download',
-  SUBSCRIBE: 'Subscribe',
-  CONTACT_US: 'Contact Us',
-  WATCH_MORE: 'Watch More',
-}
-
-/* --------------------------------- Shape ----------------------------------- */
-
-/** A complete, launch-ready Meta ad unit attached to a generated concept. */
-export interface MetaAdPackage {
-  /** The ad body. The hook must land inside the first PRIMARY_TEXT_FOLD chars. */
-  primaryText: string
-  /** ≤ HEADLINE_MAX chars — shown under the creative next to the CTA button. */
-  headline: string
-  /** ≤ DESCRIPTION_MAX chars — optional proof/urgency reinforcement. */
-  description?: string
-  /** Meta CTA button type (META_CTA_OPTIONS). */
-  cta: string
-}
-
-/* ------------------------------- Validation -------------------------------- */
-
-export interface AdComplianceIssue {
-  field: 'primaryText' | 'headline' | 'description' | 'cta'
-  severity: 'error' | 'warning'
-  message: string
-}
-
-// The platform's hard compliance constraints (mirrors the orchestrator's COMPLIANCE
-// block) — enforced in code, not just in the prompt, so nothing banned ships.
-const BANNED_PHRASES = ['guaranteed', 'you will make', 'passive income', 'get rich', 'earn from home']
-
-/**
- * Validate an ad package against Meta's placement constraints and the hard
- * compliance rules. `error` issues block shipping (the orchestrator revises);
- * `warning` issues surface on the concept card but don't block.
- */
-export function validateAdPackage(pkg: MetaAdPackage | undefined): AdComplianceIssue[] {
-  if (!pkg) return []
-  const issues: AdComplianceIssue[] = []
-
-  const headline = pkg.headline?.trim() ?? ''
-  if (!headline) {
-    issues.push({ field: 'headline', severity: 'error', message: 'Headline is missing.' })
-  } else if (headline.length > HEADLINE_MAX) {
-    issues.push({
-      field: 'headline',
-      severity: 'error',
-      message: `Headline is ${headline.length} chars — Meta truncates past ${HEADLINE_MAX}. Tighten it.`,
-    })
-  }
-
-  const description = pkg.description?.trim() ?? ''
-  if (description.length > DESCRIPTION_MAX) {
-    issues.push({
-      field: 'description',
-      severity: 'warning',
-      message: `Description is ${description.length} chars — Meta truncates past ${DESCRIPTION_MAX}.`,
-    })
-  }
-
-  const primary = pkg.primaryText?.trim() ?? ''
-  if (!primary) {
-    issues.push({ field: 'primaryText', severity: 'error', message: 'Primary text is missing.' })
-  } else {
-    // The hook (first sentence or first line) must resolve before the fold —
-    // otherwise the scroll-stopper is literally cut off by "…See more".
-    const firstBreak = primary.search(/[.!?\n]/)
-    const hookEnd = firstBreak === -1 ? primary.length : firstBreak + 1
-    if (hookEnd > PRIMARY_TEXT_FOLD) {
-      issues.push({
-        field: 'primaryText',
-        severity: 'error',
-        message: `The opening line runs ${hookEnd} chars — it gets cut by the "See more" fold at ${PRIMARY_TEXT_FOLD}. Land the hook earlier.`,
-      })
-    }
-  }
-
-  const banned = BANNED_PHRASES.filter((p) =>
-    `${primary} ${headline} ${description}`.toLowerCase().includes(p),
-  )
-  for (const phrase of banned) {
-    issues.push({
-      field: 'primaryText',
-      severity: 'error',
-      message: `Contains the banned compliance phrase "${phrase}" — rewrite without it.`,
-    })
-  }
-
-  const cta = (pkg.cta ?? '').toUpperCase()
-  if (!META_CTA_OPTIONS.includes(cta as MetaCta)) {
-    issues.push({
-      field: 'cta',
-      severity: 'warning',
-      message: `CTA "${pkg.cta}" is not a Meta button type — defaulting to Learn More.`,
-    })
-  }
-
-  return issues
-}
-
-/** The rendered CTA label for a package, defaulting safely. */
-export function ctaLabel(pkg: MetaAdPackage): string {
-  const cta = (pkg.cta ?? '').toUpperCase() as MetaCta
-  return META_CTA_LABELS[cta] ?? META_CTA_LABELS.LEARN_MORE
-}
-
 /* ------------------------- Test-ID name threading -------------------------- */
 
 /**
- * The test/variant token format shared by the creative-push naming and the
+ * The test/variant token format shared by the upload naming and the
  * performance-ingest parsing — declared ONCE here so the two can never drift.
  * A test is RXN-{5 chars}; a variant appends -A / -B / -AA…
  */
@@ -171,7 +41,7 @@ export interface TestToken {
   variantId?: string
 }
 
-/** Recover the RXN test token from a Meta ad/creative name, if present. */
+/** Recover the RXN test token from a Meta ad, creative or asset name, if present. */
 export function parseTestToken(name: string | null | undefined): TestToken | null {
   if (!name) return null
   const m = TEST_ID_RE.exec(name)
@@ -181,10 +51,9 @@ export function parseTestToken(name: string | null | undefined): TestToken | nul
 }
 
 /**
- * Build a Meta creative/ad name that leads with the test attribution so a synced
- * ad auto-maps back to its hypothesis, then a human-readable descriptor — e.g.
- * "RXN-4Z9Q1-B · Urgency · UGC Mashup". Capped at 90 chars (the publisher's
- * existing limit). Falls back to a plain descriptor when there's no test.
+ * A Meta name that leads with the test attribution, then a human-readable
+ * descriptor — e.g. "RXN-4Z9Q1-B · Urgency · UGC Mashup". Capped at 90 chars.
+ * Falls back to a plain descriptor when there is no test.
  */
 export function metaAdName(opts: {
   variantId?: string
@@ -201,112 +70,237 @@ export function metaAdName(opts: {
   return name.slice(0, 90)
 }
 
-/* --------------------------- Ads Manager export ----------------------------- */
+/**
+ * The same name, made safe to be a FILENAME — which is what Meta keeps as an
+ * uploaded image's name in the media library.
+ *
+ * Separators are spaces and hyphens, never underscores: `TEST_ID_RE` ends on a
+ * word boundary, and "RXN-4Z9Q1-B_Hook" has none after the B, so an underscore
+ * would silently cut the variant off the token and the ingest would attribute
+ * the ad to the test but not to the version that won it.
+ */
+export function metaAssetName(name: string, extension: string): string {
+  const base =
+    name
+      .replace(/·/g, '-')
+      .replace(/[^A-Za-z0-9 .\-]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 80) || 'Reactor creative'
+  const ext = extension.replace(/^\./, '').toLowerCase() || 'png'
+  return `${base}.${ext}`
+}
+
+/* ------------------------ On-creative compliance gate ----------------------- */
+
+export interface CreativeComplianceIssue {
+  /** Where the words were found — on the image, or spoken/captioned in motion. */
+  field: 'onImageText' | 'script'
+  severity: 'error' | 'warning'
+  message: string
+}
+
+interface ClaimRule {
+  re: RegExp
+  severity: 'error' | 'warning'
+  why: string
+}
 
 /**
- * Format a concept's ad package as paste-ready text for Meta Ads Manager —
- * field labels matching the Ads Manager creative form, in its field order.
+ * Claims that get e-commerce ads rejected, or get the account restricted.
+ *
+ * Written as patterns rather than banned WORDS because the old list banned
+ * the substring "guaranteed" — which is also how every legitimate
+ * "30-day money-back guarantee" is phrased, and that is one of the strongest
+ * offers an e-commerce brand has. A rule here names the CLAIM, not a word.
+ *
+ * Errors are things Meta's advertising standards reject outright: promised
+ * outcomes, medical cures, weight-loss figures, income claims, and ads that
+ * assert the viewer's personal attributes ("Do you have acne?"). Warnings are
+ * claims that are legal only when literally true and substantiated — the
+ * platform cannot verify them, so it says so instead of passing them silently.
  */
-export function formatForAdsManager(conceptType: string, pkg: MetaAdPackage): string {
-  const lines = [
-    `— Meta ad unit (${conceptType}) —`,
-    '',
-    'PRIMARY TEXT:',
-    pkg.primaryText.trim(),
-    '',
-    `HEADLINE: ${pkg.headline.trim()}`,
-  ]
-  if (pkg.description?.trim()) lines.push(`DESCRIPTION: ${pkg.description.trim()}`)
-  lines.push(`CTA BUTTON: ${ctaLabel(pkg)}`)
-  return lines.join('\n')
+const CLAIM_RULES: ClaimRule[] = [
+  {
+    re: /\bguaranteed (results?|to (work|cure|fix|heal|grow|lose|remove|clear|eliminate|reverse))\b/i,
+    severity: 'error',
+    why: 'promises an outcome the product cannot guarantee',
+  },
+  {
+    // The CLAIM, not the word: "it cures", "cure your…", "cured my…". The
+    // adjective is left alone — "dry-cured for 90 days" sells salami, and a
+    // food brand must be able to say so.
+    re: /\bcures\b|\bcure (your|the|my|her|his|their|it|acne|eczema|psoriasis|rosacea|anxiety|depression|insomnia|hair loss|baldness|pain|disease)\b|\bcured (my|your|her|his|their|our|the|it|me|of)\b|\bmiracle cure\b/i,
+    severity: 'error',
+    why: 'is a medical cure claim',
+  },
+  {
+    re: /\bcure for\b/i,
+    severity: 'warning',
+    why: 'reads as a cure claim — fine as play on a snack, a rejection on anything sold for the body',
+  },
+  {
+    re: /\blose \d+\s?(lbs?|pounds?|kg|kilos?|stone)\b/i,
+    severity: 'error',
+    why: 'states a weight-loss figure',
+  },
+  {
+    re: /\b(miracle|magic pill|overnight results?|instant results?|permanent results?)\b/i,
+    severity: 'error',
+    why: 'promises an unrealistic outcome',
+  },
+  {
+    re: /\b(you will make|passive income|get rich|earn from home)\b/i,
+    severity: 'error',
+    why: 'is an income claim',
+  },
+  {
+    // Meta rejects copy that asserts or implies the viewer HAS a condition or
+    // trait. "This serum calms redness" sells the product; "Do you have acne?"
+    // tells the reader what is wrong with them, and that is the rejected form.
+    // "fat" is deliberately absent: "Are you tired of fat-free snacks…" is a
+    // product claim, and a pattern that bounces it teaches the team to ignore
+    // the gate.
+    re: /\b(are you|do you (have|suffer)|is your|you('re| are))\b[^.?!]{0,40}\b(overweight|obese|acne|depress\w*|anxi\w*|diabet\w*|balding|bald|wrinkl\w*|infertil\w*|insomnia|lonely|in debt)\b/i,
+    severity: 'error',
+    why: 'asserts the viewer’s personal attributes, which Meta rejects',
+  },
+  {
+    re: /\bfda[- ]?approved\b/i,
+    severity: 'warning',
+    why: 'is a regulatory claim — only true for approved drugs and devices, never for supplements or cosmetics',
+  },
+  {
+    re: /\bclinically (proven|tested)\b/i,
+    severity: 'warning',
+    why: 'needs a study behind it — keep it only if the brand can produce one',
+  },
+  {
+    re: /\b(#1|number one|no\.? ?1|best[- ]selling|bestselling)\b/i,
+    severity: 'warning',
+    why: 'is a ranking claim — keep it only if the brand can substantiate it',
+  },
+]
+
+function scan(text: string, field: CreativeComplianceIssue['field']): CreativeComplianceIssue[] {
+  const issues: CreativeComplianceIssue[] = []
+  for (const rule of CLAIM_RULES) {
+    const m = rule.re.exec(text)
+    if (!m) continue
+    issues.push({
+      field,
+      severity: rule.severity,
+      message: `"${m[0].trim()}" ${rule.why}.`,
+    })
+  }
+  return issues
+}
+
+/** The parts of a concept that actually reach a viewer. */
+export interface ShippableCreative {
+  type: string
+  productionBrief?: {
+    frames?: { label: string; description: string }[]
+    onImageText?: { role?: string; text?: string }[]
+  }
+}
+
+/** Motion formats whose frames carry spoken lines and captions that ship. */
+const MOTION_RE = /video|ugc|testimonial|montage|scene/i
+
+/**
+ * Check the words a creative will actually show or say.
+ *
+ * Only what SHIPS is judged: the on-image text of every creative, plus the
+ * frames of a motion concept (its spoken lines and burned-in captions). The
+ * concept's own description is direction for the team, never seen by a buyer,
+ * and judging it would bounce a concept for describing the problem it solves.
+ */
+export function validateCreativeCopy(c: ShippableCreative | undefined): CreativeComplianceIssue[] {
+  if (!c) return []
+  const issues: CreativeComplianceIssue[] = []
+  const onImage = (c.productionBrief?.onImageText ?? [])
+    .map((t) => t?.text?.trim())
+    .filter(Boolean)
+    .join(' · ')
+  if (onImage) issues.push(...scan(onImage, 'onImageText'))
+  if (MOTION_RE.test(c.type)) {
+    const script = (c.productionBrief?.frames ?? [])
+      .map((f) => f?.description ?? '')
+      .join(' ')
+    if (script.trim()) issues.push(...scan(script, 'script'))
+  }
+  return issues
+}
+
+/**
+ * Revision feedback for the orchestrator when submitted creatives carry a
+ * blocking claim — same loop shape as the NEURO and production-brief gates,
+ * sharing their single bounded revision pass.
+ */
+export function creativeCopyFeedback(
+  concepts: ShippableCreative[],
+): { failingIndices: number[]; feedback: string } {
+  const lines: string[] = []
+  const failingIndices: number[] = []
+  concepts.forEach((c, i) => {
+    const errors = validateCreativeCopy(c).filter((x) => x.severity === 'error')
+    if (errors.length === 0) return
+    failingIndices.push(i)
+    lines.push(`- [${c.type}] ${errors.map((e) => e.message).join(' ')}`)
+  })
+  const feedback = `CREATIVE COMPLIANCE: ${failingIndices.length} creative(s) carry a claim Meta rejects, and words burned into a creative cannot be edited after the render:\n${lines.join(
+    '\n',
+  )}\n\nRewrite those words (keep the concept, sell the product's real benefit instead of the forbidden claim) and call submit_concepts again with ALL concepts, including the ones that already passed.`
+  return { failingIndices, feedback }
+}
+
+/* ----------------------------- Placement map -------------------------------- */
+
+export interface Placement {
+  ratio: '4:5' | '1:1' | '9:16' | '16:9'
+  label: string
+  where: string
+}
+
+/**
+ * Where a finished creative can run, read off its pixels rather than its
+ * label. The Launch Bay shows this beside every creative so an upload never
+ * lands a 16:9 still in a campaign that only buys Reels.
+ */
+export const PLACEMENTS: Placement[] = [
+  { ratio: '4:5', label: 'Tall feed', where: 'Facebook + Instagram feed — the largest mobile footprint' },
+  { ratio: '1:1', label: 'Square', where: 'Feed, Marketplace and right column — safest across placements' },
+  { ratio: '9:16', label: 'Vertical', where: 'Stories and Reels — keep product and text out of the top 14% and bottom 20%' },
+  { ratio: '16:9', label: 'Landscape', where: 'In-stream video and desktop feed only' },
+]
+
+/** The placement whose ratio is closest to a width × height, or null for a degenerate size. */
+export function placementFor(width: number, height: number): Placement | null {
+  if (!(width > 0) || !(height > 0)) return null
+  const r = width / height
+  const value = (p: Placement) => {
+    const [w, h] = p.ratio.split(':').map(Number)
+    return w / h
+  }
+  return PLACEMENTS.reduce((best, p) =>
+    Math.abs(value(p) - r) < Math.abs(value(best) - r) ? p : best,
+  )
 }
 
 /* --------------------------- Orchestrator wiring ---------------------------- */
 
 /**
- * Meta-native craft rules injected into the coordinator prompt on EVERY run —
- * the difference between "good copy" and copy engineered for Meta's feed.
+ * The e-commerce creative craft injected into the coordinator prompt on EVERY
+ * run. It replaces the old caption block: with no primary text behind it, the
+ * creative carries the whole sale.
  */
-export const META_CRAFT_BLOCK = `META AD CRAFT — every concept ships as a complete, launch-ready Meta ad unit (the adPackage field), not a copy fragment:
-- primaryText: the ad body. Only the first ${PRIMARY_TEXT_FOLD} characters show before Meta's "See more" fold on mobile — the full pattern-interrupt hook must land inside them. Never open on the offer. Write for a sound-off, mobile-first feed: short lines, a line break between beats, no walls of text.
-- headline: ≤ ${HEADLINE_MAX} characters. A concrete benefit, proof point, or curiosity gap — never a label or the company name.
-- description: ≤ ${DESCRIPTION_MAX} characters, optional. One reinforcing proof or urgency beat.
-- cta: one of ${META_CTA_OPTIONS.join(', ')}. Match commitment to temperature: cold = LEARN_MORE/WATCH_MORE, warm = SIGN_UP/DOWNLOAD/SUBSCRIBE, hot = APPLY_NOW/BOOK_NOW.
-- One idea per ad, one CTA. Creative aspect ratios: 1:1 or 4:5 for feed, 9:16 for Reels/Stories — keep key text out of the top and bottom 14% of 9:16 creative (Meta UI safe zones).
-- Packages violating these limits or the compliance constraints are bounced back to you for revision before anything ships.`
-
-/**
- * JSON-schema fragment for the adPackage property on submit_concepts — kept
- * here so the tool contract and the validator can never drift apart.
- */
-export const adPackageSchema = {
-  type: 'object' as const,
-  description: `REQUIRED for every concept: the complete, launch-ready Meta ad unit. The hook must land inside the first ${PRIMARY_TEXT_FOLD} chars of primaryText (mobile "See more" fold).`,
-  properties: {
-    primaryText: {
-      type: 'string' as const,
-      description: `The ad body. First ${PRIMARY_TEXT_FOLD} chars show before the fold — the hook lives there. Short lines, line breaks between beats.`,
-    },
-    headline: { type: 'string' as const, description: `Max ${HEADLINE_MAX} chars.` },
-    description: { type: 'string' as const, description: `Optional, max ${DESCRIPTION_MAX} chars.` },
-    cta: {
-      type: 'string' as const,
-      enum: [...META_CTA_OPTIONS],
-      description: 'Meta CTA button type, matched to audience temperature.',
-    },
-  },
-  required: ['primaryText', 'headline', 'cta'],
-}
-
-/**
- * Build the revision feedback handed back to OPUS when submitted packages fail
- * validation — same loop shape as the NEURO pre-test critique.
- */
-export function adPackageFeedback(
-  concepts: { type: string; adPackage?: MetaAdPackage }[],
-): { failingIndices: number[]; feedback: string } {
-  const lines: string[] = []
-  const failingIndices: number[] = []
-  concepts.forEach((c, i) => {
-    const errors = validateAdPackage(c.adPackage).filter((x) => x.severity === 'error')
-    const missing = !c.adPackage
-    if (missing) {
-      failingIndices.push(i)
-      lines.push(`- [${c.type}] has NO adPackage — every concept must ship as a complete Meta ad unit.`)
-    } else if (errors.length > 0) {
-      failingIndices.push(i)
-      lines.push(`- [${c.type}] ${errors.map((e) => e.message).join(' ')}`)
-    }
-  })
-  const feedback = `META AD COMPLIANCE: ${failingIndices.length} concept(s) are not launch-ready:\n${lines.join(
-    '\n',
-  )}\n\nFix these packages (keep the concept, repair the ad unit) and call submit_concepts again with ALL concepts, including the ones that already passed.`
-  return { failingIndices, feedback }
-}
-
-/* --------------------------------- Demo mode -------------------------------- */
-
-/**
- * Deterministic demo ad package so demo mode (no ANTHROPIC_API_KEY) shows the
- * full launch-ready experience, per concept type and angle.
- */
-export function demoAdPackage(
-  conceptType: string,
-  angle: string,
-  audience = 'operators',
-): MetaAdPackage {
-  const a = angle || 'Profit'
-  const al = a.toLowerCase()
-  const hot = /founder|testimonial|campaign/i.test(conceptType)
-  // Deliberately unbranded scaffolding with the SHAPE of a compliant ad unit —
-  // fold discipline, character budgets, one idea, a real CTA — and none of one
-  // company's copy. It used to be a finished ad for a specific coaching
-  // business, complete with its client count, which every deployment without a
-  // key rendered as its own and could push straight to Meta.
-  return {
-    primaryText: `Most ${audience} don't have a ${al} problem. They have a ${al} leak.\n\nThe numbers look fine at the top and nobody can say where it goes after that.\n\nThis is the demo path — connect a website and fire the Reactor for real copy written to your brand.\n\nSee how it works below.`,
-    headline: `Find the ${a} leak in your business`.slice(0, HEADLINE_MAX),
-    description: 'Demo ad unit'.slice(0, DESCRIPTION_MAX),
-    cta: hot ? 'APPLY_NOW' : 'LEARN_MORE',
-  }
-}
+export const META_CREATIVE_CRAFT_BLOCK = `META CREATIVE CRAFT — this platform ships the CREATIVE, not the caption. The caption is written later in Ads Manager, so everything the ad must say has to be said BY the creative:
+- THE PRODUCT IS THE HERO. Every still shows the real product — or the product in use — large enough to read at thumb size; every video shows it inside the first two seconds. Describe it exactly as the catalog and website show it (shape, colour, packaging, label). Never invent a variant, a colourway, a bundle or packaging that is not sold.
+- ONE IDEA PER CREATIVE: one desire, one proof, one offer. The on-image headline carries the hook; the on-image CTA label names the action ("Shop Now", "Get 20% Off", "Claim Your Free Gift").
+- PROOF IS NATIVE TO E-COMMERCE: star ratings, review counts, a customer's own words, units sold, press mentions — used ONLY when the product facts, the website or the Vault supply the figure. Never invent a rating, a review, a count, a price or a discount.
+- OFFERS ARE STATED EXACTLY AS CONFIGURED: the % or amount off, the threshold, the bundle, the gift — never rounded up, never stacked, never presented as permanent when it is a sale.
+- DIVERSITY IS THE LEVER: Meta's delivery groups near-identical creatives and treats them as a single bet. Separate concepts must differ in persona, desire, archetype or visual world — never a recolour or a reworded headline of a sibling. (The operator's configured variation lever still governs the versions WITHIN a format.)
+- NATIVE BEATS POLISHED ON COLD TRAFFIC: UGC-style, lo-fi phone footage, review screenshots, notes-app and founder-to-camera formats out-pull studio ads with new audiences; polished product photography earns its place on retargeting.
+- PLACEMENTS: 4:5 for feed, 9:16 for Stories and Reels with the product and every word kept out of the top 14% and bottom 20% (the platform UI sits there), 1:1 when one asset must run everywhere.
+- NO FAKE INTERFACE: never draw play buttons, notification badges, checkboxes, cursors or system dialogs — Meta rejects ads that imitate UI.`

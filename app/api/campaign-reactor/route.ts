@@ -32,7 +32,13 @@ import {
 } from '@/lib/video'
 import { logGeneration } from '@/lib/video/persistence'
 import { resolveCreativeLearnings, retrieveWinningConfigs, type WinningConfig } from '@/lib/outcomes'
-import { outputTypeOptions, type ReactorInputs, type ProductionBrief, type NeuroScore } from '@/lib/reactor-inputs'
+import {
+  audienceOptions,
+  outputTypeOptions,
+  type ReactorInputs,
+  type ProductionBrief,
+  type NeuroScore,
+} from '@/lib/reactor-inputs'
 import {
   retrieveNeuroPrinciples,
   scoreConceptsNeuro,
@@ -41,13 +47,7 @@ import {
   neuroFeedback,
   demoNeuroScore,
 } from '@/lib/neuro'
-import {
-  META_CRAFT_BLOCK,
-  adPackageSchema,
-  adPackageFeedback,
-  demoAdPackage,
-  type MetaAdPackage,
-} from '@/lib/meta-ads'
+import { META_CREATIVE_CRAFT_BLOCK, creativeCopyFeedback } from '@/lib/meta-ads'
 import {
   AXIS_TAXONOMY_KEY,
   axisValues,
@@ -76,6 +76,17 @@ import { websiteBrandBrief } from '@/lib/brand-context'
 import { getTenant, tenantDescriptor } from '@/lib/tenant'
 import { currentAccount } from '@/lib/account'
 import { askDocument, readyDocuments, type LongDocument } from '@/lib/documents'
+import {
+  catalogRangeBlock,
+  discountPercent,
+  formatPrice,
+  getCatalog,
+  inferNiches,
+  productFactsBlock,
+  visionSizedImage,
+  type Catalog,
+  type CatalogProduct,
+} from '@/lib/catalog'
 
 // ORACLE strategic memory injected into OPUS at fire time — past winning
 // configurations matching the brief, so generation reuses what worked.
@@ -305,7 +316,6 @@ interface Concept {
   imageUrl?: string
   productionBrief?: ProductionBrief
   neuro?: NeuroScore
-  adPackage?: MetaAdPackage
   // Clone & Iterate — the fixed taxonomy this concept is tagged with, plus the
   // test-attribution IDs that thread the hypothesis through to Meta + ingest.
   taxonomy?: CreativeTaxonomy
@@ -396,7 +406,7 @@ function briefFeedback(
 
   const feedback = `PRODUCTION BRIEF: ${failingIndices.length} visual concept(s) cannot be rendered as written:\n${lines.join(
     '\n',
-  )}\n\nFix the briefs (keep the concepts and their ad packages) and call submit_concepts again with ALL concepts, including the ones that already passed.`
+  )}\n\nFix the briefs (keep the concepts) and call submit_concepts again with ALL concepts, including the ones that already passed.`
   return { failingIndices, feedback }
 }
 
@@ -700,14 +710,14 @@ function buildTools(
     tools.push({
       name: 'generate_image',
       description:
-        'Generate a still ad creative for a visual concept (e.g. Static Concept, Founder Concept, Campaign Concept). Returns the image URL, which also appears on the concept card in the Reactor. Call this for visual concepts before submitting them, and pass the imageUrl into that concept.',
+        'Generate a still ad creative for a visual concept (e.g. Static Concept, Founder Concept, Campaign Concept). The product must be the hero of the frame, described exactly as it is sold. Returns the image URL, which also appears on the concept card in the Reactor. Call this for visual concepts before submitting them, and pass the imageUrl into that concept.',
       input_schema: {
         type: 'object',
         properties: {
           prompt: {
             type: 'string',
             description:
-              'A vivid, specific image prompt. Describe the SCENE in prose, then list the on-image copy under a line reading "ON-IMAGE TEXT — reproduce these strings EXACTLY as written:" with at most two quoted strings (headline + CTA button, ~95 chars total), and finish with "Render no other text anywhere in the image." More text than that, or copy left buried in the scene description, renders as gibberish.',
+              'A vivid, specific image prompt. Describe the SCENE in prose — the product, exactly as it is sold, as the hero — then list the on-image copy under a line reading "ON-IMAGE TEXT — reproduce these strings EXACTLY as written:" with at most two quoted strings (headline + offer or CTA label, ~95 chars total), and finish with "Render no other text anywhere in the image." More text than that, or copy left buried in the scene description, renders as gibberish.',
           },
           conceptType: { type: 'string', description: 'The output type this image is for (must match the concept type you will submit).' },
           model: {
@@ -726,7 +736,7 @@ function buildTools(
     tools.push({
       name: 'generate_video',
       description:
-        'Generate a high-quality video clip for a visual concept (Video Concept, Founder Concept, Testimonial Concept). Two modes: text-to-video (describe the full scene — a real person at work in this brand’s own environment, someone speaking to camera) needs only a prompt; image-to-video animates a still from generate_image (pass its imageUrl). Choose the model best suited to the shot. The clip renders asynchronously and appears on the concept card when ready.',
+        'Generate a high-quality video clip for a visual concept (Video Concept, Founder Concept, Testimonial Concept). Two modes: text-to-video (describe the full scene — a real customer using the product in their own life, a creator unboxing it, someone speaking to camera) needs only a prompt; image-to-video animates a still from generate_image (pass its imageUrl). The product must be on screen inside the first two seconds. Choose the model best suited to the shot. The clip renders asynchronously and appears on the concept card when ready.',
       input_schema: {
         type: 'object',
         properties: {
@@ -753,7 +763,7 @@ function buildTools(
   tools.push({
     name: 'submit_concepts',
     description:
-      'Submit the final campaign concepts once your intelligence network has reported AND you have self-scored each concept against the Creative Learnings rubric. Each concept must cite its evidence, pass the rubric, and carry a complete launch-ready Meta ad unit (adPackage). Include imageUrl for any concept you generated a creative for.',
+      'Submit the final campaign concepts once your intelligence network has reported AND you have self-scored each concept against the Creative Learnings rubric. Each concept must cite its evidence, pass the rubric, and carry the production brief its creative is rendered from — the creative ships without a caption, so everything the ad must say lives in that brief. Include imageUrl for any concept you generated a creative for.',
     input_schema: {
       type: 'object',
       properties: {
@@ -762,7 +772,7 @@ function buildTools(
           items: {
             type: 'object',
             properties: {
-              type: { type: 'string', description: 'Output type, e.g. Hook, Headline, Founder Concept' },
+              type: { type: 'string', description: 'Output type, e.g. Static Concept, Video Concept, Testimonial Concept' },
               text: { type: 'string' },
               basis: { type: 'string', description: 'Which intelligence layer / asset / pattern this draws from' },
               learningCheck: { type: 'string', description: 'How it satisfies the rubric' },
@@ -772,15 +782,14 @@ function buildTools(
                 description:
                   'REQUIRED when this concept is one of several versions of the same format: a 2-5 word label for the ONE difference this version carries, e.g. "Specific-dollar hook", "Contrarian claim", "Split-screen layout". This is what the performance loop compares the set by, so make it concrete and never "Variation 2".',
               },
-              imageUrl: { type: 'string', description: 'The Higgsfield image URL for this concept, if one was generated.' },
-              adPackage: adPackageSchema,
+              imageUrl: { type: 'string', description: 'The image URL for this concept, if one was generated.' },
               productionBrief: {
                 type: 'object',
                 description:
                   'REQUIRED for visual concepts (Static/Video/Founder/Testimonial/Event/Campaign Concept): a frame-by-frame production plan. Image and video are generated from this brief.',
                 properties: {
                   creativeType: { type: 'string' },
-                  pattern: { type: 'string', description: 'e.g. Member Win, Profit Leak, Time Freedom' },
+                  pattern: { type: 'string', description: 'e.g. Us vs Them, Review Wall, Problem → Product, Unboxing' },
                   audience: { type: 'string' },
                   awareness: { type: 'string' },
                   frames: {
@@ -798,11 +807,11 @@ function buildTools(
                   onImageText: {
                     type: 'array',
                     description:
-                      'The copy that must appear ON the image, declared separately from the frames so the renderer can set it exactly. AT MOST 2 entries: the headline and the CTA button label. Keep them SHORT — around 95 characters across both, or the image model degrades every letter. Never list fine print, compliance lines, disclaimers or logo text here: those are overlaid after the render, not generated.',
+                      'The copy that must appear ON the image, declared separately from the frames so the renderer can set it exactly. AT MOST 2 entries: the headline, and the offer or CTA label ("20% Off Your First Order", "Shop Now"). Keep them SHORT — around 95 characters across both, or the image model degrades every letter. Never list fine print, compliance lines, disclaimers or logo text here: those are overlaid after the render, not generated. These words are checked against Meta\'s advertising standards before the creative ships.',
                     items: {
                       type: 'object',
                       properties: {
-                        role: { type: 'string', description: '"Headline" or "CTA button".' },
+                        role: { type: 'string', description: '"Headline", "Offer" or "CTA button".' },
                         text: { type: 'string', description: 'The exact words to set on the image.' },
                         placement: { type: 'string', description: 'e.g. "top third, left aligned".' },
                       },
@@ -874,9 +883,10 @@ function buildTools(
  * Image models render text reliably only when there is little of it and it is
  * stated literally. A brief that buries four quoted strings in prose — headline,
  * subhead, CTA and a compliance strip — produces the failure we shipped:
- * plausible-looking gibberish across the whole creative. The full compliant copy
- * still ships in the concept's adPackage (caption, headline, description) and is
- * overlaid in the Studio; only the headline and the button belong in the pixels.
+ * plausible-looking gibberish across the whole creative. The platform ships the
+ * creative without a caption, so the two blocks that DO render carry the sale:
+ * the headline and the offer (or the CTA label). Fine print is overlaid after
+ * the render or written into the caption in Ads Manager — never generated.
  */
 /**
  * A STILL IS ONE FRAME. The brief format is frame-by-frame because that is how
@@ -890,7 +900,7 @@ const SINGLE_FRAME_RULE = `
 - LABEL THE SUBJECT FRAME BY WHAT IS IN IT, never by the copy sitting on it. "Hero shot — founder at the packing bench" is a subject; "Headline zone" is not. The platform strips copy-labelled frames out of the scene it sends the image model, so a brief whose frames are all named after copy arrives with a layout and no photograph, and the model invents one that has nothing to do with the business.`
 
 const ON_IMAGE_TEXT_RULE = `
-- ON-IMAGE COPY — the words burned into the creative: declare them in productionBrief.onImageText, never only inside the frame prose. AT MOST TWO entries: the headline and the CTA button label, roughly 95 characters across both. Image models mangle every letter once you ask for more, so a third line costs you the first two. NEVER ask the image for fine print, compliance lines, disclaimers, sub-paragraphs, logos or wordmarks — those are overlaid after the render and the platform strips them from the prompt. Write the frames as pure art direction (subject, setting, light, framing, where the type sits) and let onImageText carry the words.`
+- ON-IMAGE COPY — the words burned into the creative: declare them in productionBrief.onImageText, never only inside the frame prose. AT MOST TWO entries: the headline, and the offer or CTA label, roughly 95 characters across both. There is no caption behind this creative, so those two lines carry the whole sale — make the headline the hook and the second line the reason to act now. Image models mangle every letter once you ask for more, so a third line costs you the first two. NEVER ask the image for fine print, compliance lines, disclaimers, sub-paragraphs, logos or wordmarks — those are overlaid after the render and the platform strips them from the prompt. Write the frames as pure art direction (subject, setting, light, framing, where the type sits) and let onImageText carry the words.`
 
 function coordinatorPrompt(
   outputs: string[],
@@ -925,7 +935,7 @@ function coordinatorPrompt(
       ? ` The user has selected the "${caps.preferredVideoModel}" model — use it for every generate_video call unless a shot clearly needs a different capability.`
       : ''
   const videoLine = caps.video
-    ? `\n- For video output types (Video Concept, Founder Concept, Testimonial Concept): FIRST write a frame-by-frame production brief, THEN build the generate_video prompt FROM that brief, and attach the productionBrief to the submitted concept. Available models: ${caps.videoModels.join(', ')} — the generate_video tool description says what each one is for. Use text-to-video to direct a full scene set in this business's own world (a real customer or operator at work, someone speaking to camera — whenever someone SPEAKS, pick a model with native audio or the ad ships silent; pick a cinematic-realism model for action and B-roll). Use image-to-video to animate a still from generate_image. Match conceptType to the concept you submit.${preferredLine}`
+    ? `\n- For video output types (Video Concept, Founder Concept, Testimonial Concept): FIRST write a frame-by-frame production brief, THEN build the generate_video prompt FROM that brief, and attach the productionBrief to the submitted concept. Available models: ${caps.videoModels.join(', ')} — the generate_video tool description says what each one is for. Use text-to-video to direct a full scene set in this brand's own world (a real customer using the product, a creator unboxing it, someone speaking to camera — whenever someone SPEAKS, pick a model with native audio or the ad ships silent; pick a cinematic-realism model for product action and B-roll). Use image-to-video to animate a still from generate_image. Match conceptType to the concept you submit.${preferredLine}`
     : ''
 
   return `You are OPUS — the Master Strategist of ${tenant}'s Creative Intelligence Command Center. You direct an intelligence network and synthesize it into launch-ready creative.
@@ -940,13 +950,13 @@ Your intelligence network:
 Process:
 1. ATLAS, NOVA and ORACLE are briefed in parallel before you take your first turn — their findings are already in your context, so the Vault, the market, and strategic memory are grounded before you start. Build on that evidence rather than asking for it again. Consult SPARK and/or ECHO with consult_intelligence for the creative and copy DNA you still need, and re-consult a briefed layer only for a genuinely NEW question its report does not answer. Request several independent layers in a SINGLE step (multiple consult_intelligence calls at once) — they run in parallel, so batch them to move faster without losing any depth. Use findings as evidence — don't guess.${metaAdsLine}
 2. Call get_learnings and self-score every concept against that rubric. Revise or drop anything below 7.${imageLine}${videoLine}
-3. Call submit_concepts with concepts ONLY for these requested output types: ${outputs.join(', ')}. Each concept cites which intelligence layer its evidence came from, and each concept carries a complete adPackage — the launch-ready Meta ad unit.
+3. Call submit_concepts with concepts ONLY for these requested output types: ${outputs.join(', ')}. Each concept cites which intelligence layer its evidence came from, and each visual concept carries the production brief its creative is rendered from.
 
-${META_CRAFT_BLOCK}
+${META_CREATIVE_CRAFT_BLOCK}
 
-On submit, every concept is run through NEURO — a neural pre-test that scores its PREDICTED RESPONSE (attention, emotion, memorability, first-3-seconds hook) against neuromarketing principles — and its adPackage is validated against Meta's placement limits and the compliance constraints. Concepts with a weak scroll-stop or hook, or a non-compliant ad unit, are returned to you to revise or drop. So lead with a concrete, specific pattern-interrupt in the opening beat of every concept — don't open on the offer or a generic claim.
+On submit, every concept is run through NEURO — a neural pre-test that scores its PREDICTED RESPONSE (attention, emotion, memorability, first-3-seconds hook) against neuromarketing principles — and the words each creative will show or say are checked against Meta's advertising standards. Concepts with a weak scroll-stop or hook, or a claim Meta rejects, are returned to you to revise or drop. So lead with a concrete, specific pattern-interrupt in the opening beat of every concept — the product, the problem it ends, or the proof — never a generic claim.
 
-Voice: confident, specific, and native to THIS business and its audience — their vocabulary, their references, their level of expertise. Never a marketing department's voice, never a generic one. Engineered for performance.`
+Voice: confident, specific, and native to THIS brand and its customers — the words they use in their own reviews, their references, their taste. Never a marketing department's voice, never a generic one. Engineered for performance.`
 }
 
 /* --------------------- Reactor modal input → prompt ----------------------- */
@@ -957,10 +967,12 @@ const SOPHISTICATION_BLOCK =
 const INTELLIGENCE_BLOCK =
   'INTELLIGENCE NETWORK: ATLAS (the Knowledge Vault) is ALWAYS active on every run — she is the foundation the build stands on, never skipped, never asleep. ATLAS, NOVA and ORACLE are briefed automatically in parallel before your first turn, so their evidence is guaranteed present rather than left to your discretion. Use your judgment to select which of the remaining layers (SPARK/ECHO) to consult based on the campaign angle, audience type, and brief — query whichever will give you the most relevant evidence for this run.'
 
-const COMPLIANCE_BLOCK = `HARD COMPLIANCE CONSTRAINTS — these override all creative instructions:
-- Attribute every income or results figure to a named individual as THEIR result. Never imply typical or guaranteed outcomes for the viewer.
-- Never use: "guaranteed", "you will make", "passive income", "get rich", "earn from home".
-- Where a concept references a named client's result, it must carry a disclaimer in the ad package: "Results are individual and not typical." Add the risk clause the offer's own category requires (e.g. financial, health, business) — never omit it, never invent one that does not apply.
+const COMPLIANCE_BLOCK = `HARD COMPLIANCE CONSTRAINTS — these override all creative instructions. Words burned into a creative cannot be edited after the render, so they must be right before it:
+- Never promise an outcome the product cannot guarantee: no "guaranteed results", no cure claims, no weight-loss figures, no "miracle", "instant" or "permanent" results. A money-back GUARANTEE is an offer and is fine; a guaranteed RESULT is a claim and is not.
+- Never assert the viewer's personal attributes — health, body, finances, age, identity. "This serum calms redness" sells the product; "Do you have acne?" tells the reader what is wrong with them, and Meta rejects it.
+- Before/after imagery is off-limits for weight loss and for anything sold as changing the body. Show the product, the ritual or the experience instead.
+- Every price, discount, rating, review count, units-sold figure or press mention must come from the product facts, the website or the Vault — never invented, never rounded up, never borrowed from a reference ad. A customer quote is used only as the brief or Vault supplies it, and states the customer's experience, not a promised result.
+- "Clinically proven", "#1", "best-selling" and "FDA approved" appear only when the brief states they are true.
 - Reject and rewrite any concept of your own that violates these constraints before calling submit_concepts.`
 
 const BLOCK_SEP = '\n\n─────────────────────────────────────────────\n\n'
@@ -1042,7 +1054,7 @@ function buildInputBlocks(inputs: ReactorInputs | undefined): string {
     const chosen = inputs.outputTypes.map((o) => o.toLowerCase())
     if (chosen.some((o) => /montage|scene/.test(o))) {
       parts.push(
-        'MONTAGE / SCENE FLOW: This campaign ships as a multi-scene montage. For each montage concept, write the production brief as an ordered SCENE SEQUENCE (4–6 frames): each frame is one scene with its own visual direction and a one-line on-screen caption or VO beat. The scenes must build one argument — hook scene → tension/proof scenes → payoff scene → CTA scene. Frame labels become scene titles in the Creative Canvas, so make them specific ("Scene 1 — 5:47am, still on the tools"), never generic ("Frame 1").',
+        'MONTAGE / SCENE FLOW: This campaign ships as a multi-scene montage. For each montage concept, write the production brief as an ordered SCENE SEQUENCE (4–6 frames): each frame is one scene with its own visual direction and a one-line on-screen caption or VO beat. The scenes must build one argument — hook scene → tension/proof scenes → payoff scene → CTA scene. Frame labels become scene titles in the Creative Canvas, so make them specific ("Scene 1 — 7:02am, the bathroom mirror"), never generic ("Frame 1"). The product is on screen by the end of the first scene.',
       )
     }
 
@@ -1263,6 +1275,12 @@ async function researchForRun(
    * host gets a shorter window rather than a skipped step.
    */
   deadlineMs = RESEARCH_BUDGET_MS,
+  /**
+   * What the store's catalog says about its market: the vertical the products
+   * sit in, and the category words that name them. Research is always
+   * e-commerce on this platform; the catalog only narrows WHICH e-commerce.
+   */
+  market: { niches?: number[]; keywords?: string[] } = {},
 ): Promise<AdResearch | null> {
   if (!gethookdConfigured()) return null
 
@@ -1283,6 +1301,9 @@ async function researchForRun(
         offerName: ri?.offerName,
         industry: tenant?.industry,
         audienceDescriptor: tenant?.audienceDescriptor,
+        keywords: market.keywords,
+        focus: 'ecommerce',
+        niches: market.niches,
       }),
       new Promise<null>((resolve) => setTimeout(() => resolve(null), deadlineMs)),
     ])
@@ -1423,7 +1444,8 @@ async function readTopReference(
  * two most likely to be skipped, and each request it did make cost a serial
  * orchestrator turn. Briefing them here instead costs nothing extra in wall
  * clock: the whole set runs concurrently, so the wait is the slowest layer, not
- * the sum. Every concept ships a Meta ad unit, so copy DNA is never irrelevant.
+ * the sum. Every creative carries its own on-image headline and offer — with
+ * no caption behind it, the copy DNA is the sale, so it is never irrelevant.
  */
 const MANDATORY_LAYERS: IntelligenceId[] = ['atlas', 'nova', 'spark', 'echo', 'oracle']
 
@@ -1433,6 +1455,8 @@ interface PreflightContext {
   awareness?: string
   offer?: string
   brief?: string
+  /** The product this run sells, as one line — title and published price. */
+  product?: string
   /** Extra demands a variation lever places on a specific layer's briefing. */
   variationDemands?: Partial<Record<'oracle' | 'spark' | 'echo', string>>
 }
@@ -1475,10 +1499,14 @@ function variationDemands(configs: VariationConfig[]): PreflightContext['variati
 function preflightQuestion(id: IntelligenceId, ctx: PreflightContext): string {
   // No audience picked: ask about the business's own buyer rather than naming
   // one. "builders" here scoped every unspecified briefing to one industry.
-  const who = ctx.audience && ctx.audience !== 'No Preference' ? ctx.audience : 'this business\'s buyers'
+  const who = ctx.audience && ctx.audience !== 'No Preference' ? ctx.audience : 'this brand\'s customers'
   const stage = ctx.awareness && ctx.awareness !== 'No Preference' ? ctx.awareness : 'mixed-awareness'
   const offer = ctx.offer && ctx.offer !== 'No Preference' ? ctx.offer : 'the core offer'
-  const briefTail = ctx.brief?.trim() ? ` Campaign brief: ${ctx.brief.trim().slice(0, 400)}` : ''
+  // Every layer is briefed about THE PRODUCT when the run has one: the pains,
+  // the proof and the hooks worth retrieving are the ones about what is sold.
+  const briefTail = `${ctx.product ? ` The campaign sells: ${ctx.product}.` : ''}${
+    ctx.brief?.trim() ? ` Campaign brief: ${ctx.brief.trim().slice(0, 400)}` : ''
+  }`
   // A variation lever changes what the briefing has to COME BACK WITH, not just
   // what OPUS is told afterwards. Asking for N angles at generation time, from a
   // briefing that only surfaced one, makes OPUS invent the other N-1 unbacked —
@@ -1600,39 +1628,52 @@ async function preflightBriefing(
 // shows the production-brief-driven workflow. When `montage` is set, frames are
 // labelled as an ordered scene sequence (matching the live orchestrator's
 // MONTAGE / SCENE FLOW instruction) instead of generic numbered frames.
+/** "customers" → "customer", for a frame that shows one person. */
+function oneOf(audience: string): string {
+  return audience.replace(/s$/, '')
+}
+
 function demoBrief(
   creativeType: string,
   angle: string,
   montage = false,
-  audience = 'operators',
+  audience = 'customers',
+  product = 'the hero product',
 ): ProductionBrief {
-  const al = angle.toLowerCase()
   /* Frame 1 names a SUBJECT, not a zone — the compiler strips copy-labelled
      frames out of the scene, so a demo brief written as zones would render the
      same subject-less prompt this path exists to demonstrate working.
-     The subject is the tenant's own buyer, never a fixed trade: hard-coding
-     "builder on a job site" here composed every demo render for one industry. */
-  const frames = montage
+     The subject is the brand's own product and buyer, never a fixed vertical:
+     a demo that hard-coded one category would compose every render for it. */
+  const motion = montage || /video|testimonial|ugc|founder/i.test(creativeType)
+  const frames = motion
     ? [
-        { label: 'Scene 1 — Before dawn, still working', description: `A ${audience.replace(/s$/, '')} at work in their own setting, before anyone else has started — tired, capable, carrying it alone.` },
-        { label: 'Scene 2 — The leak exposed', description: `Close on a stark figure — the hidden ${al} leak nobody names out loud.` },
-        { label: 'Scene 3 — The turning point', description: 'The system introduced — a working session where the second layer of responsibility is drawn up.' },
-        { label: 'Scene 4 — The after', description: 'The numbers moving the right way; the owner leaving mid-afternoon.' },
-        { label: 'Scene 5 — Soft CTA', description: 'A quiet, qualifying call to the next step — no hard sell.' },
+        { label: 'Scene 1 — The moment before', description: `A ${oneOf(audience)} at home, mid-routine, reaching for ${product} — the product is on screen inside the first two seconds.` },
+        { label: 'Scene 2 — The problem it ends', description: `Handheld and unpolished: the everyday frustration ${product} exists to fix.` },
+        { label: 'Scene 3 — The product at work', description: `Macro detail of ${product} in use — texture, fit, finish — natural window light.` },
+        { label: 'Scene 4 — The proof', description: 'A real customer review read aloud over a slow push-in on the product.' },
+        { label: 'Scene 5 — The offer', description: 'The product on a clean surface, the offer set as one bold line.' },
       ]
     : [
-        { label: 'Hero shot', description: `A ${audience.replace(/s$/, '')} at work in their own setting, mid-task, natural light, shot documentary-style.` },
-        { label: 'Frame 2', description: `The hidden ${al} problem exposed with one stark figure.` },
-        { label: 'Frame 3', description: 'The system / turning point introduced.' },
-        { label: 'Frame 4', description: 'The after — margin, time, and control restored.' },
-        { label: 'Frame 5', description: 'Soft, qualifying call to action to the next step.' },
+        {
+          label: `Hero shot — ${product} on a clean surface`,
+          description: `${product.charAt(0).toUpperCase()}${product.slice(1)} large in frame with its label readable, soft directional window light, one clean shadow, a seamless backdrop in the brand palette. The upper third stays clear for type.`,
+        },
       ]
   return {
     creativeType,
-    pattern: angle === 'Profit' ? 'Profit Leak' : angle,
+    pattern: angle,
     audience,
     awareness: 'Problem-Aware',
     frames,
+    // A still with no words is a stock photograph — the demo declares its two
+    // blocks the same way the live orchestrator must.
+    onImageText: motion
+      ? undefined
+      : [
+          { role: 'Headline', text: 'Your new everyday favourite', placement: 'upper third, left aligned' },
+          { role: 'CTA button', text: 'Shop Now', placement: 'lower right' },
+        ],
   }
 }
 
@@ -1660,7 +1701,7 @@ function pace(ms: number): Promise<void> {
 }
 
 async function runDemo(controller: ReadableStreamDefaultController, body: ReactorRequest) {
-  const outputs = body.outputs ?? ['Hook', 'Headline', 'Campaign Concept']
+  const outputs = body.outputs ?? ['Static Creative', 'Video Creative']
   const wantsMontage = outputs.some((o) => /montage|scene/i.test(o))
   sse(controller, { type: 'step', text: 'OPUS online (demo mode — set ANTHROPIC_API_KEY for the live network)' })
   await pace(1100)
@@ -1692,15 +1733,24 @@ async function runDemo(controller: ReadableStreamDefaultController, body: Reacto
   const demoRi = body.reactorInputs
   const demoAngleSentinel =
     !body.angle || body.angle === 'Agent decides' || body.angle === 'No Preference'
-  const demoAngle = demoAngleSentinel ? 'Profit' : (body.angle as string)
+  const demoAngle = demoAngleSentinel ? 'Social Proof' : (body.angle as string)
   /* Who the demo speaks to. Resolved from the connected website like everything
      else — the demo path is still THIS business's platform, so its scaffolding
      names this business's buyer rather than another company's. Falls back to a
      neutral noun when nothing is connected yet. */
+  // The menu's audience options are TEMPERATURES ("Cold — broad prospecting"),
+  // not people, so only a custom audience the operator typed ("new parents")
+  // is used as the noun; otherwise the brand's own buyer, or a neutral one.
+  const typedAudience =
+    demoRi?.audienceType &&
+    demoRi.audienceType !== 'No Preference' &&
+    !audienceOptions.some((o) => o.label === demoRi.audienceType)
+      ? demoRi.audienceType.trim().toLowerCase()
+      : ''
   const demoAudience =
-    demoRi?.audienceType && demoRi.audienceType !== 'No Preference'
-      ? demoRi.audienceType.toLowerCase()
-      : (await getTenant(await currentAccount()).catch(() => null))?.audienceDescriptor?.trim().toLowerCase() || 'operators'
+    typedAudience ||
+    (await getTenant(await currentAccount()).catch(() => null))?.audienceDescriptor?.trim().toLowerCase() ||
+    'customers'
   const demoQuery = [
     demoAngle,
     demoRi?.audienceType && demoRi.audienceType !== 'No Preference' ? demoRi.audienceType : '',
@@ -1711,10 +1761,10 @@ async function runDemo(controller: ReadableStreamDefaultController, body: Reacto
 
   const demoSummaries: Partial<Record<IntelligenceId, string>> = {
     atlas: 'Vault grounded: the craft frameworks and SOPs behind this build were retrieved as its foundation',
-    nova: `${demoAudience[0].toUpperCase()}${demoAudience.slice(1)} fear erosion despite healthy top-line revenue; leak language resonates`,
-    spark: 'Founder-led video and static proof ads outperform; specific figures beat category claims',
-    echo: `Strongest hook shape: "Most ${demoAudience} don't have a revenue problem. They have a profit leak."`,
-    oracle: 'Dominant winning pattern: relief from owner-dependency beats raw growth claims',
+    nova: `${demoAudience[0].toUpperCase()}${demoAudience.slice(1)} buy on proof they can see — the product in use and other customers' words outsell brand claims`,
+    spark: 'Product-hero statics and native UGC out-pull polished studio creative on cold traffic',
+    echo: 'Strongest on-image headline shape: the specific benefit in the customer’s own words, with the offer as the second line',
+    oracle: 'Dominant winning pattern: review-led creative converts returning visitors; product-hero statics open cold audiences',
   }
 
   // ATLAS leads every build — the Knowledge Vault is the foundation, never asleep.
@@ -1764,36 +1814,26 @@ async function runDemo(controller: ReadableStreamDefaultController, body: Reacto
 
   // Resolved once at the top of the run, alongside the retrieval query.
   const a = demoAngle
-  const al = a.toLowerCase()
   /* The demo pool proves the WIRING — the step-by-step flow, the concept card,
-     the ad unit, the variation contract — with no model call behind it. It is
-     therefore written as shape, not as copy: it names the audience the tenant
-     actually sells to and otherwise stays deliberately generic.
+     the production brief, the variation contract — with no model call behind
+     it. It is therefore written as shape, not as copy: it names the product
+     and the buyer this brand actually has, and otherwise stays generic.
 
      It used to be a set of finished ads for one coaching business: its client
      count, its members' margins, its trade. On any other deployment those
      rendered as that deployment's own concepts, one approval away from being
-     pushed to Meta. */
+     uploaded to Meta. */
   const who = demoAudience
+  const product = demoRi?.productName?.trim() || 'the hero product'
   const pool: Concept[] = [
-    { type: 'Hook', text: `Most ${who} don't have a ${al} problem. They have a ${al} leak hiding in plain sight.`, basis: 'ECHO + NOVA', learningCheck: 'Specific, contrarian framing', score: 9 },
-    { type: 'Headline', text: `From guesswork to system — how ${a} became the unfair advantage.`, basis: 'NOVA (client transformations)', learningCheck: 'Transformation arc over features', score: 8 },
-    { type: 'Primary Text', text: `You didn't start this to babysit the work. This is the ${a} system that gave ${who} their margin — and their weekends — back.`, basis: 'NOVA + ECHO', learningCheck: 'Outcome before mechanism', score: 8 },
-    { type: 'VSL Opener', text: `In the next few minutes I'll show you the exact ${a} mechanism most ${who} never see until it's too late.`, basis: 'ECHO (VSL openers)', learningCheck: 'Mechanism + curiosity', score: 7 },
-    { type: 'Static Concept', text: `Dark field, one bold figure carrying the ${al} claim, the named client underneath, a single accent colour. Angle: ${a}.`, basis: 'SPARK (static proof ad)', learningCheck: 'One specific number beats a vague claim', score: 9 },
-    { type: 'Video Concept', text: `Founder direct-to-camera in the business's own setting: 1.5s pattern interrupt, contrarian ${al} belief, client proof, soft CTA.`, basis: 'SPARK (founder-led format)', learningCheck: 'Founder-led beats talking head', score: 9 },
-    { type: 'Founder Concept', text: `Handheld walk-through of finished work while the founder breaks down the ${a} turning point.`, basis: 'SPARK (founder-led format)', learningCheck: 'Founder-led, in context, real proof', score: 9 },
-    { type: 'Testimonial Concept', text: `A named client states the before, the ${al} turning point, then the after. B-roll of their actual work.`, basis: 'NOVA (transformations)', learningCheck: 'Named client win over generic promise', score: 8 },
-    { type: 'Event Concept', text: `High-energy room montage tied to one ${a} insight and community proof.`, basis: 'SPARK (Authority Pattern)', learningCheck: 'Community proof', score: 7 },
-    { type: 'Campaign Concept', text: `The ${a} sequence: founder video + static proof ad + client testimonial, run cold → warm → apply.`, basis: 'OPUS (stacks the three strongest formats)', learningCheck: 'Stacks complementary formats', score: 9 },
+    { type: 'Static Concept', text: `Product-hero static: ${product} large on a seamless backdrop in the brand palette, one benefit-led headline, the offer as the second line. Angle: ${a}.`, basis: 'SPARK (product-hero static)', learningCheck: 'Product legible at thumb size; one idea, one offer', score: 9 },
+    { type: 'Video Concept', text: `Creator-style unboxing: a ${oneOf(who)} opens ${product} at home, first reaction inside two seconds, one real benefit shown in use, offer card to close.`, basis: 'SPARK (native UGC format)', learningCheck: 'Product on screen inside 2s; native beats polished on cold', score: 9 },
+    { type: 'Founder Concept', text: `Founder to camera, phone-shot: the one thing they refused to compromise on when making ${product}, shown rather than claimed.`, basis: 'SPARK (founder-led format)', learningCheck: 'Specific, credible, product in hand', score: 8 },
+    { type: 'Testimonial Concept', text: `A real ${oneOf(who)} on their phone, in their own words: what a normal week looks like with ${product} — their experience, never a promised result.`, basis: 'NOVA (voice of customer)', learningCheck: 'Customer language over brand language', score: 8 },
   ]
   // Visual concepts carry a production brief — the platform plans before it renders.
-  // Every concept carries a launch-ready Meta ad unit, same as the live agent.
   for (const c of pool) {
-    if (/static|video|founder|testimonial|event|campaign/i.test(c.type) && /concept/i.test(c.type)) {
-      c.productionBrief = demoBrief(c.type, a, wantsMontage, demoAudience)
-    }
-    c.adPackage = demoAdPackage(c.type, a, demoAudience)
+    c.productionBrief = demoBrief(c.type, a, wantsMontage, demoAudience, product)
   }
   sse(controller, {
     type: 'step',
@@ -1809,7 +1849,7 @@ async function runDemo(controller: ReadableStreamDefaultController, body: Reacto
     const key = AXIS_TAXONOMY_KEY[iso.axis]
     const testId = mintTestId()
     const values = iso.values.length ? iso.values : axisValues(iso.axis).slice(0, 3)
-    const baseType = iso.axis === 'hook' ? 'Hook' : 'Video Concept'
+    const baseType = iso.axis === 'hook' ? 'Static Concept' : 'Video Concept'
     values.forEach((val, i) => {
       const taxonomy = coerceTaxonomy({ ...iso.lockedTaxonomy, [key]: val })
       const c: Concept = {
@@ -1820,7 +1860,7 @@ async function runDemo(controller: ReadableStreamDefaultController, body: Reacto
         }`,
         learningCheck: 'Only the isolated axis differs across variants',
         score: 8,
-        adPackage: demoAdPackage(baseType, a, demoAudience),
+        productionBrief: demoBrief(baseType, a, false, demoAudience, product),
         neuro: demoNeuroScore(8, baseType),
         format: variationFormat(baseType) ?? undefined,
         taxonomy,
@@ -1880,7 +1920,6 @@ async function runDemo(controller: ReadableStreamDefaultController, body: Reacto
           : {
               ...c,
               text: `${c.text} ${labels[k % labels.length]} — ${DEMO_VARIATION_TWISTS[method]}.`,
-              adPackage: demoAdPackage(c.type, a, demoAudience),
               neuro: demoNeuroScore(c.score, c.type),
             }
       if (count > 1 && demoTestId) {
@@ -1941,7 +1980,7 @@ function withConversationCache(messages: BetaMsg[]): BetaMsg[] {
 
 export async function POST(request: NextRequest) {
   const body = (await request.json()) as ReactorRequest
-  const outputs = body.outputs ?? ['Hook', 'Headline', 'Campaign Concept']
+  const outputs = body.outputs ?? ['Static Creative', 'Video Creative']
 
   /* The account this whole run belongs to, resolved ONCE from the signed
      session before a single retrieval happens. It used to arrive as
@@ -2035,6 +2074,54 @@ export async function POST(request: NextRequest) {
         const tools = buildTools(useImage, useVideo, Boolean(mcpServer), runDocuments)
         const inputBlocks = buildInputBlocks(body.reactorInputs)
 
+        // The product this run sells — resolved from the ACCOUNT's own catalog
+        // by id, never from the request body. Its published facts are the only
+        // figures a creative may state; the range rides along so a bundle or a
+        // cross-sell knows what the store actually sells. With no catalog the
+        // rule still holds, stated the other way round: no figures at all.
+        let runCatalog: Catalog | null = null
+        let runProduct: CatalogProduct | null = null
+        try {
+          runCatalog = await getCatalog(runAccount)
+          const wanted = body.reactorInputs?.productId
+          runProduct = wanted ? (runCatalog?.products.find((p) => p.id === wanted) ?? null) : null
+          if (wanted && !runProduct) {
+            sse(controller, {
+              type: 'step',
+              text: 'The chosen product is not in this account’s catalog any more — re-read the store on Brand Intelligence. Building without product facts.',
+            })
+          }
+        } catch {
+          /* catalog enrichment is best-effort — the facts rule below still applies */
+        }
+        let productBlock = ''
+        if (runProduct && runCatalog) {
+          productBlock = BLOCK_SEP + productFactsBlock(runProduct, runCatalog)
+          const range = catalogRangeBlock(runCatalog, 6)
+          if (range) productBlock += BLOCK_SEP + range
+          const off = discountPercent(runProduct)
+          sse(controller, {
+            type: 'step',
+            text: `Product facts loaded from the store · ${runProduct.title} · ${formatPrice(
+              runProduct.price,
+              runProduct.currency ?? runCatalog.currency,
+            )}${off !== null ? ` (${off}% off)` : ''}${
+              runProduct.rating !== null && runProduct.reviewCount
+                ? ` · ${runProduct.rating}★ from ${runProduct.reviewCount.toLocaleString('en')} reviews`
+                : ''
+            }`,
+          })
+        } else if (runCatalog?.products.length) {
+          const range = catalogRangeBlock(runCatalog, 8)
+          productBlock =
+            BLOCK_SEP +
+            `${range}\n\nNo single product was chosen for this run: build around the range or the product the brief names. A price, discount or rating may be stated only as listed above — never invented, never rounded up.`
+        } else {
+          productBlock =
+            BLOCK_SEP +
+            'NO PRODUCT CATALOG — this store’s products have not been read yet. State NO price, discount, rating, review count or units-sold figure on any creative unless the brief itself supplies it, and describe the product only as the brief and the connected website do.'
+        }
+
         // Brand Intelligence → the ads. When On Brand is enabled we pull the
         // REAL brand profile ATLAS extracted from the connected website (voice,
         // offer, audience language, proof, colours, logo) and inject it as an
@@ -2108,6 +2195,12 @@ export async function POST(request: NextRequest) {
           ri?.angle ?? body.angle,
           runAccount,
           FAST_PATH ? 8_000 : RESEARCH_BUDGET_MS,
+          {
+            niches: runCatalog ? inferNiches(runCatalog.products) : undefined,
+            keywords: runProduct
+              ? [runProduct.productType, ...runProduct.tags.slice(0, 2)].filter((k): k is string => Boolean(k))
+              : undefined,
+          },
         )
         const externalEvidence = research?.ads.length
           ? { spark: sparkEvidence(research), echo: echoEvidence(research) }
@@ -2156,6 +2249,9 @@ export async function POST(request: NextRequest) {
               awareness: ri?.awarenessStage,
               offer: ri?.offerType,
               brief: ri?.brief,
+              product: runProduct
+                ? `${runProduct.title} (${formatPrice(runProduct.price, runProduct.currency ?? runCatalog?.currency ?? null)})`
+                : undefined,
               variationDemands: variationDemands(runVariations),
             },
             runAccount,
@@ -2189,12 +2285,34 @@ export async function POST(request: NextRequest) {
         const fastClause = FAST_PATH
           ? ' TIME-CONSTRAINED RUN: the intelligence briefing above is your research — it is complete and already grounded. Do NOT open with consult_intelligence. Call submit_concepts on this turn, covering every requested output type, citing the briefing as your evidence. Only consult a layer if a concept genuinely cannot be written without it.'
           : ''
+        const openingText = `${angleClause}. Active intelligence inputs: ${(body.inputs ?? []).join(', ') || 'all'}. Requested output types: ${outputs.join(', ')}.${briefing}${
+          research ? provenAdBlock(research) : ''
+        }${fastClause}`
+        // The product photo itself, so OPUS describes what it SEES rather than
+        // what a product title suggests — a brief that invents the packaging
+        // renders an ad for a product the store does not sell. Fetched here and
+        // sent inline: a store CDN that refuses the model's own fetcher would
+        // otherwise fail the whole turn. No photo, no image block — never a
+        // failed run.
+        const productPhoto = runProduct?.imageUrl
+          ? await fetchImage(visionSizedImage(runProduct.imageUrl), runProduct.title).catch(() => null)
+          : null
         const messages: Anthropic.Beta.Messages.BetaMessageParam[] = [
           {
             role: 'user',
-            content: `${angleClause}. Active intelligence inputs: ${(body.inputs ?? []).join(', ') || 'all'}. Requested output types: ${outputs.join(', ')}.${briefing}${
-              research ? provenAdBlock(research) : ''
-            }${fastClause}`,
+            content:
+              productPhoto && runProduct
+                ? [
+                    {
+                      type: 'image',
+                      source: { type: 'base64', media_type: productPhoto.mediaType, data: productPhoto.data },
+                    },
+                    {
+                      type: 'text',
+                      text: `The image above is ${runProduct.title}, exactly as the store sells it. Describe the product in every production brief from what you SEE here — its shape, colour, material, packaging and label — never from what the name suggests.\n\n${openingText}`,
+                    },
+                  ]
+                : openingText,
           },
         ]
 
@@ -2215,7 +2333,7 @@ export async function POST(request: NextRequest) {
             imageModels: availableImageModels,
             preferredVideoModel: body.videoModel ?? null,
             preferredImageModel: body.imageModel ?? null,
-          }, tenantDescriptor(await getTenant(await currentAccount()))) + inputBlocks + brandBlock + oracleMemory + cloneClause + isolationClause
+          }, tenantDescriptor(await getTenant(await currentAccount()))) + inputBlocks + productBlock + brandBlock + oracleMemory + cloneClause + isolationClause
 
         // One test ID per run — stamped onto every submitted concept so outcomes
         // attribute back to which single variable was under test. Minted for an
@@ -2313,8 +2431,12 @@ export async function POST(request: NextRequest) {
           // turn — nothing has been sent yet, so this is one instruction, not a
           // conversation.
           const first = messages[0]
+          const lateNote =
+            ' TIME BUDGET REACHED BEFORE GENERATION. Do not consult any layer. Call submit_concepts on this turn with the strongest concepts you can write from the briefing above, covering every requested output type. Partial, grounded work shipped beats a perfect run that never lands.'
           if (typeof first.content === 'string') {
-            first.content += ' TIME BUDGET REACHED BEFORE GENERATION. Do not consult any layer. Call submit_concepts on this turn with the strongest concepts you can write from the briefing above, covering every requested output type. Partial, grounded work shipped beats a perfect run that never lands.'
+            first.content += lateNote
+          } else {
+            first.content = [...first.content, { type: 'text', text: lateNote.trim() }]
           }
         }
 
@@ -2351,10 +2473,10 @@ export async function POST(request: NextRequest) {
           const params: Anthropic.Beta.Messages.MessageCreateParamsNonStreaming = {
             model: opusModel,
             // A submit_concepts call carries several full concepts — each with a
-            // production brief, a rubric basis and a complete Meta adPackage.
+            // production brief, on-image copy and a rubric basis.
             // At 4000 the model ran out of room mid-array, the tool_use block
             // came back truncated, and its `concepts` parsed as EMPTY: the run
-            // then validated "0 package(s)", pre-tested nothing, and shipped a
+            // then validated nothing, pre-tested nothing, and shipped a
             // successful-looking run with no ads. Room to finish the array is
             // cheaper than a run that produces nothing.
             max_tokens: 16_000,
@@ -2806,15 +2928,16 @@ export async function POST(request: NextRequest) {
                 concepts = [...concepts, ...counted.mismatched]
               }
 
-              // Meta ad-unit compliance gate — Meta's placement limits + the platform's
-              // hard compliance phrases, enforced in code before anything ships.
-              const compliance = adPackageFeedback(concepts)
+              // On-creative compliance gate — the words a creative will show or
+              // say, checked against the claims Meta rejects, in code, before
+              // the render burns them into pixels nobody can edit afterwards.
+              const compliance = creativeCopyFeedback(concepts)
               sse(controller, {
                 type: 'step',
-                text: `Validating Meta ad units · ${concepts.length} package(s)${
+                text: `Checking on-creative claims · ${concepts.length} creative(s)${
                   compliance.failingIndices.length
-                    ? ` · ${compliance.failingIndices.length} non-compliant`
-                    : ' · all launch-ready'
+                    ? ` · ${compliance.failingIndices.length} carry a claim Meta rejects`
+                    : ' · all clear'
                 }`,
               })
 
@@ -2867,8 +2990,8 @@ export async function POST(request: NextRequest) {
               // run does not have — ship the first submission with its scores
               // attached and let the flagged numbers speak for themselves.
               const revisionBudget = FAST_PATH ? 0 : MAX_NEURO_REVISIONS
-              // Compliance is a hard gate — a non-compliant ad unit cannot
-              // ship at any score, so it always earns the turn. NEURO only
+              // Compliance is a hard gate — a creative carrying a claim Meta
+              // rejects cannot ship at any score, so it always earns the turn. NEURO only
               // does when a concept is below the revision floor.
               const needsRevision =
                 broken.length > 0 ||
@@ -2897,7 +3020,7 @@ export async function POST(request: NextRequest) {
                       ? `NEURO flagged ${broken.length} concept(s) for weak scroll-stop / hook`
                       : '',
                     compliance.failingIndices.length
-                      ? `${compliance.failingIndices.length} ad unit(s) non-compliant`
+                      ? `${compliance.failingIndices.length} creative(s) carry a rejected claim`
                       : '',
                     briefs.failingIndices.length
                       ? `${briefs.failingIndices.length} production brief(s) with no subject to render`

@@ -17,7 +17,7 @@ export default async function KnowledgeVaultPage() {
         <PageHeader
           system="01"
           title="Knowledge Vault"
-          subtitle="The heart of the platform. Ingest and store your creative knowledge, frameworks, SOPs, and client wins."
+          subtitle="The heart of the platform. Ingest and store your creative knowledge, frameworks, SOPs, product specs and customer reviews."
         />
         <Pill tone={stats.live ? 'success' : 'primary'}>
           <Database size={12} /> {stats.total.toLocaleString()}{' '}

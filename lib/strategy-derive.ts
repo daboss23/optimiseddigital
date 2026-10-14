@@ -218,8 +218,9 @@ HARD RULES
 - Never invent an offer the business does not plausibly sell. A "category" option must be genuinely typical for the business type, not aspirational.
 - Do NOT return any option that duplicates one of these existing angles: ${seedAngles.join(', ')}
 - Do NOT return any option that duplicates one of these existing offers: ${seedOffers.join(', ')}
-- Labels are SHORT menu entries (2-5 words), title case, no trailing punctuation. Examples of the right shape: "Retainer / Ongoing Service", "Free Audit", "Client Results".
-- Directives are one dense paragraph written as an instruction to a creative team, matching this voice: "High-commitment next step. The concept must qualify hard — state exactly who this is for and who it is not. Carry heavy social proof with named results."
+- This platform makes Meta ad creative for e-commerce brands: angles are the lenses a product is sold through, offers are the deals and framings a store actually runs. Read the products, prices, promotions and reviews the profiles carry.
+- Labels are SHORT menu entries (2-5 words), title case, no trailing punctuation. Examples of the right shape: "Morning Routine Swap", "Starter Kit", "Refill Program".
+- Directives are one dense paragraph written as an instruction to a creative team, matching this voice: "Show every item in the kit together, with the saving against buying them separately — only the real figures. Sell the routine, not the arithmetic."
 - Return at most ${MAX_DERIVED_PER_AXIS} angles and at most ${MAX_DERIVED_PER_AXIS} offers. Fewer is better than padding.
 - If the extracted profiles are too thin to support a confident read, return empty arrays. An empty list is a valid, honest answer.
 
@@ -228,7 +229,7 @@ Also return RESEARCH SOURCES — the specific places this business's audience ac
 Also return the audience PERSONAS this business sells to and the PAIN POINTS those personas feel, as short menu labels (2-4 words each, title case, max ${MAX_DERIVED_PER_AXIS} of each). These are the axes a creative test is isolated on, so they must be distinct from one another and phrased in the business's own market language.
 
 Reply with ONLY a JSON object, no prose, no markdown fences:
-{"businessCategory":"short phrase, e.g. 'B2B marketing agency'","angles":[{"label":"","directive":"","evidence":"","basis":"site|category"}],"offers":[{"label":"","directive":"","evidence":"","basis":"site|category"}],"personas":["",""],"painPoints":["",""],"researchSources":[{"kind":"reddit|forum|web","label":"","url":"","note":""}]}`
+{"businessCategory":"short phrase, e.g. 'DTC e-commerce brand'","angles":[{"label":"","directive":"","evidence":"","basis":"site|category"}],"offers":[{"label":"","directive":"","evidence":"","basis":"site|category"}],"personas":["",""],"painPoints":["",""],"researchSources":[{"kind":"reddit|forum|web","label":"","url":"","note":""}]}`
 }
 
 /**

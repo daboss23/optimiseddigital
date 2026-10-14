@@ -12,8 +12,7 @@
  */
 
 import { NextResponse } from 'next/server'
-import { offerOptions } from '@/lib/reactor-inputs'
-import { winningAngles } from '@/lib/reactor-data'
+import { angleSeeds, offerOptions } from '@/lib/reactor-inputs'
 import { getConnectedWebsite } from '@/lib/website-intelligence'
 import { toMenuOption, type StrategyMenu, type StrategyMenuOption } from '@/lib/strategy-menu'
 import { currentAccount } from '@/lib/account'
@@ -21,11 +20,11 @@ import { currentAccount } from '@/lib/account'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-/** Seed angles carry no directive of their own — the angle name IS the input. */
-const seedAngles: StrategyMenuOption[] = winningAngles.map((a) => ({
-  label: a.name,
-  directive: '',
-}))
+/**
+ * The seed angles, each carrying its own directive — choosing one tells OPUS
+ * what that angle demands, not just what it is called.
+ */
+const seedAngles: StrategyMenuOption[] = angleSeeds.map((a) => ({ ...a }))
 
 export async function GET() {
   const menu: StrategyMenu = {

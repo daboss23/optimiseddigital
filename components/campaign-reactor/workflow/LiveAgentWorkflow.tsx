@@ -35,7 +35,7 @@ export interface WorkflowControls {
   onGenerateUGC: (c: Concept) => void
   onConfigureInStudio: (c: Concept) => void
   onLaunchCanvas: (c: Concept) => void
-  onPushToMeta: (c: Concept) => Promise<{ ok: boolean; message: string }>
+  onUpload: (c: Concept) => void
   onRetry: () => void
 }
 
@@ -91,6 +91,7 @@ export function LiveAgentWorkflow(controls: WorkflowControls) {
     imageMetaFor,
     videoFor,
     creativeStateFor,
+    uploadFor,
   } = useReactorRun()
 
   const prefersReduced = useReducedMotion()
@@ -301,7 +302,8 @@ export function LiveAgentWorkflow(controls: WorkflowControls) {
               onGenerateUGC={() => controls.onGenerateUGC(c)}
               onConfigureInStudio={() => controls.onConfigureInStudio(c)}
               onLaunchCanvas={() => controls.onLaunchCanvas(c)}
-              onPushToMeta={() => controls.onPushToMeta(c)}
+              upload={uploadFor(c)}
+              onUpload={() => controls.onUpload(c)}
             />
           ))}
         </div>

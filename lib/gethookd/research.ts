@@ -136,6 +136,19 @@ export interface ResearchBrief {
   keywords?: string[]
   /** Markets to research, CSV of 2-letter codes. Defaults to the deployment's. */
   geo?: string
+  /**
+   * Which half of the ICP to research, when the caller KNOWS rather than
+   * leaving it to `researchFocus` to read off the brief's words. The Reactor
+   * passes `ecommerce`: the platform researches e-commerce, and a brief for a
+   * fitness-apparel brand that never says "shop" must not be read as a gym.
+   */
+  focus?: IcpFocus
+  /**
+   * The brand's own vertical, read off its catalog. When present the MARKET
+   * pool studies this vertical first and widens to all of e-commerce only
+   * when it is thin — and says so.
+   */
+  niches?: number[]
 }
 
 /* ----------------------------- the research out --------------------------- */
@@ -504,6 +517,8 @@ interface Rung {
   label: string
   query: string | null
   geo: string | undefined
+  /** The brand's vertical, when this rung is scoped to it. */
+  niches?: number[]
   widened: string[]
 }
 
@@ -530,8 +545,9 @@ export async function researchProvenAds(
   brief: ResearchBrief,
   opts: { shortlist?: number; minDaysActive?: number } = {},
 ): Promise<AdResearch> {
-  const focus = researchFocus(brief)
+  const focus = brief.focus ?? researchFocus(brief)
   const terms = researchTerms(brief)
+  const niches = brief.niches?.length ? brief.niches : undefined
   const minDays = opts.minDaysActive ?? MIN_DAYS_ACTIVE
   const geo = (brief.geo ?? defaultGeo()).trim() || undefined
   const wantMarket = opts.shortlist
@@ -542,23 +558,50 @@ export async function researchProvenAds(
   // The ladder, built before anything runs so the cost ceiling is a property
   // of the plan rather than an outcome. Each rung widens the SEARCH; none of
   // them widens the bar.
-  const rungs: Rung[] = [
-    ...terms.map((t) => ({
-      pool: 'market' as const,
-      label: `"${t}"`,
-      query: t,
-      geo,
-      widened: [] as string[],
-    })),
-    { pool: 'market' as const, label: 'the whole eligible market', query: null, geo, widened: ['query'] },
-    {
-      pool: 'market' as const,
-      label: 'every market',
-      query: null,
-      geo: undefined,
-      widened: ['query', 'markets'],
-    },
-  ].slice(0, MAX_MARKET_STEPS)
+  //
+  // With the brand's vertical known, the ladder spends its rungs on THAT
+  // vertical first — the sharpest term inside it, then the vertical
+  // unqueried — and only then widens to the whole e-commerce set. The second
+  // search term is the rung it gives up: the vertical already does the
+  // narrowing a second word was there to do.
+  const rungs: Rung[] = (
+    niches
+      ? [
+          ...terms.slice(0, 1).map((t) => ({
+            pool: 'market' as const,
+            label: `"${t}" in this vertical`,
+            query: t,
+            geo,
+            niches,
+            widened: [] as string[],
+          })),
+          { pool: 'market' as const, label: 'this vertical', query: null, geo, niches, widened: ['query'] },
+          {
+            pool: 'market' as const,
+            label: 'all of e-commerce',
+            query: null,
+            geo,
+            widened: ['query', 'vertical'],
+          },
+        ]
+      : [
+          ...terms.map((t) => ({
+            pool: 'market' as const,
+            label: `"${t}"`,
+            query: t,
+            geo,
+            widened: [] as string[],
+          })),
+          { pool: 'market' as const, label: 'the whole eligible market', query: null, geo, widened: ['query'] },
+          {
+            pool: 'market' as const,
+            label: 'every market',
+            query: null,
+            geo: undefined,
+            widened: ['query', 'markets'],
+          },
+        ]
+  ).slice(0, MAX_MARKET_STEPS)
 
   const pools: Record<ReferencePool, ProvenAd[]> = { market: [], craft: [] }
   const steps: ResearchStep[] = []
@@ -576,6 +619,7 @@ export async function researchProvenAds(
     const res = await searchProvenAds({
       query: rung.query ?? undefined,
       focus,
+      niches: rung.niches,
       format: 'image',
       minDaysActive: minDays,
       launchWindowDays: LAUNCH_WINDOW_DAYS,
@@ -666,6 +710,9 @@ export async function researchProvenAds(
   }
   if (market.length && marketWidened.includes('markets')) {
     notes.push('Widened to every market — too few qualified in the markets this account sells into.')
+  }
+  if (market.length && marketWidened.includes('vertical')) {
+    notes.push('Widened to all of e-commerce — too few qualified in this brand’s own vertical.')
   }
 
   return {

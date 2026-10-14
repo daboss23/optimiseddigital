@@ -10,10 +10,10 @@ import {
   Tag,
   Film,
   ListChecks,
-  Trophy,
-  CalendarDays,
-  Mic,
-  MonitorPlay,
+  Star,
+  Package,
+  Palette,
+  MessageSquare,
   BookOpen,
   UploadCloud,
   Check,
@@ -32,30 +32,34 @@ const iconMap: Record<string, LucideIcon> = {
   Tag,
   Film,
   ListChecks,
-  Trophy,
-  CalendarDays,
-  Mic,
-  MonitorPlay,
+  Star,
+  Package,
+  Palette,
+  MessageSquare,
   BookOpen,
 }
 
 // Map each upload tile to the intelligence system + category it ingests into.
+//
+// Customer reviews file under `transformation` — the customer's own account of
+// what changed — which is what NOVA reads for voice of customer; a survey is
+// research. Both arrive as review-app or survey CSV exports as often as text.
 const routing: Record<string, { system: KnowledgeSystem; category: string }> = {
   'Upload Winning Creative': { system: 'creative', category: 'Winning Creative' },
+  'Upload Customer Reviews': { system: 'transformation', category: 'Customer Reviews' },
+  'Upload Product Specs': { system: 'vault', category: 'Product Specs' },
+  'Upload Brand Guidelines': { system: 'vault', category: 'Brand Guidelines' },
   'Upload Winning Copy': { system: 'copy', category: 'Winning Copy' },
   'Upload Hook Framework': { system: 'vault', category: 'Hook Framework' },
   'Upload Creative Framework': { system: 'vault', category: 'Creative Framework' },
   'Upload Offer Framework': { system: 'vault', category: 'Offer Framework' },
-  'Upload VSL Framework': { system: 'vault', category: 'VSL Framework' },
+  'Upload UGC Script': { system: 'copy', category: 'UGC Script' },
   'Upload Creative SOP': { system: 'vault', category: 'Creative SOP' },
-  'Upload Client Win': { system: 'transformation', category: 'Client Win' },
-  'Upload Event Content': { system: 'vault', category: 'Event Content' },
-  'Upload Podcast Transcript': { system: 'vault', category: 'Podcast Transcript' },
-  'Upload Webinar': { system: 'vault', category: 'Webinar' },
+  'Upload Customer Survey': { system: 'research', category: 'Customer Survey' },
   'META Frameworks / SOP': { system: 'vault', category: 'META Frameworks / SOP' },
 }
 
-const TEXT_EXT = ['md', 'txt', 'pdf']
+const TEXT_EXT = ['md', 'txt', 'pdf', 'csv']
 
 type Status =
   | { kind: 'idle' }

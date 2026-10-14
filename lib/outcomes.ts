@@ -41,6 +41,14 @@ export interface OutcomeAttributes {
   // Live-performance ingest (Meta): the source ad and its measured metrics, so
   // synced outcomes are idempotent and ORACLE memory carries real numbers.
   metaAdId?: string
+  /**
+   * The asset this outcome was uploaded as — an image hash or a video id in
+   * the brand's Meta media library. An ad a buyer builds from that asset in
+   * Ads Manager carries whatever name they gave it, so the ingest matches on
+   * the asset instead, and the result still grades back to its concept.
+   */
+  metaImageHash?: string
+  metaVideoId?: string
   metrics?: Record<string, number>
   // Clone & Iterate: the fixed taxonomy this concept was tagged with (the axis
   // values ORACLE groups by) and the test it belonged to. Stored inside the

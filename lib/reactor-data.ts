@@ -2,23 +2,25 @@
 //
 // Two different things live in this file and they are NOT interchangeable:
 //
-//   · UNIVERSAL CRAFT (`foundationAssets`, `learnings`) — ad anatomy, copy
-//     frameworks, hook construction, compliance, offer framing by awareness
-//     stage. True for every business on the platform, so it ships and is
-//     retrievable unconditionally.
+//   · UNIVERSAL CRAFT (`foundationAssets`, `learnings`) — e-commerce creative
+//     anatomy, UGC structure, comparison and review formats, hook
+//     construction, compliance, offer framing by awareness stage. True for
+//     every brand on the platform, so it ships and is retrievable
+//     unconditionally.
 //
-//   · ONE BUSINESS'S DATA (`patterns`, `topHooks`/`topHeadlines`/`topOffers`,
-//     `transformations`, `researchOutputs`, `creativeAnalyses`,
-//     `vaultCategories`, `recommendations`) — a specific company's winning ads,
-//     its clients' margins, its market. Illustrative for demos and screenshots
-//     and WRONG for anyone else, so it is gated behind `demoDataEnabled()`
-//     on every surface. Display defaults ON for demos (`=0` turns it off);
-//     RETRIEVAL is a separate, strictly opt-in half (`=1`) — see lib/demo-mode.ts.
+//   · ONE ILLUSTRATIVE BRAND'S DATA (`patterns`, `topHooks`/`topHeadlines`/
+//     `topOffers`, `transformations`, `researchOutputs`, `creativeAnalyses`,
+//     `vaultCategories`, `recommendations`) — a sample e-commerce account's
+//     winning creative, review language and results. Illustrative for demos
+//     and screenshots and WRONG for anyone else, so it is gated behind
+//     `demoDataEnabled()` on every surface. Display defaults ON for demos
+//     (`=0` turns it off); RETRIEVAL is a separate, strictly opt-in half
+//     (`=1`) — see lib/demo-mode.ts.
 //
 // If you add to this file, decide which of the two it is first. Anything that
-// names an industry, a client, a figure or a market belongs in the second
-// group; put it anywhere reachable without the flag and every deployment
-// inherits another company's business as its own.
+// names a product, a customer, a figure or a market belongs in the second
+// group; put it anywhere reachable without the flag and every brand on the
+// deployment inherits another account's results as its own.
 
 export interface KpiStat {
   label: string
@@ -33,7 +35,7 @@ export const reactorKpis: KpiStat[] = [
   { label: 'Winning Hooks', value: 689, delta: '+34', trend: 'up' },
   { label: 'Frameworks', value: 47, delta: '+3', trend: 'up' },
   { label: 'SOPs', value: 31, delta: '+1', trend: 'up' },
-  { label: 'Member Wins', value: 538, delta: '+22', trend: 'up' },
+  { label: 'Reviews Mined', value: 4210, delta: '+186', trend: 'up' },
   { label: 'Patterns Identified', value: 96, delta: '+7', trend: 'up' },
   { label: 'Campaign Ideas Ready', value: 24, delta: '+5', trend: 'up' },
 ]
@@ -50,14 +52,19 @@ export interface AngleStat {
   accent: DataAccent
 }
 
+/**
+ * The angle win index on the dashboard — demo display only. The angles the
+ * BRIEF offers are `angleSeeds` in lib/reactor-inputs.ts; these carry the same
+ * names so the illustration and the menu never disagree.
+ */
 export const winningAngles: AngleStat[] = [
-  { name: 'Profit', score: 94, campaigns: 61, trend: 'up', delta: '4', accent: 'emerald' },
-  { name: 'Systems', score: 88, campaigns: 54, trend: 'up', delta: '4', accent: 'cyan' },
-  { name: 'Time Freedom', score: 85, campaigns: 47, trend: 'up', delta: '4', accent: 'blue' },
-  { name: 'Leadership', score: 79, campaigns: 38, trend: 'flat', delta: '—', accent: 'pink' },
-  { name: 'Cashflow', score: 76, campaigns: 33, trend: 'up', delta: '4', accent: 'amber' },
-  { name: 'Growth', score: 71, campaigns: 42, trend: 'down', delta: '2', accent: 'violet' },
-  { name: 'Team Accountability', score: 68, campaigns: 29, trend: 'up', delta: '3', accent: 'cyan' },
+  { name: 'Social Proof', score: 94, campaigns: 61, trend: 'up', delta: '4', accent: 'emerald' },
+  { name: 'Problem → Solution', score: 89, campaigns: 54, trend: 'up', delta: '3', accent: 'cyan' },
+  { name: 'Us vs Them', score: 86, campaigns: 41, trend: 'up', delta: '5', accent: 'blue' },
+  { name: 'Offer-Led', score: 80, campaigns: 47, trend: 'flat', delta: '—', accent: 'amber' },
+  { name: 'Quality & Craft', score: 76, campaigns: 33, trend: 'up', delta: '2', accent: 'violet' },
+  { name: 'Founder Story', score: 71, campaigns: 22, trend: 'up', delta: '3', accent: 'pink' },
+  { name: 'Identity & Lifestyle', score: 68, campaigns: 29, trend: 'down', delta: '2', accent: 'cyan' },
 ]
 
 export interface PerformanceSignal {
@@ -70,10 +77,10 @@ export interface PerformanceSignal {
 
 // Compact performance read-outs along the foot of the Reactor Dashboard.
 export const performanceSignals: PerformanceSignal[] = [
-  { label: 'Top Performing Platform', value: 'Facebook', metric: 'ROAS 4.7x', pct: 87, accent: 'blue' },
-  { label: 'Best Performing Format', value: 'Video', metric: 'Win Rate 68%', pct: 68, accent: 'emerald' },
-  { label: 'Optimal Hook Length', value: '8-12 Words', metric: 'Win Rate 72%', pct: 72, accent: 'violet' },
-  { label: 'Peak Engagement Time', value: '7PM - 10PM', metric: 'Win Rate 63%', pct: 63, accent: 'amber' },
+  { label: 'Top Performing Placement', value: 'Instagram Reels', metric: 'ROAS 3.9x', pct: 82, accent: 'blue' },
+  { label: 'Best Performing Format', value: 'UGC Video', metric: 'Win Rate 64%', pct: 64, accent: 'emerald' },
+  { label: 'Optimal Headline Length', value: '4-7 Words', metric: 'Win Rate 71%', pct: 71, accent: 'violet' },
+  { label: 'Peak Purchase Window', value: '8PM - 11PM', metric: 'Win Rate 61%', pct: 61, accent: 'amber' },
 ]
 
 export interface HeatRow {
@@ -88,7 +95,7 @@ export const creativeHeatmap: HeatRow[] = [
   { dimension: 'Headlines', cells: [55, 60, 74, 70, 82, 86] },
   { dimension: 'Offers', cells: [48, 52, 58, 77, 81, 79] },
   { dimension: 'Creative Formats', cells: [40, 58, 63, 72, 85, 90] },
-  { dimension: 'Transformations', cells: [70, 74, 78, 84, 88, 95] },
+  { dimension: 'Reviews & Proof', cells: [70, 74, 78, 84, 88, 95] },
   { dimension: 'Patterns', cells: [44, 49, 61, 66, 73, 81] },
 ]
 
@@ -103,31 +110,29 @@ export interface Recommendation {
 
 export const recommendations: Recommendation[] = [
   {
-    campaign: 'The Profit Leak Campaign',
+    campaign: 'The Review Wall',
     reason:
-      'Profitability messaging is outperforming growth messaging by 31% across the last 6 cohorts. Margin language is converting builders faster than revenue language.',
-    assetsNeeded: ['Founder Video', 'Static Proof Ad', 'Member Testimonial'],
-    suggestedHook:
-      "Most builders don't have a revenue problem. They have a profit leak.",
+      'Review-led statics are converting cart abandoners at 2.3x the account average. Customer language is out-pulling brand language in every retargeting cohort.',
+    assetsNeeded: ['Review-Wall Static', 'UGC Testimonial', 'Product-Hero Carousel'],
+    suggestedHook: 'I didn’t expect to reorder this fast.',
     confidence: 92,
     priority: 'Critical',
   },
   {
-    campaign: 'The 45-Hour Owner',
+    campaign: 'Us vs The Cheap One',
     reason:
-      'Time-freedom transformations show the highest emotional resonance and save rate. Identity-shift angle is under-utilized vs demand.',
-    assetsNeeded: ['Founder Video', 'Day-in-the-life UGC', 'Carousel Story'],
-    suggestedHook:
-      'You didn’t build a business. You built a job that pays worse than your foreman.',
+      'Side-by-side comparison statics hold the highest hook rate on cold prospecting and are breaking the fatigue on the product-hero set.',
+    assetsNeeded: ['Side-by-Side Static', 'Founder Phone Video', 'Feature Callout Carousel'],
+    suggestedHook: 'Why we stopped buying the cheap one.',
     confidence: 87,
     priority: 'High',
   },
   {
-    campaign: 'Systems Before Scale',
+    campaign: 'Starter Bundle Push',
     reason:
-      'Contrarian "stop scaling" angle is breaking pattern fatigue. Strong fit with operations-pain segment from sales calls.',
-    assetsNeeded: ['Static Contrarian Ad', 'VSL Opener', 'Whiteboard Video'],
-    suggestedHook: 'Scaling a broken business just breaks it faster.',
+      'Bundle buyers carry a 41% higher AOV and reorder sooner. The bundle offer is running on a fraction of the spend its demand supports.',
+    assetsNeeded: ['Bundle Flat-Lay Static', 'Unboxing UGC', 'Offer Carousel'],
+    suggestedHook: 'Everything you need to start, in one box.',
     confidence: 81,
     priority: 'High',
   },
@@ -154,18 +159,22 @@ export interface UploadCard {
   icon: string
 }
 
+/**
+ * The Vault's upload tiles. Each one routes to a knowledge system in
+ * `app/(platform)/knowledge-vault/UploadGrid.tsx` — keep the titles in step.
+ */
 export const uploadCards: UploadCard[] = [
   { title: 'Upload Winning Creative', accept: 'Video / Image', icon: 'Clapperboard' },
+  { title: 'Upload Customer Reviews', accept: 'CSV / Text', icon: 'Star' },
+  { title: 'Upload Product Specs', accept: 'Doc / PDF', icon: 'Package' },
+  { title: 'Upload Brand Guidelines', accept: 'Doc / PDF', icon: 'Palette' },
   { title: 'Upload Winning Copy', accept: 'Text / Doc', icon: 'FileText' },
   { title: 'Upload Hook Framework', accept: 'Doc / PDF', icon: 'Anchor' },
   { title: 'Upload Creative Framework', accept: 'Doc / PDF', icon: 'LayoutTemplate' },
   { title: 'Upload Offer Framework', accept: 'Doc / PDF', icon: 'Tag' },
-  { title: 'Upload VSL Framework', accept: 'Doc / Script', icon: 'Film' },
+  { title: 'Upload UGC Script', accept: 'Doc / Script', icon: 'Film' },
   { title: 'Upload Creative SOP', accept: 'Doc / PDF', icon: 'ListChecks' },
-  { title: 'Upload Client Win', accept: 'Story / Video', icon: 'Trophy' },
-  { title: 'Upload Event Content', accept: 'Video / Deck', icon: 'CalendarDays' },
-  { title: 'Upload Podcast Transcript', accept: 'Audio / Text', icon: 'Mic' },
-  { title: 'Upload Webinar', accept: 'Video / Deck', icon: 'MonitorPlay' },
+  { title: 'Upload Customer Survey', accept: 'CSV / Text', icon: 'MessageSquare' },
   { title: 'META Frameworks / SOP', accept: 'Doc / PDF', icon: 'BookOpen' },
 ]
 
@@ -181,7 +190,7 @@ export const vaultCategories: VaultCategory[] = [
       { name: 'Winning Ads', count: 214 },
       { name: 'Winning Videos', count: 137 },
       { name: 'Winning Statics', count: 188 },
-      { name: 'Event Footage', count: 42 },
+      { name: 'UGC Footage', count: 64 },
     ],
   },
   {
@@ -196,9 +205,8 @@ export const vaultCategories: VaultCategory[] = [
     items: [
       { name: 'Hooks', count: 689 },
       { name: 'Headlines', count: 421 },
-      { name: 'Primary Text', count: 356 },
-      { name: 'VSLs', count: 28 },
-      { name: 'Webinar Scripts', count: 19 },
+      { name: 'Offers', count: 96 },
+      { name: 'UGC Scripts', count: 58 },
     ],
   },
   {
@@ -207,33 +215,32 @@ export const vaultCategories: VaultCategory[] = [
       { name: 'Hook Frameworks', count: 14 },
       { name: 'Creative Frameworks', count: 12 },
       { name: 'Offer Frameworks', count: 11 },
-      { name: 'VSL Frameworks', count: 10 },
+      { name: 'UGC Frameworks', count: 8 },
     ],
   },
   {
     group: 'SOP Assets',
     items: [
       { name: 'Creative SOPs', count: 9 },
-      { name: 'Story Mining SOPs', count: 7 },
-      { name: 'Content SOPs', count: 8 },
-      { name: 'Member Interview SOPs', count: 7 },
+      { name: 'Review Mining SOPs', count: 6 },
+      { name: 'UGC Brief SOPs', count: 7 },
+      { name: 'Launch SOPs', count: 5 },
     ],
   },
   {
-    group: 'Transformation Assets',
+    group: 'Proof Assets',
     items: [
-      { name: 'Client Wins', count: 538 },
+      { name: 'Customer Reviews', count: 4210 },
       { name: 'Testimonials', count: 312 },
-      { name: 'Success Stories', count: 196 },
+      { name: 'UGC Clips', count: 196 },
     ],
   },
   {
-    group: 'Authority Assets',
+    group: 'Product Assets',
     items: [
-      { name: 'Podcasts', count: 88 },
-      { name: 'Events', count: 24 },
-      { name: 'Webinars', count: 41 },
-      { name: 'Presentations', count: 33 },
+      { name: 'Product Photos', count: 248 },
+      { name: 'Product Specs', count: 41 },
+      { name: 'Brand Guidelines', count: 3 },
     ],
   },
 ]
@@ -241,19 +248,19 @@ export const vaultCategories: VaultCategory[] = [
 /* --------------------------- Research Intelligence ------------------------ */
 
 export const internalSources = [
-  { name: 'Sales Calls', count: 1240, signal: 91 },
-  { name: 'Coaching Calls', count: 860, signal: 84 },
-  { name: 'Applications', count: 3100, signal: 72 },
-  { name: 'Member Interviews', count: 214, signal: 95 },
-  { name: 'Event Recordings', count: 96, signal: 68 },
-  { name: 'CRM Notes', count: 5400, signal: 61 },
+  { name: 'Customer Reviews', count: 4210, signal: 93 },
+  { name: 'Support Tickets', count: 1860, signal: 82 },
+  { name: 'Post-Purchase Surveys', count: 940, signal: 88 },
+  { name: 'Return Reasons', count: 610, signal: 79 },
+  { name: 'Customer Interviews', count: 120, signal: 95 },
+  { name: 'Email Replies', count: 2300, signal: 64 },
 ]
 
 export const externalSources = [
   { name: 'Reddit', count: 420, signal: 77 },
-  { name: 'Forums', count: 188, signal: 64 },
-  { name: 'Competitors', count: 142, signal: 70 },
-  { name: 'Reviews', count: 612, signal: 81 },
+  { name: 'TikTok Comments', count: 980, signal: 72 },
+  { name: 'Competitor Reviews', count: 612, signal: 84 },
+  { name: 'Marketplace Reviews', count: 1440, signal: 81 },
   { name: 'YouTube', count: 305, signal: 66 },
 ]
 
@@ -266,52 +273,57 @@ export const researchOutputs: ResearchOutput[] = [
   {
     type: 'Pain Points',
     items: [
-      'Working 70+ hour weeks with no exit',
-      'Margins eroding despite record revenue',
-      'Business cannot run without the owner',
-      'Cashflow gaps between progress payments',
+      'Bought the cheap version twice and both gave out',
+      'Tried three brands and nothing stuck',
+      'Too many steps to fit into a busy morning',
+      'Never sure which size or variant to pick',
     ],
   },
   {
     type: 'Desires',
     items: [
-      'Predictable profit on every job',
-      'A leadership team that owns outcomes',
-      'Weekends back without losing control',
+      'Something that just works, every day',
+      'Looks as good as it performs',
+      'Feeling like a smart buy, not a splurge',
     ],
   },
   {
     type: 'Objections',
     items: [
-      "I don't have time to implement systems",
-      'My business is different / too custom',
-      'Coaching is for builders who are struggling',
+      'It’s expensive for what it is',
+      'I’ve been burned by brands on Instagram before',
+      'What if it doesn’t suit me?',
     ],
   },
   {
     type: 'Beliefs',
     items: [
-      'More revenue will fix the profit problem',
-      'Only I can deliver at this quality',
-      'Hiring senior people is too expensive',
+      'All of these products are basically the same',
+      'The ads always look better than the real thing',
+      'Online reviews are mostly fake',
     ],
   },
   {
     type: 'Language',
-    items: ['"flat out"', '"chasing my tail"', '"the wheels fall off"', '"jobs going backwards"'],
+    items: ['"actually worth it"', '"holy grail"', '"obsessed"', '"repurchased three times"'],
   },
   {
     type: 'Market Trends',
     items: [
-      'Rising material costs squeezing fixed-price jobs',
-      'Skilled-labour shortage driving delays',
-      'Shift toward fixed-margin contracts',
+      'Buyers checking reviews and short-form video before purchase',
+      'Repeat categories shifting to bundles and subscriptions',
+      'Rising acquisition costs pushing brands toward creative volume',
     ],
   },
 ]
 
-/* ----------------------- Transformation Intelligence ---------------------- */
+/* --------------------------- Review Intelligence -------------------------- */
 
+/**
+ * A customer's before-and-after as their reviews tell it. The field names
+ * predate the e-commerce platform (`member`), the shape does not: what changed,
+ * what it felt like, what it was worth, who they became.
+ */
 export interface Transformation {
   member: string
   before: { label: string; value: string }[]
@@ -325,40 +337,40 @@ export interface Transformation {
 
 export const transformations: Transformation[] = [
   {
-    member: 'Custom Home Builder — VIC',
+    member: 'Verified buyer — repeat customer',
     before: [
-      { label: 'Hours', value: '70 hr weeks' },
-      { label: 'Margin', value: '12%' },
-      { label: 'Structure', value: 'Owner dependent' },
+      { label: 'Routine', value: '5 products' },
+      { label: 'Spend', value: '$140 a month' },
+      { label: 'Result', value: 'Inconsistent' },
     ],
     after: [
-      { label: 'Hours', value: '45 hr weeks' },
-      { label: 'Margin', value: '22%' },
-      { label: 'Structure', value: 'Leadership team' },
+      { label: 'Routine', value: '2 products' },
+      { label: 'Spend', value: '$65 a month' },
+      { label: 'Result', value: 'Every day' },
     ],
-    type: 'Profit + Time Freedom',
-    emotional: 'Relief from burnout, presence with family',
-    financial: '+$340k net profit in 14 months',
-    identity: 'From operator to owner',
-    angles: ['Profit Leak', 'The 45-Hour Owner', 'Systems Before Scale'],
+    type: 'Simplicity + Value',
+    emotional: 'Relief from decision fatigue',
+    financial: 'Saves about $75 a month',
+    identity: 'From trial-and-error to sorted',
+    angles: ['Problem → Solution', 'Us vs Them', 'Subscribe & Save'],
   },
   {
-    member: 'Renovations Co — QLD',
+    member: 'Verified buyer — bought as a gift, then for themself',
     before: [
-      { label: 'Revenue', value: '$2.1M' },
-      { label: 'Net', value: '4%' },
-      { label: 'Team', value: 'No structure' },
+      { label: 'Intent', value: 'One-off gift' },
+      { label: 'Orders', value: '1' },
+      { label: 'Basket', value: 'Single item' },
     ],
     after: [
-      { label: 'Revenue', value: '$3.4M' },
-      { label: 'Net', value: '18%' },
-      { label: 'Team', value: 'PM + Estimator' },
+      { label: 'Intent', value: 'Own routine' },
+      { label: 'Orders', value: '4' },
+      { label: 'Basket', value: 'Bundle' },
     ],
-    type: 'Systems + Leadership',
-    emotional: 'Confidence, control over the calendar',
-    financial: '+$540k net profit, 18% margin',
-    identity: 'From foreman to CEO',
-    angles: ['Systems Pattern', 'Leadership Story', 'Margin Math'],
+    type: 'Gifting + Loyalty',
+    emotional: 'Delight that turned into habit',
+    financial: 'Four orders in six months',
+    identity: 'From gift-giver to regular',
+    angles: ['Gifting', 'Social Proof', 'Bundle'],
   },
 ]
 
@@ -376,40 +388,40 @@ export interface CreativeAnalysis {
 
 export const creativeAnalyses: CreativeAnalysis[] = [
   {
-    type: 'Founder Video',
-    count: 96,
-    winRate: 71,
-    structure: 'Hook → Contrarian belief → Proof → Mechanism → CTA',
-    visualStyle: 'Handheld, on-site, natural light, no captions burn-in',
-    opening: 'Direct-to-camera pattern interrupt in first 1.5s',
-    cta: 'Soft DM / comment trigger',
+    type: 'UGC Unboxing',
+    count: 112,
+    winRate: 68,
+    structure: 'Reaction in the first 2s → product in hand → one benefit shown → offer card',
+    visualStyle: 'Phone-shot, natural light, the creator’s own home',
+    opening: 'First reaction, mid-unboxing, product on screen',
+    cta: 'Shop now',
   },
   {
-    type: 'Static Proof Ad',
+    type: 'Product-Hero Static',
     count: 188,
-    winRate: 64,
-    structure: 'Big number → Member name → 1-line transformation',
-    visualStyle: 'Dark bg, bold numerals, single accent color',
-    opening: 'Specific profit figure as headline',
-    cta: 'Learn the system',
+    winRate: 61,
+    structure: 'Product large → one-line benefit headline → offer strip',
+    visualStyle: 'Seamless backdrop in the brand palette, one clean shadow',
+    opening: 'The benefit, in the customer’s own words',
+    cta: 'Get 20% off',
   },
   {
-    type: 'Testimonial Video',
+    type: 'Review-Wall Static',
     count: 74,
-    winRate: 58,
-    structure: 'Before pain → Turning point → After result',
-    visualStyle: 'Interview framing, b-roll of job sites',
-    opening: 'Member states their old hours/margin',
-    cta: 'Apply to work with us',
+    winRate: 66,
+    structure: 'Star rating → three short quotes → product',
+    visualStyle: 'Clean card layout around the product',
+    opening: 'The strongest review, quoted verbatim',
+    cta: 'See why they reorder',
   },
   {
-    type: 'Event Video',
-    count: 42,
-    winRate: 49,
-    structure: 'Energy montage → Key insight → Community proof',
-    visualStyle: 'High-energy cuts, crowd, stage',
-    opening: 'Room reaction shot',
-    cta: 'Get on the waitlist',
+    type: 'Us vs Them Static',
+    count: 52,
+    winRate: 59,
+    structure: 'Split frame → three concrete differences → product wins',
+    visualStyle: 'Product beside the generic version, ticks against crosses',
+    opening: 'The difference the buyer already suspects',
+    cta: 'Make the switch',
   },
 ]
 
@@ -422,22 +434,22 @@ export interface CopyItem {
 }
 
 export const topHooks: CopyItem[] = [
-  { text: "Most builders don't have a revenue problem. They have a profit leak.", metric: '4.2% CTR', angle: 'Profit' },
-  { text: 'You built a job that pays worse than your foreman.', metric: '3.8% CTR', angle: 'Time Freedom' },
-  { text: 'Scaling a broken business just breaks it faster.', metric: '3.6% CTR', angle: 'Systems' },
-  { text: 'Your margin is hiding in plain sight.', metric: '3.3% CTR', angle: 'Cashflow' },
+  { text: 'I didn’t think it would work. I’ve reordered twice.', metric: '4.4% CTR', angle: 'Social Proof' },
+  { text: 'The cheap one lasted a month. This one’s on year two.', metric: '3.9% CTR', angle: 'Us vs Them' },
+  { text: 'Your morning routine has too many steps.', metric: '3.5% CTR', angle: 'Problem → Solution' },
+  { text: 'We tested 40 materials before we found this one.', metric: '3.1% CTR', angle: 'Quality & Craft' },
 ]
 
 export const topHeadlines: CopyItem[] = [
-  { text: 'From 12% to 22% margin in 14 months — without taking on more jobs.', metric: '2.1x ROAS', angle: 'Profit' },
-  { text: 'The builders working 45-hour weeks aren’t working harder. They’re working different.', metric: '1.9x ROAS', angle: 'Time Freedom' },
-  { text: 'Build the team that builds the business.', metric: '1.7x ROAS', angle: 'Leadership' },
+  { text: 'The last one you’ll need to buy', metric: '3.4x ROAS', angle: 'Us vs Them' },
+  { text: '4.8★ from 2,000+ customers', metric: '3.1x ROAS', angle: 'Social Proof' },
+  { text: 'Everything you need, one box', metric: '2.8x ROAS', angle: 'Offer-Led' },
 ]
 
 export const topOffers: CopyItem[] = [
-  { text: 'The Profit System Audit — find your leak in 30 minutes.', metric: '38% book rate', angle: 'Profit' },
-  { text: 'Leadership Blueprint workshop for builders doing $2M+.', metric: '29% book rate', angle: 'Leadership' },
-  { text: 'The 90-Day Systems Sprint.', metric: '24% book rate', angle: 'Systems' },
+  { text: 'Starter Bundle — save 25% against buying separately', metric: '4.1% CVR', angle: 'Offer-Led' },
+  { text: 'Free gift on orders over $60', metric: '3.6% CVR', angle: 'Offer-Led' },
+  { text: '20% off your first order', metric: '3.2% CVR', angle: 'Offer-Led' },
 ]
 
 /* ---------------------------- Pattern Intelligence ------------------------ */
@@ -456,96 +468,95 @@ export interface Pattern {
 
 export const patterns: Pattern[] = [
   {
-    name: 'Profit Pattern',
-    hook: "Most builders don't have a revenue problem. They have a profit leak.",
-    headline: 'From 12% to 22% margin without taking on more jobs.',
-    creativeStyle: 'Static proof ad, bold numerals',
-    transformation: 'Low margin → predictable profit',
-    offer: 'Profit System Audit',
-    cta: 'Find your leak',
-    notes: 'Highest win index. Pairs best with member profit numbers.',
-    strength: 94,
+    name: 'Review Wall Pattern',
+    hook: 'I’ve reordered three times.',
+    headline: '4.8★ from 2,000+ customers',
+    creativeStyle: 'Review-wall static',
+    transformation: 'Skeptic → buyer',
+    offer: 'Free shipping',
+    cta: 'See the reviews',
+    notes: 'Highest win index on retargeting. Pairs with cart abandoners.',
+    strength: 93,
   },
   {
-    name: 'Systems Pattern',
-    hook: 'Scaling a broken business just breaks it faster.',
-    headline: 'Systems before scale.',
-    creativeStyle: 'Whiteboard / founder video',
-    transformation: 'Chaos → repeatable operations',
-    offer: '90-Day Systems Sprint',
-    cta: 'Build your system',
-    notes: 'Strong with operations-pain segment.',
+    name: 'Us vs Them Pattern',
+    hook: 'The cheap one lasted a month.',
+    headline: 'Built to be the last one',
+    creativeStyle: 'Side-by-side comparison static',
+    transformation: 'Generic habit → better product',
+    offer: 'Full price',
+    cta: 'Make the switch',
+    notes: 'Breaks fatigue on cold prospecting.',
     strength: 88,
   },
   {
-    name: 'Time Freedom Pattern',
-    hook: 'You built a job that pays worse than your foreman.',
-    headline: 'The 45-hour owner.',
-    creativeStyle: 'Day-in-the-life UGC',
-    transformation: '70 hr weeks → 45 hr weeks',
-    offer: 'Owner Freedom Roadmap',
-    cta: 'Get your time back',
-    notes: 'Highest emotional resonance + save rate.',
-    strength: 85,
+    name: 'Unboxing Pattern',
+    hook: 'Okay, the packaging alone…',
+    headline: 'Unbox the good stuff',
+    creativeStyle: 'Creator UGC unboxing',
+    transformation: 'Curious → wants it',
+    offer: '20% off first order',
+    cta: 'Shop now',
+    notes: 'Highest hook rate on Reels.',
+    strength: 86,
   },
   {
-    name: 'Authority Pattern',
-    hook: '20 years. 500+ builders. One system.',
-    headline: 'The program builders actually finish.',
-    creativeStyle: 'Event montage',
-    transformation: 'Skeptic → believer',
-    offer: 'Waitlist',
-    cta: 'See the proof',
-    notes: 'Use to warm cold audiences before profit angle.',
-    strength: 77,
+    name: 'Problem → Product Pattern',
+    hook: 'Your routine has too many steps.',
+    headline: 'One step. Done.',
+    creativeStyle: 'Product-hero static',
+    transformation: 'Overwhelmed → simple',
+    offer: 'Starter bundle',
+    cta: 'Simplify it',
+    notes: 'Strongest cold opener.',
+    strength: 84,
   },
   {
-    name: 'Transformation Pattern',
-    hook: 'Same business. Different owner.',
-    headline: 'What changed wasn’t the market.',
-    creativeStyle: 'Before/after testimonial',
-    transformation: 'Owner-dependent → leadership team',
-    offer: 'Apply',
-    cta: 'Read the story',
-    notes: 'Best mid-funnel asset.',
-    strength: 82,
+    name: 'Bundle Pattern',
+    hook: 'Everything you need, one box.',
+    headline: 'Save 25% on the set',
+    creativeStyle: 'Flat-lay bundle static',
+    transformation: 'Single item → full set',
+    offer: 'Bundle',
+    cta: 'Build your set',
+    notes: 'Lifts AOV; strongest on past purchasers.',
+    strength: 81,
   },
   {
-    name: 'Contrarian Pattern',
-    hook: 'Stop trying to grow.',
-    headline: 'The advice that doubled their margin.',
-    creativeStyle: 'Founder direct-to-camera',
-    transformation: 'Growth obsession → profit focus',
-    offer: 'Profit System Audit',
-    cta: 'Hear me out',
-    notes: 'Breaks pattern fatigue. Rotate in quarterly.',
-    strength: 79,
+    name: 'Founder Pattern',
+    hook: 'I made this because I couldn’t find it.',
+    headline: 'Made by someone who needed it',
+    creativeStyle: 'Founder phone video',
+    transformation: 'Brand-agnostic → brand loyal',
+    offer: 'Full price',
+    cta: 'Hear the story',
+    notes: 'Warms cold audiences before offer-led creative.',
+    strength: 78,
   },
 ]
 
 /* -------------------------- ATLAS foundation assets ----------------------- */
 
 /**
- * The Knowledge-Vault and connected-website documents ATLAS stands on.
+ * The Knowledge-Vault documents ATLAS stands on.
  *
  * Every other intelligence layer has curated documents behind it in the
- * fallback corpus (patterns, copy, transformations, learnings, research,
- * creative analyses). ATLAS reads the `vault` and `website` systems, which had
- * no curated documents at all — so the layer the platform calls its foundation
+ * fallback corpus. ATLAS reads the `vault` and `website` systems, which had no
+ * curated documents at all — so the layer the platform calls its foundation
  * was the one layer that could never return evidence without a live Supabase +
  * Voyage stack.
  *
- * What ships here is UNIVERSAL CRAFT and nothing else: ad anatomy, copy
- * frameworks, hook construction, compliance, offer framing by awareness stage.
- * That knowledge belongs to the product and is true for every business on it.
+ * What ships here is UNIVERSAL E-COMMERCE CREATIVE CRAFT and nothing else:
+ * static anatomy, UGC structure, comparison and review formats, hook
+ * construction, compliance, offer framing by awareness stage, creative
+ * diversity for Meta delivery. That knowledge belongs to the product and is
+ * true for every brand on it. It replaced a set written around ad CAPTIONS —
+ * the platform now ships the creative without one, so the craft that matters
+ * is the craft of the creative itself.
  *
- * What used to ship alongside it was one specific company's positioning, proof
- * points, audience fears and brand voice, filed under the `website` system —
- * the exact system a connected site's real profile lands in. Any deployment
- * whose vector store was unreachable therefore retrieved another company —
- * a residential builder — as its own identity, and grounded every campaign in
- * it. A tenant's
- * identity is never shipped in the source; it is read from their website.
+ * Nothing here is filed under `website`: that is where a connected store's
+ * real profile lands, and a brand's identity is read from its site, never
+ * shipped in the source.
  *
  * Kept isomorphic (no `fs`) because `lib/knowledge.ts` is imported by client
  * components — reading the markdown at runtime would break the browser bundle.
@@ -561,72 +572,86 @@ export const foundationAssets: FoundationAsset[] = [
   {
     system: 'vault',
     category: 'Creative Frameworks',
-    title: 'Meta Ad Anatomy — the three copy slots',
+    title: 'E-commerce static anatomy — the four zones',
     content:
-      'A Meta feed ad has three copy slots that must work together. Hook (primary text, first line): the only line visible before "See more" — it must stop the scroll on its own, one sentence, ideally under 12 words. Body (primary text, remainder): expands the promise, handles the objection, builds belief; under ~150 words in short paragraphs. CTA: the button plus a closing line driving one clear next action. Write the hook to survive alone above the fold.',
+      'A static e-commerce ad is read in under a second, so it is built in four zones that each do one job. PRODUCT: the real product, large, its label or shape readable at thumb size — the hero of the frame. HEADLINE: the hook — one benefit or one tension in the customer\'s own words, under about eight words. OFFER or PROOF: the second line — the deal stated exactly, or the proof (a star rating, a review, a count) when there is no deal. SPACE: clean negative space so the eye lands on the product first. The caption is written later in Ads Manager; the creative has to sell without it.',
   },
   {
     system: 'vault',
     category: 'Creative Frameworks',
-    title: 'PAS — Problem · Agitate · Solve',
+    title: 'UGC video structure — hook · product · proof · offer',
     content:
-      'Name the reader\'s problem, twist the knife on what it costs them, then resolve it with the brand\'s proof. Best for fear-led angles — money leaking, time lost, a supplier who vanishes, dependence on one person. Pairs with problem-aware and solution-aware traffic.',
+      'First two seconds: a reaction, a question or the problem — with the product already on screen. Seconds two to eight: the product in use, one benefit demonstrated rather than described. Seconds eight to fifteen: proof — the creator\'s honest verdict, or a second customer. Close: the offer card. Phone-shot footage, natural light and the creator\'s own space out-pull studio polish with cold audiences.',
   },
   {
     system: 'vault',
     category: 'Creative Frameworks',
-    title: 'BAB — Before · After · Bridge',
+    title: 'Us vs Them — the comparison static',
     content:
-      'Paint the "before" (stress, uncertainty, everything on fire), then the "after" (calm, margin, work finished, time back), and position the mechanism as the bridge between them. Best for aspiration and transformation angles where a named client win supplies the after-state.',
+      'A split frame or two columns: the product beside the alternative the buyer already uses — the generic version, the old habit, the category default. Three concrete, visible differences, each one true of the product. Name the category, never a competitor brand. The product wins on what the buyer can see, not on adjectives.',
   },
   {
     system: 'vault',
     category: 'Creative Frameworks',
-    title: 'AIDA — Attention · Interest · Desire · Action',
+    title: 'The review wall',
     content:
-      'Attention, Interest, Desire, Action. The classic full-arc structure for a colder audience that needs the whole argument inside one ad. Use when the traffic is unaware or problem-aware and no prior context can be assumed.',
+      'Stack real customer reviews around the product: the star rating, then three short quotes in the customers\' own words, verbatim. Reviews are the native proof of e-commerce and outperform brand claims with warm and retargeting audiences. Use only reviews the brand actually holds — never write one, and never edit one into a stronger claim.',
+  },
+  {
+    system: 'vault',
+    category: 'Creative Frameworks',
+    title: 'PAS — Problem · Agitate · Solve, for a product',
+    content:
+      'Name the everyday frustration, show what putting up with it costs, then show the product ending it — in use, on screen. Best for problem-aware cold traffic. Describe the moment, never the person: an ad that tells the viewer what is wrong with them is rejected by Meta and resented by the reader.',
+  },
+  {
+    system: 'vault',
+    category: 'Creative Frameworks',
+    title: 'Creative diversity for Meta delivery',
+    content:
+      'Meta\'s delivery groups near-identical creatives and treats them as a single bet, so ten recolours of one ad buy one test. Diversify on the dimensions that change who an ad reaches: the persona in it, the desire it promises, the format (static, UGC, carousel) and the visual world. Keep a controlled test controlled — change one lever within a format — but make separate concepts genuinely different.',
   },
   {
     system: 'vault',
     category: 'Hook Frameworks',
     title: 'The 4 U\'s — Useful, Unique, Urgent, Ultra-specific',
     content:
-      'A strong hook tends to be Useful, Unique, Urgent and Ultra-specific. A concrete figure the business can actually stand behind — a count, a timeframe, a measured before-and-after — outperforms a vague adjective every time. Specificity is credibility: name the mechanism and the number rather than claiming the category ("trusted", "proven", "no hidden costs").',
+      'A strong hook tends to be Useful, Unique, Urgent and Ultra-specific. A concrete detail the brand can stand behind — a material, a count, a timeframe, a real review — outperforms a vague adjective every time. Specificity is credibility: name the thing rather than claiming the category ("premium", "best", "game-changing").',
   },
   {
     system: 'vault',
     category: 'Hook Frameworks',
     title: 'Hook construction checklist',
     content:
-      'Four gates every hook must pass. 1. Does it name a specific fear or desire in the first six words? 2. Is there a concrete number or a detail only this business could supply? 3. Could a competitor run it unchanged — if yes, rewrite it. 4. Is it under ~12 words and readable at a glance? A hook that fails gate 3 is a category claim, not a campaign.',
+      'Four gates every hook must pass. 1. Does it name a specific frustration or desire in the first six words? 2. Is there a concrete detail only this product could supply? 3. Could a competitor run it unchanged — if yes, rewrite it. 4. Does it read at a glance, on a phone, over the product? A hook that fails gate 3 is a category claim, not a campaign.',
   },
   {
     system: 'vault',
     category: 'Creative SOPs',
-    title: 'Rules of thumb — writing the ad',
+    title: 'Rules of thumb — building the creative',
     content:
-      'Lead with the reader\'s fear or desire, never the company. One idea per ad — do not stack three offers. Specificity equals credibility. Write at a Grade 5–6 reading level with short words and short sentences. Match message to temperature: cold audiences need the problem named, warm and retargeting audiences need the objection crushed and the CTA made obvious.',
+      'Lead with the product or the problem it ends, never the logo. One idea per creative — one benefit, one offer. Specificity equals credibility. On-image copy must read at a glance: two short lines at most. Match the creative to temperature: cold audiences need the product and the problem; warm and retargeting audiences need proof, the offer and the objection answered.',
   },
   {
     system: 'vault',
     category: 'Creative SOPs',
-    title: 'Meta compliance guardrails',
+    title: 'Meta compliance guardrails — e-commerce',
     content:
-      'No claims that cannot be substantiated. Avoid before/after framing that implies a guaranteed personal outcome. Do not assert personal attributes about the viewer ("Struggling with debt?") — speak to the situation, not the person\'s identity. No fake countdowns or invented scarcity. Attribute every results figure to a named individual as their result, and carry the not-typical disclaimer wherever a named client\'s result appears.',
+      'No claim that cannot be substantiated: no cures, no guaranteed results, no weight-loss figures. Never assert personal attributes ("Do you have acne?") — speak to the situation, not the person. Before-and-after imagery is restricted for weight loss and for anything sold as changing the body. Prices, discounts, ratings and review counts must be real and current. No fake scarcity or countdowns. No imitation of Meta\'s own interface — no fake play buttons, notifications or checkboxes.',
   },
   {
     system: 'vault',
     category: 'Story Mining SOPs',
-    title: 'Mining a client win into creative',
+    title: 'Mining reviews into creative',
     content:
-      'Pull the before-state in the client\'s own words (what it cost them, the moment it broke), the turning point (which mechanism, applied when), and the after-state with one hard figure. Ship it as: named client, concrete number, the mechanism between the two. Refresh the proof inventory on a schedule — a named client with a real figure outperforms a promise the whole category could make.',
+      'Read reviews for three things: the moment that made them buy (the trigger), the words they use for the benefit (the language), and the doubt they had beforehand (the objection). The trigger becomes the hook, the language becomes the headline, the objection becomes the proof. Quote verbatim and prefer a specific story — the skeptic who reordered — over generic praise.',
   },
   {
     system: 'vault',
     category: 'Offer Frameworks',
     title: 'Offer framing by awareness stage',
     content:
-      'Unaware and problem-aware traffic converts to a low-friction diagnostic (audit, assessment, scorecard) — the offer is clarity, not the program. Solution-aware traffic converts to the mechanism itself, named. Product-aware and most-aware traffic converts to the direct application or call, where the job of the ad is objection removal and urgency, not education.',
+      'Unaware and problem-aware traffic buys the product\'s story before any deal: lead with the problem and the product, keep the offer secondary. Solution-aware traffic is comparing: lead with the difference and the guarantee. Product-aware traffic needs the push — the offer, the free shipping, the reason to buy today. Most-aware traffic needs only the deal and the product. A discount used too early trains buyers to wait for the next one.',
   },
 ]
 
@@ -637,12 +662,11 @@ export interface Learning {
   /**
    * What stands behind the insight.
    *
-   * These used to carry hard figures — "71% win rate vs 58% across 170
-   * creatives" — measured on one company's ad account and shipped to every
-   * deployment as the rubric OPUS self-scores against. No other tenant ran
-   * those creatives, so the numbers were, from their side, invented. A rubric
-   * that opens with a fabricated statistic teaches the orchestrator to argue
-   * from evidence nobody has.
+   * These used to carry hard figures measured on one company's ad account and
+   * shipped to every deployment as the rubric OPUS self-scores against. No
+   * other brand ran those creatives, so the numbers were, from their side,
+   * invented. A rubric that opens with a fabricated statistic teaches the
+   * orchestrator to argue from evidence nobody has.
    *
    * The floor below therefore claims no measurement at all. Real figures reach
    * the rubric through `resolveCreativeLearnings()`, computed from the
@@ -656,7 +680,7 @@ export interface Learning {
  * The Creative Learnings floor — craft that holds before an account has run
  * anything, stated as principle rather than as measurement.
  *
- * Superseded per-run by the tenant's own outcomes the moment there are enough
+ * Superseded per-run by the brand's own outcomes the moment there are enough
  * of them to mean something (see `resolveCreativeLearnings` in lib/outcomes.ts).
  */
 export const learnings: Learning[] = [
@@ -664,25 +688,25 @@ export const learnings: Learning[] = [
     insight: 'A creative earns attention in its first beat or not at all.',
     evidence: 'Craft principle — not yet measured on this account.',
     recommendation:
-      'Open on one concrete, specific pattern-interrupt. Never open on the offer, the brand, or a claim any competitor could make.',
+      'Open on the product, the problem it ends or the proof — one concrete, specific pattern-interrupt. Never open on the logo, the offer alone, or a claim any competitor could make.',
   },
   {
-    insight: 'Specific, attributable figures outperform category adjectives.',
+    insight: 'Customer proof outperforms brand claims.',
     evidence: 'Craft principle — not yet measured on this account.',
     recommendation:
-      'Lead with a number the business can stand behind and attribute it to a named individual as their result. "Trusted", "proven" and "leading" are claims, not evidence.',
+      'Use real reviews, ratings and counts in the customers’ own words, exactly as the brand holds them. "Premium", "best" and "game-changing" are claims, not evidence.',
   },
   {
-    insight: 'A transformation the reader recognises beats a feature list.',
+    insight: 'The product in use beats the product described.',
     evidence: 'Craft principle — not yet measured on this account.',
     recommendation:
-      'Frame the mechanism inside a before-and-after the audience can place themselves in, rather than describing what the offer includes.',
+      'Show the benefit happening — the texture, the fit, the moment it works — rather than listing features. If the creative could be a spec sheet, it is not an ad.',
   },
   {
     insight: 'A creative that could run for a competitor unchanged is not a campaign.',
     evidence: 'Craft principle — not yet measured on this account.',
     recommendation:
-      'Test every concept by swapping the brand name out. If it still reads, the concept carries no proof and belongs to the category, not the business.',
+      'Test every concept by swapping the brand and product out. If it still reads, the concept carries no proof and belongs to the category, not the brand.',
   },
 ]
 
@@ -690,7 +714,7 @@ export const learnings: Learning[] = [
 
 export const reactorInputs = [
   'Research Intelligence',
-  'Transformation Intelligence',
+  'Review Intelligence',
   'Creative Intelligence',
   'Copy Intelligence',
   'Frameworks',
@@ -699,8 +723,9 @@ export const reactorInputs = [
 ]
 
 // The creative deliverables a new campaign can produce. Kept deliberately
-// simple for onboarding — the user picks one or all, and copy is generated as
-// part of every concept. The richer internal concept taxonomy (Founder /
+// simple for onboarding — the user picks one or all, and every concept carries
+// its own on-image copy (there is no separate caption: the platform makes the
+// creative, not the caption). The richer internal concept taxonomy (Founder /
 // Testimonial / Campaign …) is expanded from these by the reactor route.
 export const reactorOutputTypes = [
   'Static Creative',

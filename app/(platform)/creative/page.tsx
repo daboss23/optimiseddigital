@@ -20,8 +20,8 @@ import { demoDataEnabled } from '@/lib/demo-mode'
 const creativeStats: { label: string; icon: LucideIcon; n: number; accent: Accent }[] = [
   { label: 'Static Ads', icon: Layers, n: demoDataEnabled() ? 188 : 0, accent: 'blue' },
   { label: 'Video Ads', icon: Video, n: demoDataEnabled() ? 137 : 0, accent: 'emerald' },
-  { label: 'Founder Videos', icon: Play, n: demoDataEnabled() ? 96 : 0, accent: 'violet' },
-  { label: 'UGC Concepts', icon: Megaphone, n: demoDataEnabled() ? 64 : 0, accent: 'amber' },
+  { label: 'Founder Videos', icon: Play, n: demoDataEnabled() ? 41 : 0, accent: 'violet' },
+  { label: 'UGC Creatives', icon: Megaphone, n: demoDataEnabled() ? 112 : 0, accent: 'amber' },
 ]
 
 const analysisAccents: Accent[] = ['blue', 'emerald', 'violet', 'cyan']

@@ -26,9 +26,9 @@
  *      illegible at ad resolution and always come back as noise, so they are
  *      dropped from the render and reported as overlay copy instead.
  *
- * Anything dropped is returned in `omitted` — it is never silently lost, and
- * the concept's ad package still carries the full, compliant copy for the
- * caption, the Studio overlay and the Meta push.
+ * Anything dropped is returned in `omitted` — it is never silently lost: it is
+ * the copy the buyer adds as an overlay or writes into the caption in Ads
+ * Manager, since the platform ships the creative without one.
  *
  * Pure data in / string out (no framework imports) so both the client renderer
  * and the server routes share exactly one prompt path.
@@ -415,8 +415,8 @@ export function enforceSingleFrame(prompt: string): string {
  * @param brief    the concept's frame-by-frame plan
  * @param fallback prompt to use when there is no brief (raw concept text)
  * @param opts     `motion` keeps the full frame sequence (video); `headline` is
- *                 the concept's Meta headline, burned into a still when the
- *                 brief forgot to declare any on-image copy; `brand` is the
+ *                 a fallback line burned into a still when the brief forgot to
+ *                 declare any on-image copy; `brand` is the
  *                 connected business, which every render needs and none of
  *                 them used to get
  */
@@ -552,7 +552,7 @@ export function compileRenderPrompt(
   /* A still that ends up with no copy at all is a stock photograph, not an ad —
      the second half of the filmstrip failure: five wordless panels. The
      orchestrator is told to declare a headline on every image concept, but a
-     prompt rule is not a guarantee, so the concept's Meta headline is burned in
+     prompt rule is not a guarantee, so a caller-supplied headline is burned in
      as the floor. Video is exempt: motion carries its message over time. */
   if (!motion && !rendered.length && headlineFallback) {
     rendered.push({

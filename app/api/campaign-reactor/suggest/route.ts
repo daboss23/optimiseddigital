@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { NextRequest, NextResponse } from 'next/server'
 import {
+  angleSeeds,
   awarenessOptions,
   sophisticationOptions,
   audienceOptions,
@@ -26,8 +27,10 @@ export const runtime = 'nodejs'
 // categories: NOVA/ORACLE/OPUS can surface a sharper angle the dropdown adopts.
 const MODEL = ORCHESTRATOR_FALLBACK_MODEL
 
-// Base strategic categories — a starting vocabulary, not a hard limit.
-const angleCategories = ['Profit', 'Systems', 'Time Freedom', 'Leadership', 'Cashflow', 'Growth', 'Team Accountability']
+// Base strategic categories — a starting vocabulary, not a hard limit. The
+// same seed angles the brief's dropdown offers, so a suggestion always lands
+// on an option the operator can see.
+const angleCategories = angleSeeds.map((a) => a.label)
 const awarenessLabels = awarenessOptions.slice(1).map((o) => o.label)
 const sophisticationLabels = sophisticationOptions.slice(1).map((o) => o.label)
 const audienceLabels = audienceOptions.slice(1).map((o) => o.label)
@@ -53,65 +56,84 @@ interface RawSuggestion {
 // a thin brief — keeping the flow unified and never blocking the user.
 function fallback(brief: string, angle: string): RawSuggestion {
   const t = brief.toLowerCase()
+  // Most specific first: an offer word in the brief says more about the angle
+  // than any adjective near it.
   const pickAngle =
     angle && !['No Preference', 'Agent decides', ''].includes(angle)
       ? angle
-      : /time|freedom|hours|family|weekend/.test(t)
-        ? 'Time Freedom'
-        : /system|process|sop|chaos|operations?/.test(t)
-          ? 'Systems'
-          : /scale|grow|growth|lead|pipeline/.test(t)
-            ? 'Growth'
-            : /profit|margin|keeping nothing|revenue/.test(t)
-              ? 'Profit'
-              : 'Profit'
-  const awareness = /know us|seen|retarget|applied|considered/.test(t)
+      : /\bvs\.?\b|versus|compared|instead of|unlike|the old way|switch(ed)? from/.test(t)
+        ? 'Us vs Them'
+        : /review|rating|stars?\b|customers? (say|love)|testimonial|sold out|best ?seller/.test(t)
+          ? 'Social Proof'
+          : /% off|percent off|sale|discount|bundle|bogo|free (gift|shipping)|deal|offer/.test(t)
+            ? 'Offer-Led'
+            : /founder|started (it|this)|our story|why we made/.test(t)
+              ? 'Founder Story'
+              : /gift|christmas|holiday|mother'?s day|father'?s day|valentine/.test(t)
+                ? 'Gifting'
+                : /ingredient|material|made (from|with|in)|handmade|crafted|quality/.test(t)
+                  ? 'Quality & Craft'
+                  : /lifestyle|aesthetic|ritual|vibe|look/.test(t)
+                    ? 'Identity & Lifestyle'
+                    : 'Problem → Solution'
+  const awareness = /know us|seen|retarget|abandon|viewed|considered|past (buyers|customers)/.test(t)
     ? 'Product-Aware'
-    : /compare|coaching|hiring|options?|vs\b/.test(t)
+    : /compare|alternative|instead of|vs\b|switch/.test(t)
       ? 'Solution-Aware'
       : 'Problem-Aware'
-  // Trades-coaching is a heavily pitched market: default to late-stage
+  // Most product categories on Meta are crowded: default to late-stage
   // sophistication, escalating to identity when the brief signals it.
-  const sophistication = /identity|tribe|community|belong|who they become|not another hustle/.test(t)
+  const sophistication = /identity|tribe|community|belong|lifestyle|aesthetic/.test(t)
     ? 'Stage 5 — Identity & Tribe'
-    : /mechanism|method|system|framework|process|blueprint|roadmap/.test(t)
+    : /mechanism|formula|technology|patent|ingredient|how it works/.test(t)
       ? 'Stage 4 — Better Mechanism'
-      : /new to market|first of its kind|never been done|no one else offers/.test(t)
+      : /new to market|first of its kind|never been done|no one else/.test(t)
         ? 'Stage 1 — First Claim'
         : 'Stage 4 — Better Mechanism'
-  const audience = /retarget|applied|application|sales page|visited/.test(t)
-    ? 'Retargeting — visited sales page'
-    : /warm|seen|content|follower/.test(t)
-      ? 'Warm — saw content, didn’t convert'
-      : 'Cold — new audience'
-  // Most specific first. `free` and `live` are broad enough to swallow half
-  // the ladder if they are tested early, which is how a brief asking for a
-  // free ACCOUNT AUDIT used to come back recommending a downloadable PDF.
-  const offer = /audit|teardown|review of your|account review|funnel review/.test(t)
-    ? 'Free Audit / Teardown'
-    : /case stud(y|ies)|client result|how we (got|took)|before and after/.test(t)
-      ? 'Case Study / Proof Asset'
-      : /\bdm\b|direct message|comment ["“']?\w+|send the word|message us/.test(t)
-        ? 'DM / Comment Trigger'
-        : /guarantee|risk[- ]rever|pay on result|performance[- ]based|don'?t pay/.test(t)
-          ? 'Performance / Risk Reversal'
-          : /retainer|done[- ]for[- ]you|\bdfy\b|ongoing management|managed service/.test(t)
-            ? 'Done-For-You Retainer'
-            : /trial|pilot|first month|test campaign|proof of concept/.test(t)
-              ? 'Free Trial / Pilot'
-              : /webinar|masterclass|training/.test(t)
-                ? 'Webinar / Masterclass'
-                : /event|in person|in-person|workshop|seats?\b/.test(t)
-                  ? 'Live Event / In-Person'
-                  : /download|guide|lead magnet|template|swipe|checklist|free|pdf/.test(t)
-                    ? 'Free Lead Magnet'
-                    : 'Strategy Call / Application'
+  const audience = /abandon|cart|checkout/.test(t)
+    ? 'Cart abandoners — added, didn’t buy'
+    : /viewed|browsed|product page|visited/.test(t)
+      ? 'Product viewers — browsed, didn’t add'
+      : /lapsed|win[- ]?back|haven'?t (bought|ordered)|came back/.test(t)
+        ? 'Lapsed customers — win-back'
+        : /past (buyers|customers)|existing customers|repeat|replenish|reorder|cross[- ]sell|upsell/.test(t)
+          ? 'Past purchasers — cross-sell & replenish'
+          : /warm|engaged|followers?|video viewers|retarget/.test(t)
+            ? 'Warm — engaged, not yet shopped'
+            : 'Cold — broad prospecting'
+  // Most specific first. `free` and `off` are broad enough to swallow half the
+  // ladder if they are tested early.
+  const offer = /bogo|buy one|buy 1|get one free|buy \w+ get/.test(t)
+    ? 'BOGO / Buy X Get Y'
+    : /bundle|kit|set of|buy more|save more/.test(t)
+      ? 'Bundle / Buy More, Save More'
+      : /free gift|gift with purchase|\bgwp\b/.test(t)
+        ? 'Free Gift With Purchase'
+        : /subscribe|subscription|auto[- ]?ship|every month/.test(t)
+          ? 'Subscribe & Save'
+          : /free shipping|free delivery/.test(t)
+            ? 'Free Shipping'
+            : /spend \$?\d+|over \$?\d+|threshold|\$\d+ off/.test(t)
+              ? 'Spend Threshold / Amount Off'
+              : /guarantee|risk[- ]free|money[- ]back|try it/.test(t)
+                ? 'Money-Back Guarantee / Risk-Free Trial'
+                : /black friday|cyber monday|bfcm|summer sale|sale event|anniversary|holiday sale/.test(t)
+                  ? 'Sale Event / Seasonal'
+                  : /\d+ ?%|percent off|% off|discount/.test(t)
+                    ? 'Percent Off'
+                    : /back in stock|restock|limited (run|edition|stock)|sold out/.test(t)
+                      ? 'Limited Stock / Restock'
+                      : /launch|new (product|colou?r|flavou?r|formula|drop)|just dropped/.test(t)
+                        ? 'New Launch / Drop'
+                        : /quiz|find your|which .* (is right|are you)/.test(t)
+                          ? 'Quiz / Product Finder'
+                          : 'Full Price — Value-Led'
 
   // Deliverables follow the medium implied by the brief.
   const wantsUgc = /ugc|testimonial|talking head|spokesperson|creator|selfie/.test(t)
-  const wantsVideo = /video|vsl|reel|tiktok|founder video|motion/.test(t)
+  const wantsVideo = /video|reel|tiktok|founder video|motion|unboxing/.test(t)
   const wantsCarousel = /carousel|swipe|multi-?image|slides?/.test(t)
-  const wantsImage = /image|static|photo|proof ad|banner/.test(t)
+  const wantsImage = /image|static|photo|product shot|banner/.test(t)
   const set = new Set<string>()
   if (wantsUgc) set.add('UGC Creative')
   if (wantsVideo) set.add('Video Creative')
@@ -263,7 +285,7 @@ export async function POST(request: NextRequest) {
       model: MODEL,
       max_tokens: 500,
       system:
-        `You are OPUS, the Campaign Reactor strategist for ${tenantDescriptor(await getTenant(await currentAccount()))}. Given a brief, name the single strongest campaign ANGLE — a precise, evocative strategic angle that may be sharper than the base categories (examples of the shape, not the subject: "Profit Leak", "Owner Dependency"). Then choose the best-fit awareness stage, market-sophistication stage (Eugene Schwartz — what KIND of claim still lands in this market), audience and offer from the provided lists, and the creative deliverables to produce. Reply with ONLY a JSON object, no prose.`,
+        `You are OPUS, the Campaign Reactor strategist for ${tenantDescriptor(await getTenant(await currentAccount()))}, an e-commerce brand advertising on Meta. Given a brief, name the single strongest campaign ANGLE — a precise, evocative strategic angle that may be sharper than the base categories (examples of the shape, not the subject: "The 3pm Slump", "Drawer of Dead Chargers"). Then choose the best-fit awareness stage, market-sophistication stage (Eugene Schwartz — what KIND of claim still lands in this market), audience temperature and offer from the provided lists, and the creative deliverables to produce. Reply with ONLY a JSON object, no prose.`,
       messages: [
         {
           role: 'user',

@@ -2,7 +2,7 @@
  * Creative Canvas — graph model.
  *
  * The Creative Canvas is the structured creative operating layer between the
- * Campaign Reactor (strategy → concepts) and the Studio (one finished ad). This
+ * Campaign Reactor (strategy → concepts) and the Launch Bay (one finished creative). This
  * module turns a finished run into the canvas's initial node graph: one lane
  * per concept, a fixed left-to-right message spine per lane, and — in montage
  * mode — one scene node per production-brief frame.
@@ -76,9 +76,9 @@ export const KIND_DEFS: Record<CanvasNodeKind, KindDef> = {
   },
   cta: {
     kind: 'cta',
-    label: 'CTA',
+    label: 'Offer / CTA',
     accent: 'amber',
-    hint: 'The ask — headline and button',
+    hint: 'The ask on the creative — the offer or the button label',
     regen: true,
     branch: true,
   },
@@ -86,7 +86,7 @@ export const KIND_DEFS: Record<CanvasNodeKind, KindDef> = {
     kind: 'output',
     label: 'Output',
     accent: 'pink',
-    hint: 'The assembled ad unit — send it to the Studio',
+    hint: 'The finished creative — send it to the Launch Bay',
     regen: false,
     branch: false,
   },
@@ -272,9 +272,18 @@ export function buildCanvasGraph(concepts: Concept[], mode: CanvasMode): CanvasG
 
   lanes.forEach((c, lane) => {
     const y = lane * LANE_H
-    const pkg = c.adPackage
-    const { hook, body } = pkg ? splitHook(pkg.primaryText) : splitHook(c.text)
     const brief = c.productionBrief
+    // The words the scroller actually reads are the ones ON the creative —
+    // there is no caption behind it. The first declared on-image line is the
+    // hook, the second is the offer / CTA; a brief that declares none falls
+    // back to the concept's own opening line.
+    const onImage = (brief?.onImageText ?? [])
+      .map((t) => t?.text?.trim() ?? '')
+      .filter(Boolean)
+    const split = splitHook(c.text)
+    const hook = onImage[0] || split.hook
+    const body = onImage[0] ? c.text : split.body
+    const offerLine = onImage[1] ?? ''
     const id = (kind: string, i = 0) => `l${lane}-${kind}${i ? `-${i}` : ''}`
     let col = 0
 
@@ -355,15 +364,15 @@ export function buildCanvasGraph(concepts: Concept[], mode: CanvasMode): CanvasG
     }
 
     push('cta', id('cta'), {
-      title: 'CTA',
-      text: pkg?.headline ?? '',
-      sub: pkg?.cta ? `Button: ${pkg.cta.replace(/_/g, ' ')}` : KIND_DEFS.cta.hint,
+      title: 'Offer / CTA',
+      text: offerLine,
+      sub: KIND_DEFS.cta.hint,
     })
     link(prev, id('cta'))
 
     push('output', id('output'), {
       title: c.type,
-      text: 'Launch-ready ad unit assembled from this lane.',
+      text: 'Finished creative assembled from this lane.',
       sub: typeof c.score === 'number' ? `Rubric ${c.score}/10` : undefined,
     })
     link(id('cta'), id('output'))

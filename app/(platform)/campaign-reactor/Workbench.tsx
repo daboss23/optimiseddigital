@@ -13,9 +13,10 @@ import {
   LiveAgentWorkflow,
   type WorkflowControls,
 } from '@/components/campaign-reactor/workflow/LiveAgentWorkflow'
-import { reactorOutputTypes, winningAngles } from '@/lib/reactor-data'
+import { reactorOutputTypes } from '@/lib/reactor-data'
 import { INTEL_SOURCES, intelSourceLabel } from '@/lib/intelligence-sources'
 import {
+  angleSeeds,
   awarenessOptions,
   sophisticationOptions,
   audienceOptions,
@@ -59,16 +60,14 @@ import { CLONE_STORAGE_KEY, type CloneReference, type IsolateConfig } from '@/li
 import { takeDraft } from '@/lib/operator/draft'
 import type { CanvasMode } from '@/lib/creative-canvas/graph'
 import type { StrategyMenu, StrategyMenuOption } from '@/lib/strategy-menu'
+import type { CatalogProductSummary } from '@/lib/catalog/types'
 
 // The native campaign-angle choices (the No Preference / Custom sentinels are
 // added by the dropdown itself). These are the SEED menu — the floor that is
 // always present. Once a website is connected, /api/strategy-options returns
 // these same entries plus the angles and offers ATLAS derived for that
 // business, appended after the seeds.
-const SEED_ANGLES: StrategyMenuOption[] = winningAngles.map((a) => ({
-  label: a.name,
-  directive: '',
-}))
+const SEED_ANGLES: StrategyMenuOption[] = angleSeeds.map((a) => ({ ...a }))
 
 const SEED_MENU: StrategyMenu = {
   angles: SEED_ANGLES,
@@ -92,7 +91,7 @@ function SurfaceLoading({ label }: { label: string }) {
   )
 }
 
-// The Canvas (React Flow) and Studio are heavy surfaces the reactor view never
+// The Canvas (React Flow) and Launch Bay are heavy surfaces the reactor view never
 // touches — a run can be fired, watched, and shipped without either. Splitting
 // them out keeps that first load lean, which matters most on a phone. Both are
 // browser-only (measurement, drag, portals), so SSR stays off.
@@ -102,8 +101,15 @@ const CreativeCanvas = dynamic(
 )
 const AdStudio = dynamic(
   () => import('@/components/campaign-reactor/canvas/AdStudio').then((m) => m.AdStudio),
-  { ssr: false, loading: () => <SurfaceLoading label="Opening Studio…" /> },
+  { ssr: false, loading: () => <SurfaceLoading label="Opening the Launch Bay…" /> },
 )
+
+/** The view toggle's labels. The `studio` key predates the Launch Bay it now opens. */
+const VIEW_LABEL: Record<'reactor' | 'canvas' | 'studio', string> = {
+  reactor: 'Reactor',
+  canvas: 'Canvas',
+  studio: 'Launch Bay',
+}
 
 export function Workbench() {
   // Run + media state lives in the persistent platform-layout provider, so an
@@ -117,6 +123,7 @@ export function Workbench() {
     generateUGC,
     imageFor,
     videoFor,
+    uploadToMeta,
   } = useReactorRun()
   const [modalOpen, setModalOpen] = useState(false)
   // Optional isolation test ("iterate one thing") — null = free generation.
@@ -156,7 +163,7 @@ export function Workbench() {
   }, [])
   // Output surface: the autonomous reactor (default hero), the Creative Canvas
   // (structured creative direction — shape, branch, and sequence the run), or
-  // the Studio (finish one ad as a real Meta unit).
+  // the Launch Bay (check a finished creative and upload it to Meta).
   const [view, setView] = useState<'reactor' | 'canvas' | 'studio'>('reactor')
   // Which format tab the Canvas lands on — set by intent-carrying entrances
   // (the montage CTA), cleared for the generic toggle so the campaign opens
@@ -172,6 +179,28 @@ export function Workbench() {
   const [angle, setAngle] = useState<string>(NO_PREFERENCE)
   // Campaign name — the first question in the guided flow; a label for the run.
   const [campaignName, setCampaignName] = useState('')
+  // The store's catalog, for the brief's product picker. Read once on arrival;
+  // the brief still fires without it, from the written direction alone.
+  const [catalogProducts, setCatalogProducts] = useState<CatalogProductSummary[]>([])
+  const [catalogCurrency, setCatalogCurrency] = useState<string | null>(null)
+  const [catalogState, setCatalogState] = useState<'loading' | 'ready' | 'empty'>('loading')
+  const [productId, setProductId] = useState<string | null>(null)
+  useEffect(() => {
+    let live = true
+    fetch('/api/catalog', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d: { catalog?: { products?: CatalogProductSummary[]; currency?: string | null } | null }) => {
+        if (!live) return
+        const products = d.catalog?.products ?? []
+        setCatalogProducts(products)
+        setCatalogCurrency(d.catalog?.currency ?? null)
+        setCatalogState(products.length ? 'ready' : 'empty')
+      })
+      .catch(() => live && setCatalogState('empty'))
+    return () => {
+      live = false
+    }
+  }, [])
   // Deliverables start empty — OPUS recommends a subset from the brief, which is
   // auto-selected until the user overrides.
   const [outputs, setOutputs] = useState<string[]>([])
@@ -192,7 +221,7 @@ export function Workbench() {
   // seeded. Null when the brief was opened by hand.
   const [draftVariations, setDraftVariations] = useState<number | null>(null)
   const [variationMethods, setVariationMethods] = useState<Record<string, VariationMethod>>({})
-  // The concept the user sent into the Studio via "Configure in Studio".
+  // The concept the user sent into the Launch Bay ("Open in Launch Bay").
   const [studioSeed, setStudioSeed] = useState<Concept | null>(null)
   // Strategic reasoning for the recommended angle (Dynamic Strategy Engine).
   const [angleReason, setAngleReason] = useState('')
@@ -582,8 +611,13 @@ export function Workbench() {
   // Fire from the modal — assembles the full ReactorInputs from every step plus
   // the classic payload fields, then posts into the shared SSE pipeline.
   const fire = () => {
+    const product = productId ? catalogProducts.find((p) => p.id === productId) : undefined
     const reactorInputsPayload: ReactorInputs = {
       campaignName,
+      // Only the id is trusted server-side; the name rides along for display
+      // and for the demo path, which has no catalog to resolve it against.
+      productId: product?.id,
+      productName: product?.title,
       brief,
       angle,
       angleIsAgentDecided: angle === NO_PREFERENCE || angle.trim() === '',
@@ -709,15 +743,15 @@ export function Workbench() {
     }
   }, [phase, concepts, imageModels, videoModels, imageFor, videoFor, runCreative])
 
-  // "Configure in Studio" — carry the concept (copy + creative) into the Studio
-  // editor so the user refines a real ad instead of starting from parts.
+  // "Open in Launch Bay" — carry the concept and its creative into the Launch
+  // Bay, where it is checked and uploaded to Meta.
   //
   // The render is STAMPED ONTO the seed on the way through. Live media is keyed
-  // by concept text, and callers legitimately rewrite that text (the Canvas
-  // sends a lane whose primary text it just rebuilt) — so a concept handed over
-  // bare can arrive in the Studio having lost the very image the user clicked.
-  // Resolving it here means every entry point — concept card, Canvas lane,
-  // ledger tile — lands with its own creative already in the ad.
+  // by concept text, so a concept handed over bare could arrive having lost the
+  // very image the user clicked. Resolving it here means every entry point —
+  // concept card, Canvas lane, ledger tile — lands with its own creative. (A
+  // Canvas lane whose words changed arrives under a new text on purpose: it IS
+  // a new creative, and is rendered fresh rather than shown with the old one.)
   const configureInStudio = useCallback(
     (c: Concept) => {
       const video = videoFor(c)
@@ -738,46 +772,14 @@ export function Workbench() {
     setView('canvas')
   }, [])
 
-  // "Push to Meta" fast lane straight from the card — publishes the concept's
-  // launch-ready ad unit (adPackage + rendered still) into the Meta creative
-  // library, bypassing the Studio pre-test. Returns a status for inline feedback.
-  const pushConceptToMeta = useCallback(
-    async (c: Concept): Promise<{ ok: boolean; message: string }> => {
-      if (!c.adPackage) {
-        return { ok: false, message: 'This concept has no ad package to push.' }
-      }
-      try {
-        const res = await fetch('/api/meta/publish', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          // Thread the test attribution so the creative NAME leads with the RXN
-          // token and a pending outcome row is pre-seeded. Without these the
-          // Meta ingest has nothing to parse, and a graded ad can never be
-          // matched back to the variation it was testing.
-          body: JSON.stringify({
-            pkg: c.adPackage,
-            imageUrl: imageFor(c),
-            name: c.type,
-            testId: c.testId,
-            variantId: c.variantId,
-            isolatedAxis: c.isolatedAxis,
-            variationMethod: c.variationMethod,
-            variationLabel: c.variationLabel,
-            taxonomy: c.taxonomy,
-          }),
-        }).then((r) => r.json())
-        if (res.ok) {
-          return {
-            ok: true,
-            message: `Creative ${res.creativeId ? `#${res.creativeId} ` : ''}is in your Meta library — attach it to an ad set in Ads Manager.`,
-          }
-        }
-        return { ok: false, message: res.error || 'Meta rejected the creative.' }
-      } catch {
-        return { ok: false, message: 'Could not reach Meta — try again.' }
-      }
+  // "Upload to Meta" fast lane straight from the card — the finished render
+  // goes into the brand's Meta media library through the same shared upload
+  // the Launch Bay uses, so the two can never upload the same creative twice.
+  const uploadConceptToMeta = useCallback(
+    (c: Concept) => {
+      void uploadToMeta([c])
     },
-    [imageFor],
+    [uploadToMeta],
   )
 
   // Keep the custom audience/offer DirectiveOption in sync with the typed text so
@@ -802,7 +804,7 @@ export function Workbench() {
       active: angleCustom,
       value: customAngle,
       placeholder: 'Name your campaign angle',
-      examples: ['Profit Leak', 'Margin Erosion', 'Builder Burnout', 'Owner Dependency'],
+      examples: ['The 3pm Slump', 'Drawer of Dead Chargers', 'Shower Thoughts', 'Gift They’ll Actually Use'],
     },
     onSelect: (label) => {
       setAngleCustom(false)
@@ -876,7 +878,7 @@ export function Workbench() {
       active: audienceCustom,
       value: customAudience,
       placeholder: 'Describe the audience',
-      examples: ['Residential Builders', '$2M–$10M Revenue', '5–20 Staff', 'Owner Operators'],
+      examples: ['New parents', 'Gym-goers 25–40', 'Gift buyers', 'Existing subscribers'],
     },
     onSelect: (label) => {
       setAudienceCustom(false)
@@ -925,7 +927,7 @@ export function Workbench() {
       active: offerCustom,
       value: customOffer,
       placeholder: 'Name your offer',
-      examples: ['AI Automation Masterclass', 'The 5-Day Pipeline Audit', 'Founder Growth Intensive'],
+      examples: ['20% Off First Order', 'Starter Bundle', 'Free Gift Over $60'],
     },
     onSelect: (label) => {
       setOfferCustom(false)
@@ -949,6 +951,11 @@ export function Workbench() {
 
   // Everything the modal renders, threaded from this component's state.
   const form: ReactorForm = {
+    products: catalogProducts,
+    productCurrency: catalogCurrency,
+    productId,
+    setProductId,
+    catalogState,
     campaignName,
     setCampaignName,
     brief,
@@ -1004,7 +1011,7 @@ export function Workbench() {
     onGenerateUGC: runUGC,
     onConfigureInStudio: configureInStudio,
     onLaunchCanvas: launchCanvas,
-    onPushToMeta: pushConceptToMeta,
+    onUpload: uploadConceptToMeta,
     onRetry: fire,
   }
 
@@ -1035,8 +1042,8 @@ export function Workbench() {
           <span />
         )}
         {/* Output surface toggle — watch the reactor work, shape the run in the
-            Creative Canvas, or finish one ad in the Studio. Full width on a
-            phone so each segment clears the touch-target floor. */}
+            Creative Canvas, or check and upload creatives in the Launch Bay.
+            Full width on a phone so each segment clears the touch-target floor. */}
         <div className="inline-flex w-full rounded-full border border-white/10 bg-white/[0.03] p-1 sm:w-auto">
           {(['reactor', 'canvas', 'studio'] as const).map((v) => (
             <button
@@ -1047,18 +1054,19 @@ export function Workbench() {
                 setView(v)
               }}
               aria-pressed={view === v}
-              className={`tap-target flex-1 rounded-full px-3.5 py-2 text-xs font-semibold capitalize transition-colors sm:flex-none sm:min-h-0 sm:py-1.5 ${
+              className={`tap-target flex-1 rounded-full px-3.5 py-2 text-xs font-semibold transition-colors sm:flex-none sm:min-h-0 sm:py-1.5 ${
                 view === v ? 'bg-glow/15 text-glow' : 'text-white/45 hover:text-white/70'
               }`}
             >
-              {v}
+              {VIEW_LABEL[v]}
             </button>
           ))}
         </div>
       </div>
 
       {/* Output — the reactor (autonomous run), the Creative Canvas (structured
-          creative direction over the run), or the Studio (finish one ad).
+          creative direction over the run), or the Launch Bay (check a finished
+          creative and upload it to Meta).
           In reactor mode: before firing, the empty state; once fired, the live
           agent workflow (raw telemetry collapses into a drawer inside it). */}
       {view === 'canvas' ? (
@@ -1083,7 +1091,6 @@ export function Workbench() {
         />
       ) : view === 'studio' ? (
         <AdStudio
-          offerName={offerName}
           seed={studioSeed}
           onConfigure={() => setModalOpen(true)}
         />

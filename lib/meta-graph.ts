@@ -146,22 +146,28 @@ export type InsightRow = {
  * Meta action types mapped onto the result vocabulary the platform speaks.
  * Deliberately explicit: a booked call is not a lead, a registration is not an
  * application, and nothing here rolls them into one "conversions" number.
+ *
+ * Within ONE result type these names are SYNONYMS, not parts: Meta reports the
+ * same purchases as `purchase`, `omni_purchase` and
+ * `offsite_conversion.fb_pixel_purchase` side by side on one row. They are
+ * therefore read as the largest of them, never added — adding them is what
+ * doubled every purchase count and halved every CPA.
  */
 const RESULT_ACTION_TYPES: Record<PrimaryResultType, string[]> = {
   lead: ['lead', 'offsite_conversion.fb_pixel_lead', 'onsite_conversion.lead_grouped'],
   application: ['submit_application', 'offsite_conversion.fb_pixel_submit_application'],
   booked_call: ['schedule', 'offsite_conversion.fb_pixel_schedule', 'onsite_conversion.schedule'],
   registration: ['complete_registration', 'offsite_conversion.fb_pixel_complete_registration'],
-  purchase: ['purchase', 'offsite_conversion.fb_pixel_purchase'],
+  purchase: ['omni_purchase', 'purchase', 'offsite_conversion.fb_pixel_purchase'],
   custom: ['offsite_conversion.fb_pixel_custom'],
 }
 
-/** Count one result type on an insight row. */
+/** Count one result type on an insight row — the largest of its synonyms. */
 export function resultCount(row: InsightRow, type: PrimaryResultType): number {
   const wanted = new Set(RESULT_ACTION_TYPES[type])
   return (row.actions ?? [])
     .filter((a) => wanted.has(a.action_type))
-    .reduce((sum, a) => sum + num(a.value), 0)
+    .reduce((max, a) => Math.max(max, num(a.value)), 0)
 }
 
 /** The full result mix on a row — every type counted separately. */
@@ -177,23 +183,18 @@ export function dominantResult(mix: ResultSlice[]): PrimaryResultType {
   return mix[0]?.type ?? metaPrimaryResultType
 }
 
-const CONVERSION_ACTIONS = new Set([
-  'lead',
-  'purchase',
-  'offsite_conversion.fb_pixel_lead',
-  'offsite_conversion.fb_pixel_purchase',
-  'onsite_conversion.lead_grouped',
-])
 
 export function num(v: unknown): number {
   const n = parseFloat(String(v ?? '').replace(/[^0-9.\-]/g, ''))
   return Number.isFinite(n) ? n : 0
 }
 
+/**
+ * Leads plus purchases — each counted once, through `resultCount`. Summing the
+ * raw action list counted every purchase two or three times over.
+ */
 export function conversions(row: InsightRow): number {
-  return (row.actions ?? [])
-    .filter((a) => CONVERSION_ACTIONS.has(a.action_type))
-    .reduce((sum, a) => sum + num(a.value), 0)
+  return resultCount(row, 'lead') + resultCount(row, 'purchase')
 }
 
 export function roas(row: InsightRow): number {

@@ -39,7 +39,7 @@ export function CreativeLedger({ onOpen }: { onOpen: (c: Concept) => void }) {
         icon={<Layers size={16} />}
         accent="cyan"
         title="Creative Ledger"
-        subtitle="Every creative this platform has built, kept across refreshes. Click one to open it in the Studio."
+        subtitle="Every creative this platform has built, kept across refreshes. Click one to open it in the Launch Bay."
         accessory={
           <div className="flex items-center gap-2">
             <Pill tone="primary">{ledger.length}</Pill>
@@ -175,7 +175,7 @@ function LedgerCard({
           )}
           {/* The action is the whole tile; this just makes it legible on hover. */}
           <span className="absolute inset-x-0 bottom-0 flex items-center gap-1.5 bg-gradient-to-t from-black/85 to-transparent px-2 pb-2 pt-6 text-[10px] font-semibold text-white opacity-0 transition-opacity group-hover:opacity-100">
-            <Wand2 size={10} /> Open in Studio
+            <Wand2 size={10} /> Open in Launch Bay
           </span>
         </span>
         <span className="block px-2.5 py-2">

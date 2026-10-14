@@ -1,8 +1,8 @@
 // NOVA — Market Intelligence. The platform's field researcher. NOVA goes to the
-// places the market actually talks — Reddit trade communities, YouTube, pro
-// forums, reviews — pulls the real conversations, and extracts the psychographic
-// profile that drives winning campaigns: what keeps builders up at night, what
-// they hate, what they dream about, the exact words they use.
+// places the market actually talks — product subreddits, YouTube reviews and
+// unboxings, forums, review sites — pulls the real conversations, and extracts
+// the psychographic profile that drives winning campaigns: what frustrates the
+// buyer, what they want, what stops them buying, the exact words they use.
 //
 // The extracted intelligence is embedded back into the knowledge layer as
 // `research` + `transformation` chunks, so OPUS retrieves it on every future run
@@ -32,9 +32,9 @@ const MODEL = INTELLIGENCE_MODEL
 const MAX_EXTRACT_CHARS = 16_000
 
 /* ----------------------------- Source registry ---------------------------- */
-// The "most relevant sites" NOVA mines for a trades / construction business
-// audience — surfaced in the UI so the builder starts from high-signal places
-// instead of a blank box.
+// The places NOVA mines are derived per brand (ATLAS's `researchSources`, from
+// the connected store's category) and surfaced in the UI so the operator
+// starts from high-signal places instead of a blank box.
 
 export interface NovaSubreddit {
   sub: string
