@@ -3,6 +3,7 @@ import { PageHeader, Panel, PanelHeader, Pill } from '@/components/reactor/ui'
 import { vaultStats } from '@/lib/knowledge'
 import { AdIngest } from '@/components/spark/AdIngest'
 import { UploadGrid } from './UploadGrid'
+import { LongDocuments } from './LongDocuments'
 import { VaultManager } from './VaultManager'
 
 export const dynamic = 'force-dynamic'
@@ -39,6 +40,11 @@ export default async function KnowledgeVaultPage() {
           <UploadGrid />
         </div>
       </Panel>
+
+      {/* Long PDFs are read by structure instead of chunked: a brand book's
+          rule keeps the heading it sits under, and the Reactor can ask it a
+          question mid-run. */}
+      <LongDocuments />
 
       <VaultManager
         initialStats={{ live: stats.live, total: stats.total, groups: stats.groups }}

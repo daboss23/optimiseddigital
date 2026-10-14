@@ -18,9 +18,11 @@ create table if not exists knowledge_chunks (
   embedding vector(1024)
 );
 
--- Approximate nearest-neighbour index for fast cosine search.
-create index if not exists knowledge_chunks_embedding_idx
-  on knowledge_chunks using ivfflat (embedding vector_cosine_ops) with (lists = 100);
+-- Approximate nearest-neighbour index for fast cosine search. HNSW, not
+-- IVFFlat: see schema.retrieval.sql, which also migrates an existing IVFFlat
+-- index and adds the hybrid (semantic + keyword) search function.
+create index if not exists knowledge_chunks_embedding_hnsw_idx
+  on knowledge_chunks using hnsw (embedding vector_cosine_ops);
 
 create index if not exists knowledge_chunks_system_idx on knowledge_chunks (system);
 

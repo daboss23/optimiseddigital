@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server'
 import { supabaseUrl, getSupabaseAdmin } from '@/lib/supabase'
 import { demoDataEnabled, demoRetrievalEnabled } from '@/lib/demo-mode'
 import { gethookdConfigured, defaultGeo, geoParam } from '@/lib/gethookd'
+import { probeHybridSearch } from '@/lib/knowledge'
+import { rerankConfigured, rerankModel } from '@/lib/rerank'
+import { documentsReadiness } from '@/lib/documents'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -90,6 +93,7 @@ export async function GET() {
     pipeboard: Boolean(process.env.PIPEBOARD_API_TOKEN),
     gethookd: gethookdConfigured(),
     meta: Boolean(process.env.META_ACCESS_TOKEN),
+    pageindex: Boolean(process.env.PAGEINDEX_API_KEY),
   }
 
   // The learning loop needs the URL + service key to write/read outcomes.
@@ -184,6 +188,41 @@ export async function GET() {
       process.env.OPERATOR_SOURCE ?? process.env.NEXT_PUBLIC_OPERATOR_SOURCE ?? 'seeded',
   }
 
+  /**
+   * How the agents' searches actually run — the answer to "is the knowledge
+   * layer real or the keyword fallback?". Each stage is independent and each
+   * degrades on its own, so each is reported on its own:
+   *
+   *   · vector     Voyage + Supabase present. Without both, every search is a
+   *                keyword match over the built-in craft corpus.
+   *   · hybrid     supabase/schema.retrieval.sql applied — vector + keyword,
+   *                fused. Without it, vector-only.
+   *   · rerank     Voyage reranker on (VOYAGE_RERANK_MODEL, `off` disables).
+   *   · documents  PageIndex long-document reading (PAGEINDEX_API_KEY + the
+   *                ledger table from supabase/schema.documents.sql).
+   *
+   * The hybrid probe is one global-scope call with a unit vector: it can only
+   * match platform rows and reads nothing that belongs to an account.
+   */
+  const hybrid = supabaseConfigured ? await probeHybridSearch() : { installed: false, error: 'Supabase not configured' }
+  const documents = documentsReadiness()
+  const documentsTable = documents.ready ? await probeTable('long_documents') : null
+  const retrieval = {
+    vector: supabaseConfigured && keys.voyage,
+    hybrid: hybrid.installed,
+    ...(hybrid.installed ? {} : { hybridHint: hybrid.error }),
+    rerank: rerankConfigured() ? rerankModel() : false,
+    documents: {
+      provider: documents.provider ? 'pageindex' : false,
+      ready: documents.ready && (documentsTable?.ok ?? false),
+      ...(documents.reason
+        ? { hint: documents.reason }
+        : documentsTable && !documentsTable.ok
+          ? { hint: 'Run supabase/schema.documents.sql to create the long_documents table.' }
+          : {}),
+    },
+  }
+
   return NextResponse.json({
     // `ok` now means "this deployment can actually do its job", not merely
     // "the route responded". A schema a version behind the code is not ok.
@@ -193,6 +232,7 @@ export async function GET() {
     tenancy,
     keys,
     display,
+    retrieval,
     adLibrary,
     supabaseConfigured,
     tables,

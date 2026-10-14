@@ -55,14 +55,18 @@ and each route says what is missing rather than inventing a result.
 ### Database
 
 Run `supabase/schema.reactor.sql` (the RAG knowledge layer) in the Supabase SQL
-editor, then `supabase/schema.media.sql` and `supabase/schema.taxonomy.sql` if
-you want the media ledger and taxonomy analytics.
+editor, then `supabase/schema.tenancy.sql` and `supabase/schema.retrieval.sql`
+(HNSW + hybrid keyword/vector search). Add `supabase/schema.documents.sql` for
+long-document reading (PageIndex), and `supabase/schema.media.sql` and
+`supabase/schema.taxonomy.sql` if you want the media ledger and taxonomy
+analytics. `/api/health` → `retrieval` shows which search stages are live.
 
 ## Checks
 
 ```bash
 npm run selftest             # the Reactor end to end (needs the app running)
 npm run selftest:gethookd    # the proven-ad source + automatic research (stubbed, free)
+npm run selftest:retrieval   # hybrid search SQL (real Postgres via PGlite), reranker, long documents
 npm run selftest:blank-slate # the platform names no business
 npm run selftest:tenant      # one account cannot read another's
 npm run selftest:operator    # the performance operator on the dashboard
