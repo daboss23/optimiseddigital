@@ -246,6 +246,11 @@ REACTOR_BUDGET_MS            # Optional — wall-clock budget for one Reactor ru
                              #   Opus 4.8 (Fable 5's always-on thinking is too slow to land
                              #   inside a minute), submits straight from the preflight
                              #   briefing, and skips the NEURO revision pass.
+PLATFORM_LOGIN_REQUIRED      # Optional — default OFF. While off, the login page is bypassed:
+                             #   the middleware issues the operator session automatically and
+                             #   every visitor lands on the dashboard (/login forwards to /).
+                             #   Set to `true` to put the login page back in front — the
+                             #   credential code is untouched behind the switch.
 NEXT_PUBLIC_SUPABASE_URL
 NEXT_PUBLIC_SUPABASE_ANON_KEY
 SUPABASE_SERVICE_ROLE_KEY

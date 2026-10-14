@@ -1,5 +1,13 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { SESSION_COOKIE, readSessionToken } from '@/lib/auth'
+import {
+  OPERATOR_NAME_COOKIE,
+  SESSION_COOKIE,
+  SESSION_MAX_AGE,
+  createSessionToken,
+  expectedCredentials,
+  loginRequired,
+  readSessionToken,
+} from '@/lib/auth'
 
 /* ----------------------------------------------------------------------------
    The gate.
@@ -11,11 +19,51 @@ import { SESSION_COOKIE, readSessionToken } from '@/lib/auth'
 
    The signature is verified here rather than trusting the cookie's presence:
    a gate that accepts any value for its own cookie is a suggestion.
+
+   While `loginRequired()` is off, the gate is held open rather than removed:
+   a visitor with no session is issued the operator session the login form
+   would have issued, and the request continues to wherever it was headed.
 ---------------------------------------------------------------------------- */
+
+/**
+ * Issue the operator session on this request and let it through.
+ *
+ * The cookie is written to BOTH sides: onto the forwarded request, so the
+ * server components rendering this very page already see a signed-in session
+ * (otherwise the first load would render as nobody), and onto the response,
+ * so every request after it carries the cookie on its own.
+ */
+async function openGate(request: NextRequest): Promise<NextResponse> {
+  const operator = expectedCredentials().name
+  const token = await createSessionToken(operator)
+
+  request.cookies.set(SESSION_COOKIE, token)
+  request.cookies.set(OPERATOR_NAME_COOKIE, operator)
+  const response = NextResponse.next({ request: { headers: request.headers } })
+
+  const secure = process.env.NODE_ENV === 'production'
+  response.cookies.set(SESSION_COOKIE, token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure,
+    path: '/',
+    maxAge: SESSION_MAX_AGE,
+  })
+  response.cookies.set(OPERATOR_NAME_COOKIE, operator, {
+    httpOnly: false,
+    sameSite: 'lax',
+    secure,
+    path: '/',
+    maxAge: SESSION_MAX_AGE,
+  })
+  return response
+}
 
 export async function middleware(request: NextRequest) {
   const session = await readSessionToken(request.cookies.get(SESSION_COOKIE)?.value)
   if (session) return NextResponse.next()
+
+  if (!loginRequired()) return openGate(request)
 
   const { pathname, search } = request.nextUrl
 
