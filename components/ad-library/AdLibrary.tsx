@@ -20,7 +20,7 @@ import {
 } from 'lucide-react'
 import { Panel, PanelHeader, Pill } from '@/components/reactor/ui'
 import { CLONE_STORAGE_KEY, taxonomyToTags, type CreativeTaxonomy } from '@/lib/taxonomy'
-import { ICP_FOCUSES, type IcpFocus } from '@/lib/gethookd/icp'
+import { ECOMMERCE_VERTICALS, ICP_FOCUSES, type IcpFocus } from '@/lib/gethookd/icp'
 import type { AdFormat, CreditUsage, ProvenAd } from '@/lib/gethookd/types'
 import type { WinnerCard } from '@/lib/clone-sources'
 
@@ -141,7 +141,29 @@ export function AdLibrary({
   const [editing, setEditing] = useState<CloneReference | null>(null)
 
   /* -------- proven ad library -------- */
-  const [focus, setFocus] = useState<IcpFocus>('services')
+  // E-commerce is the market this platform researches; the focus is fixed to
+  // it and the operator narrows by VERTICAL instead. The brand's own vertical,
+  // read off its catalog, is the default view once it is known.
+  const focus: IcpFocus = 'ecommerce'
+  const [niche, setNiche] = useState<number | null>(null)
+  const [brandNiches, setBrandNiches] = useState<number[]>([])
+  useEffect(() => {
+    let live = true
+    fetch('/api/catalog', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d: { catalog?: { niches?: number[] } | null }) => {
+        if (!live) return
+        const found = (d.catalog?.niches ?? []).filter((n) => ECOMMERCE_VERTICALS.some((v) => v.id === n))
+        setBrandNiches(found)
+        if (found.length) setNiche(found[0])
+      })
+      .catch(() => {
+        /* no catalog — the feed stays on all of e-commerce */
+      })
+    return () => {
+      live = false
+    }
+  }, [])
   // Static leads: this deployment's campaigns render static Meta ads, and the
   // design read behind "Design" needs a still to read.
   const [format, setFormat] = useState<AdFormat | 'all'>('image')
@@ -180,6 +202,7 @@ export function AdLibrary({
           limit: '12',
         })
         if (query.trim()) params.set('q', query.trim())
+        if (niche !== null && pool === 'market') params.set('niche', String(niche))
         const res = await fetch(`/api/ad-library/search?${params.toString()}`).then((r) => r.json())
         const rows: ProvenAd[] = Array.isArray(res.ads) ? res.ads : []
         setAds((prev) => (append ? [...prev, ...rows] : rows))
@@ -195,7 +218,7 @@ export function AdLibrary({
         setLoading(false)
       }
     },
-    [focus, format, tier, pool, sort, query],
+    [focus, niche, format, tier, pool, sort, query],
   )
 
   // Filters refetch; typing in the search box does not. A search that fires on
@@ -206,7 +229,7 @@ export function AdLibrary({
   }, [load])
   useEffect(() => {
     if (tab === 'proven') void loadRef.current(1, false)
-  }, [tab, focus, format, tier, pool, sort])
+  }, [tab, focus, niche, format, tier, pool, sort])
 
   // Turn arbitrary ad text into an editable Creative DNA via SPARK + classifier.
   const extractToEditor = useCallback(
@@ -395,32 +418,49 @@ export function AdLibrary({
               </p>
             </div>
 
-            {/* Focus — services and e-commerce are never blended into one feed */}
+            {/* Vertical — the e-commerce market, narrowed to one category. The
+                brand's own vertical leads, read off its catalog. */}
             <div className={pool === 'craft' ? 'opacity-40' : undefined}>
               <div className="flex flex-wrap gap-2">
-                {ICP_FOCUSES.map((f) => (
+                {[
+                  { id: null as number | null, label: 'All e-commerce' },
+                  ...brandNiches.map((id) => ({
+                    id: id as number | null,
+                    label: `Your vertical · ${ECOMMERCE_VERTICALS.find((v) => v.id === id)?.label ?? id}`,
+                  })),
+                  ...ECOMMERCE_VERTICALS.filter((v) => !brandNiches.includes(v.id)).map((v) => ({
+                    id: v.id as number | null,
+                    label: v.label,
+                  })),
+                ].map((v) => (
                   <button
-                    key={f.id}
+                    key={v.id ?? 'all'}
                     type="button"
-                    onClick={() => setFocus(f.id)}
+                    onClick={() => setNiche(v.id)}
                     disabled={pool === 'craft'}
                     className={`rounded-full border px-4 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed ${
-                      focus === f.id
+                      niche === v.id
                         ? 'border-cyan/50 bg-cyan/15 text-cyan'
                         : 'border-white/10 bg-white/[0.03] text-white/60 hover:border-white/20 hover:text-white/85'
                     }`}
                   >
-                    {f.label}
+                    {v.label}
                   </button>
                 ))}
               </div>
               {pool === 'craft' ? (
                 <p className="mt-2 text-[12px] text-white/40">
-                  Focus does not apply to Best built — dropping the niche filter is what
+                  The vertical does not apply to Best built — dropping the niche filter is what
                   makes that pool worth having. Switch to Your market to scope it.
                 </p>
               ) : (
-                activeFocus && <p className="mt-2 text-[12px] text-white/40">{activeFocus.blurb}</p>
+                activeFocus && (
+                  <p className="mt-2 text-[12px] text-white/40">
+                    {niche === null
+                      ? activeFocus.blurb
+                      : 'Long-running ads in one product vertical — the buyer, the objection and the proof this market responds to.'}
+                  </p>
+                )
               )}
             </div>
 

@@ -23,7 +23,7 @@ function CopyList({ items, rank, kind }: { items: CopyItem[]; rank: string; kind
     return (
       <EmptyState
         message={`No ${kind} yet.`}
-        hint="Fire a campaign and mark the winners — the copy that performs is collected here automatically."
+        hint="Upload creatives to Meta and sync performance — the hooks, headlines and offers that win are collected here automatically."
       />
     )
   }
@@ -65,12 +65,12 @@ export default function PlaybookPage() {
       <PageHeader
         system="04"
         title="Playbook"
-        subtitle="Everything that has already worked, decoded. The winning copy this business has run — hook, headline, offer — and the reusable strategic patterns behind it. This is the proven material the reactor draws on."
+        subtitle="Everything that has already worked, decoded. The hooks, headlines and offers this brand’s winning creatives carried, and the reusable strategic patterns behind them. This is the proven material the reactor draws on."
         tagline="Engineered For Performance."
       />
 
       {/* ── Winning copy, by role ─────────────────────────────────────── */}
-      <SectionLabel>Winning Copy</SectionLabel>
+      <SectionLabel>Winning Hooks, Headlines &amp; Offers</SectionLabel>
 
       <div className="flex flex-wrap gap-2">
         {['Angle', 'Emotion', 'Belief', 'Desire', 'Objection', 'Offer'].map((d) => (

@@ -2,10 +2,11 @@
 
 **Engineered For Performance.**
 
-A Creative Intelligence Command Center for a performance marketing operator. It
-turns a connected website, uploaded assets, proven ads that are live in the
-market, and measured performance data into the next winning campaign. It answers
-one question:
+A Creative Intelligence Command Center for e-commerce Meta advertising. It
+turns a connected store (its brand and its product catalog), uploaded assets,
+proven ads that are live in the market, and measured performance data into the
+next winning creative — and makes the creative, not the caption. It answers one
+question:
 
 > "What should we create next, based on everything that has already worked?"
 
@@ -22,7 +23,7 @@ Campaign Reactor).
 Think of the platform as three layers:
 
 1. **The Vault (memory)** — everything the account knows: winning ads, hooks,
-   frameworks, member transformations, research, documented learnings. This is
+   frameworks, customer reviews, research, documented learnings. This is
    stored so it can be *searched by meaning*, not just keywords.
 2. **The Orchestrator (the agent / "strategist")** — an AI that, when you fire a
    campaign, goes and *reads* the relevant parts of the Vault, reasons over
@@ -164,11 +165,19 @@ Supabase) it runs the real agent and the telemetry shows its actual searches.
 - ⏭️ **Wire the Vault uploads** to `/api/vault/ingest`, and the dashboards to
   live `knowledge_chunks` counts.
 - ✅ **Performance ingest** (Meta API) auto-populates `campaign_outcomes`:
-  ad-level CTR/CPL/ROAS graded against the account cohort, winners re-ingested
-  into the Vault (`lib/meta-ingest.ts`, `POST /api/meta/ingest`).
-- ✅ **Launch-ready Meta ad units** — every concept ships with a validated
-  `adPackage` (fold-safe primary text, headline/description limits, CTA type);
-  contract in `lib/meta-ads.ts`, enforced at the submit gate.
+  purchase-first — ROAS and cost per purchase against the account's medians
+  once it records purchases, click grading before that — with ads matched back
+  to the uploaded creative by image hash / video id, scoped to the account,
+  winners re-ingested into the Vault (`lib/meta-ingest.ts`, `POST /api/meta/ingest`).
+- ✅ **Creative, not caption** — the per-concept caption package was removed;
+  the creative carries the sale through its on-image text, checked by the
+  on-creative compliance gate before the render (`lib/meta-ads.ts`).
+- ✅ **Upload to Meta** — finished creatives go into the brand's own ad
+  account media library, one or a whole run, from the Launch Bay
+  (`lib/meta-publish.ts`, `POST /api/meta/publish`).
+- ✅ **Product catalog** — Shopify / WooCommerce / schema.org, read from what
+  the store publishes; a product's published facts are the only figures its
+  creative may state (`lib/catalog/`).
 
 ---
 

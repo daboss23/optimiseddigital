@@ -21,7 +21,6 @@ import {
 } from '@/lib/creative-ledger'
 import { briefToVideoPrompt, compileRenderPrompt, type RenderBrand } from '@/lib/render-prompt'
 import { useRenderBrand } from '@/components/reactor/useRenderBrand'
-import type { MetaAdPackage } from '@/lib/meta-ads'
 import {
   isMotionFormat,
   VARIATION_METHOD_LABEL,
@@ -66,8 +65,6 @@ export interface Concept {
   videoUrl?: string
   productionBrief?: ProductionBrief
   neuro?: NeuroScore
-  /** The complete, launch-ready Meta ad unit for this concept. */
-  adPackage?: MetaAdPackage
   /**
    * Variation attribution — which set this concept belongs to, which version it
    * is, and the single lever that separates it from its siblings. Set whenever
@@ -113,6 +110,27 @@ export type CreativeState = {
 
 // A generated still plus which model/provider produced it (for the card chip).
 export type ImageMedia = { url: string; model?: string; provider?: string }
+
+/**
+ * Where one finished creative stands with Meta. Keyed by the creative's own
+ * media URL as well as its concept, so a re-render is a NEW creative that can
+ * be uploaded again, while the same pixels can never be uploaded twice from
+ * two different buttons.
+ */
+export type UploadState = {
+  status: 'uploading' | 'done' | 'error'
+  message?: string
+  /** The name the asset carries in the brand's Meta media library. */
+  assetName?: string
+}
+
+/** What one upload request achieved, for an inline status line. */
+export interface UploadSummary {
+  uploaded: number
+  failed: number
+  /** Present when nothing was attempted, or the whole batch was refused. */
+  message?: string
+}
 
 /** Provider/model that produced the asset currently shown on a concept card. */
 export type MediaMeta = { model?: string; provider?: string; note?: string }
@@ -174,6 +192,13 @@ interface ReactorRunValue {
   imageMetaFor: (c: Concept) => MediaMeta | undefined
   videoFor: (c: Concept) => VideoUiState | undefined
   creativeStateFor: (c: Concept) => CreativeState | undefined
+  /** This creative's Meta upload state, for its current render. */
+  uploadFor: (c: Concept) => UploadState | undefined
+  /**
+   * Upload finished creatives into the brand's Meta media library — one, or a
+   * whole run. Skips anything not yet rendered or already uploaded.
+   */
+  uploadToMeta: (list: Concept[]) => Promise<UploadSummary>
   /** Every finished creative, newest first — survives refresh. */
   ledger: LedgerEntry[]
   removeLedgerEntry: (id: string) => void
@@ -202,6 +227,10 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
   >({})
   // Manually triggered renders, keyed by concept text.
   const [manualVideos, setManualVideos] = useState<Record<string, VideoUiState>>({})
+  // Meta uploads, keyed by concept text + media URL (see UploadState).
+  const [uploads, setUploads] = useState<Record<string, UploadState>>({})
+  const uploadsRef = useRef<Record<string, UploadState>>({})
+  uploadsRef.current = uploads
   // The Creative Ledger — finished work, kept across refreshes. Starts empty so
   // the server and the first client render agree, then hydrates from storage.
   const [ledger, setLedger] = useState<LedgerEntry[]>([])
@@ -500,13 +529,13 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
             // headlines.
             prompt: compileRenderPrompt(
               c.productionBrief,
-              `${c.text}\n\nRender as a premium Meta ad creative — photographic, high contrast, true to the brand's own context, leave room for a text overlay.`,
+              `${c.text}\n\nRender as a premium e-commerce ad creative — the product as the hero, photographic, high contrast, true to the brand's own context, leave room for a text overlay.`,
               {
-                // Floor, not an override: used only when the brief declared no
-                // on-image copy. A wordless still is a stock photo, not an ad.
-                headline: c.adPackage?.headline,
                 // Who the ad is for. Without it the model has no constraint on
-                // WHAT to photograph and invents a subject of its own.
+                // WHAT to photograph and invents a subject of its own. (There is
+                // no headline floor any more: the platform ships no caption to
+                // borrow one from, and the submit gate already refuses a still
+                // whose brief declares no on-image copy.)
                 brand: brandRef.current,
               },
             ).prompt,
@@ -642,7 +671,7 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
             mode: 'image-to-video',
             model: opts.videoModel,
             aspectRatio: opts.aspectRatio,
-            prompt: `Cinematic motion for a builder ad: ${c.text}`,
+            prompt: `Cinematic motion for an e-commerce ad — keep the product in focus and on screen: ${c.text}`,
           }),
         }).then((r) => r.json())
 
@@ -768,6 +797,123 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
   )
   const creativeStateFor = useCallback((c: Concept) => creatives[c.text], [creatives])
 
+  /* ------------------------------ Meta upload ------------------------------ */
+
+  /** The media a concept would upload right now: its clip if one landed, else its still. */
+  const mediaFor = useCallback(
+    (c: Concept): { imageUrl?: string; videoUrl?: string; key: string } | null => {
+      const video = videoFor(c)
+      const videoUrl = video?.status === 'done' ? video.url : undefined
+      const imageUrl = imageFor(c)
+      const url = videoUrl ?? imageUrl
+      if (!url) return null
+      return { imageUrl, videoUrl, key: `${c.text}::${url}` }
+    },
+    [imageFor, videoFor],
+  )
+
+  const uploadFor = useCallback(
+    (c: Concept): UploadState | undefined => {
+      const media = mediaFor(c)
+      return media ? uploads[media.key] : undefined
+    },
+    [mediaFor, uploads],
+  )
+
+  const uploadToMeta = useCallback(
+    async (list: Concept[]): Promise<UploadSummary> => {
+      const items = list
+        .map((c) => ({ c, media: mediaFor(c) }))
+        .filter((x): x is { c: Concept; media: NonNullable<ReturnType<typeof mediaFor>> } => {
+          if (!x.media) return false
+          const prior = uploadsRef.current[x.media.key]
+          return prior?.status !== 'uploading' && prior?.status !== 'done'
+        })
+      if (items.length === 0) {
+        return {
+          uploaded: 0,
+          failed: 0,
+          message: list.some((c) => mediaFor(c))
+            ? 'Every finished creative here is already in your Meta media library.'
+            : 'Nothing to upload yet — the creatives are still rendering.',
+        }
+      }
+
+      setUploads((p) => {
+        const next = { ...p }
+        for (const { media } of items) next[media.key] = { status: 'uploading' }
+        return next
+      })
+
+      const fail = (message: string): UploadSummary => {
+        setUploads((p) => {
+          const next = { ...p }
+          for (const { media } of items) next[media.key] = { status: 'error', message }
+          return next
+        })
+        return { uploaded: 0, failed: items.length, message }
+      }
+
+      try {
+        const res = (await fetch('/api/meta/publish', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items: items.map(({ c, media }) => ({
+              ref: media.key,
+              imageUrl: media.imageUrl,
+              videoUrl: media.videoUrl,
+              name: c.type,
+              conceptType: c.type,
+              conceptText: c.text,
+              angle: runMetaRef.current.angle,
+              // Thread the test attribution: the asset name leads with the RXN
+              // token and the pending outcome carries the asset id, so a graded
+              // ad comes back to the variation it was testing.
+              testId: c.testId,
+              variantId: c.variantId,
+              isolatedAxis: c.isolatedAxis,
+              variationMethod: c.variationMethod,
+              variationLabel: c.variationLabel,
+              taxonomy: c.taxonomy,
+              // The words on the creative — re-checked server-side before upload.
+              productionBrief: c.productionBrief,
+            })),
+          }),
+        }).then((r) => r.json())) as {
+          ok?: boolean
+          error?: string
+          results?: { ref?: string; ok: boolean; error?: string; asset?: { name?: string } }[]
+        }
+
+        if (!res.results) return fail(res.error || 'Meta refused the upload.')
+
+        let uploaded = 0
+        setUploads((p) => {
+          const next = { ...p }
+          for (const r of res.results ?? []) {
+            if (!r.ref) continue
+            next[r.ref] = r.ok
+              ? {
+                  status: 'done',
+                  assetName: r.asset?.name,
+                  message: `In your Meta media library${
+                    r.asset?.name ? ` as “${r.asset.name}”` : ''
+                  } — pick it when you build the ad in Ads Manager.`,
+                }
+              : { status: 'error', message: r.error || 'Meta rejected this creative.' }
+          }
+          return next
+        })
+        uploaded = (res.results ?? []).filter((r) => r.ok).length
+        return { uploaded, failed: (res.results ?? []).length - uploaded }
+      } catch {
+        return fail('Could not reach Meta — try again.')
+      }
+    },
+    [mediaFor],
+  )
+
   /* ------------------------------- The ledger ------------------------------ */
 
   // Hydrate after mount, never during render: localStorage does not exist on
@@ -836,6 +982,8 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
       imageMetaFor,
       videoFor,
       creativeStateFor,
+      uploadFor,
+      uploadToMeta,
       ledger,
       removeLedgerEntry,
       clearLedgerEntries,
@@ -856,6 +1004,8 @@ export function ReactorRunProvider({ children }: { children: ReactNode }) {
       imageMetaFor,
       videoFor,
       creativeStateFor,
+      uploadFor,
+      uploadToMeta,
       ledger,
       removeLedgerEntry,
       clearLedgerEntries,

@@ -405,7 +405,7 @@ const SYSTEMS: { value: KnowledgeSystem; label: string }[] = [
   { value: 'copy', label: 'Copy · Hook / Headline' },
   { value: 'creative', label: 'Creative' },
   { value: 'design', label: 'Ad Design DNA' },
-  { value: 'transformation', label: 'Client Win' },
+  { value: 'transformation', label: 'Customer Reviews' },
   { value: 'research', label: 'Research' },
   { value: 'pattern', label: 'Pattern' },
   { value: 'learning', label: 'Learning' },
@@ -814,7 +814,7 @@ export function VaultManager({ initialStats }: { initialStats: Stats }) {
               onChange={(e) => setContent(e.target.value)}
               placeholder={
                 sourceMode === 'text'
-                  ? 'Paste the full framework, hook, SOP, transcript, or member story here…'
+                  ? 'Paste the full framework, hook, SOP, product spec, or customer reviews here…'
                   : 'Pulled content appears here for review — edit before ingesting if you like…'
               }
               rows={6}
@@ -881,7 +881,7 @@ export function VaultManager({ initialStats }: { initialStats: Stats }) {
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search hooks, frameworks, member wins…"
+                placeholder="Search hooks, frameworks, reviews…"
                 className={`${inputCls} pl-9`}
               />
             </div>

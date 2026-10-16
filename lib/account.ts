@@ -24,6 +24,9 @@
 import { cookies } from 'next/headers'
 import { expectedCredentials, readSessionToken, SESSION_COOKIE, verifyPassword } from '@/lib/auth'
 import { getSupabaseAdmin, supabaseUrl } from '@/lib/supabase'
+import { hasUsers } from '@/lib/tenancy-mode'
+
+export { hasUsers }
 
 /** A resolved tenant. Opaque on purpose — callers pass it, they don't parse it. */
 export type AccountId = string
@@ -225,20 +228,6 @@ export async function resolveOperatorAccount(name: string): Promise<AccountId | 
     // the scan runs and is held in memory rather than written to the Vault.
     console.error('Operator account resolution failed:', err)
     return null
-  }
-}
-
-/** True when this deployment has real user accounts (the SaaS path is live). */
-export async function hasUsers(): Promise<boolean> {
-  if (!ready()) return false
-  try {
-    const { count, error } = await getSupabaseAdmin()
-      .from('users')
-      .select('id', { count: 'exact', head: true })
-    if (error) throw error
-    return (count ?? 0) > 0
-  } catch {
-    return false
   }
 }
 

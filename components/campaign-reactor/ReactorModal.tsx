@@ -17,7 +17,9 @@ import {
   ImageIcon,
   Loader2,
   Megaphone,
+  Package,
   Radio,
+  Search,
   ShieldCheck,
   SlidersHorizontal,
   Smartphone,
@@ -29,6 +31,8 @@ import {
 } from 'lucide-react'
 import { FaceLibrary } from '@/components/reactor/FaceLibrary'
 import { type AngleEvidence, type CreativeSize } from '@/lib/reactor-inputs'
+import { discountPercent, formatPrice } from '@/lib/catalog/parse'
+import type { CatalogProductSummary } from '@/lib/catalog/types'
 import {
   OPENMONTAGE_BADGE,
   isMontageDeliverable,
@@ -52,7 +56,7 @@ import {
 // The launch sequence — six bold steps, each a moment, not a form field. `orb`
 // is the short label under the stepper node; `label` titles the step.
 const STEPS = [
-  { orb: 'Brief', label: 'The Brief', sub: 'Name it, set the offer and direction, and pick what to build.' },
+  { orb: 'Brief', label: 'The Brief', sub: 'Pick the product, set the offer and direction, and choose what to build.' },
   { orb: 'Formats', label: 'Formats & Sizes', sub: 'Choose the render model and dimensions for each creative.' },
   { orb: 'Audience', label: 'Audience & Market', sub: 'Who you are speaking to — and how sophisticated the market is.' },
   { orb: 'Feed', label: 'Performance Feed', sub: 'Plug live Meta ad performance into this run.' },
@@ -99,7 +103,15 @@ export interface StrategicField {
 // state and is threaded through here so the manual controls keep their existing
 // recommendation wiring.
 export interface ReactorForm {
-  // Step 1 — campaign name, brief, deliverables
+  // Step 1 — the product, campaign name, brief, deliverables
+  // The product this campaign sells, from the store's own catalog. Null means
+  // the whole brand. Only the id travels to the server, which re-reads the
+  // product's facts from the account's catalog itself.
+  products: CatalogProductSummary[]
+  productCurrency: string | null
+  productId: string | null
+  setProductId: (id: string | null) => void
+  catalogState: 'loading' | 'ready' | 'empty'
   campaignName: string
   setCampaignName: (v: string) => void
   brief: string
@@ -361,18 +373,119 @@ function StrategicSelect({ field }: { field: StrategicField }) {
   )
 }
 
+/**
+ * The product picker — the first decision in the brief, because an e-commerce
+ * ad is an ad for a PRODUCT. Picking one hands the run that product's real
+ * photo, price, sale price and rating; "Whole brand" runs on the range.
+ */
+function ProductPicker({ form }: { form: ReactorForm }) {
+  const [query, setQuery] = useState('')
+  const list = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    const all = form.products
+    return q ? all.filter((p) => `${p.title} ${p.productType ?? ''}`.toLowerCase().includes(q)) : all
+  }, [form.products, query])
+
+  if (form.catalogState === 'loading') {
+    return (
+      <p className="flex items-center gap-2 text-sm text-white/50">
+        <Loader2 size={14} className="animate-spin text-glow" /> Reading your catalog…
+      </p>
+    )
+  }
+  if (form.catalogState === 'empty') {
+    return (
+      <p className="rounded-xl border border-white/10 bg-white/[0.02] p-3 text-sm leading-relaxed text-white/60">
+        No products read yet. Open <span className="font-semibold text-white/80">Brand Intelligence</span> and read
+        your store — the Reactor then builds every creative from your real products, prices and reviews. This
+        run will work from the brief alone.
+      </p>
+    )
+  }
+
+  const chip = (selected: boolean) =>
+    `flex min-w-0 items-center gap-2.5 rounded-xl border p-2 text-left transition-colors ${
+      selected ? 'border-glow/60 bg-glow/10' : 'border-white/10 bg-white/[0.02] hover:border-white/25'
+    }`
+
+  return (
+    <div className="space-y-2.5">
+      {form.products.length > 8 && (
+        <label className="relative block max-w-xs">
+          <Search size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-white/35" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Find a product"
+            className="launch-input py-2 pl-8 pr-3 text-[13px]"
+          />
+        </label>
+      )}
+      <div className="grid max-h-56 grid-cols-1 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={() => form.setProductId(null)}
+          aria-pressed={form.productId === null}
+          className={chip(form.productId === null)}
+        >
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-white/[0.05] text-white/50">
+            <Package size={16} />
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate text-[13px] font-semibold text-white/85">Whole brand</span>
+            <span className="block truncate text-[11px] text-white/45">The range, not one product</span>
+          </span>
+        </button>
+        {list.slice(0, 40).map((p) => {
+          const off = discountPercent(p)
+          const cur = p.currency ?? form.productCurrency
+          return (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => form.setProductId(p.id)}
+              aria-pressed={form.productId === p.id}
+              className={chip(form.productId === p.id)}
+            >
+              {p.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={p.imageUrl} alt="" loading="lazy" className="h-10 w-10 shrink-0 rounded-lg object-cover" />
+              ) : (
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-white/[0.05] text-white/40">
+                  <Package size={15} />
+                </span>
+              )}
+              <span className="min-w-0">
+                <span className="block truncate text-[13px] font-semibold text-white/85">{p.title}</span>
+                <span className="block truncate text-[11px] text-white/50">
+                  {formatPrice(p.price, cur)}
+                  {off !== null ? ` · ${off}% off` : ''}
+                  {p.available === false ? ' · sold out' : ''}
+                </span>
+              </span>
+            </button>
+          )
+        })}
+      </div>
+      {list.length > 40 && (
+        <p className="text-[11px] text-white/40">Showing 40 of {list.length} — search to find the rest.</p>
+      )}
+    </div>
+  )
+}
+
 // Icon + one-line blurb for each creative deliverable.
 function deliverableMeta(label: string) {
   const l = label.toLowerCase()
   if (l.includes('ugc'))
-    return { Icon: Smartphone, blurb: 'Creator-style, phone-shot talking-head ads that feel native.' }
+    return { Icon: Smartphone, blurb: 'Creator-style unboxings, reviews and try-ons that feel native.' }
   if (l.includes('carousel'))
-    return { Icon: GalleryHorizontalEnd, blurb: 'Multi-card swipe ads — proof, steps, or a story arc.' }
+    return { Icon: GalleryHorizontalEnd, blurb: 'Multi-card swipe ads — product range, bundle contents, or reasons why.' }
   if (l.includes('montage') || l.includes('scene'))
     return { Icon: Film, blurb: 'A multi-scene sequence — hook, proof, payoff — shaped in the Creative Canvas.' }
   if (l.includes('video'))
-    return { Icon: Clapperboard, blurb: 'Founder VSLs, testimonials & cinematic on-site B-roll.' }
-  return { Icon: ImageIcon, blurb: 'Proof statics, founder photos & concept stills.' }
+    return { Icon: Clapperboard, blurb: 'Product demos, founder stories & cinematic product B-roll.' }
+  return { Icon: ImageIcon, blurb: 'Product-hero, review-wall and comparison statics.' }
 }
 
 /**
@@ -886,6 +999,19 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
         >
           {step === 1 && (
             <div className="animate-fade-up space-y-6">
+              <div>
+                <SectionLabel>
+                  <span className="inline-flex items-center gap-1.5">
+                    <Package size={16} /> Product
+                  </span>
+                </SectionLabel>
+                <p className="-mt-1 mb-2.5 text-sm text-white/60">
+                  What this campaign sells. The Reactor builds from its real photo, price and reviews —
+                  never figures it made up.
+                </p>
+                <ProductPicker form={form} />
+              </div>
+
               {/* Campaign Name and Offer Name sit on one line because they are
                   the two names in play and were being confused for each other.
                   The distinction is WHO READS THEM: the campaign name is
@@ -901,7 +1027,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                   <input
                     value={form.campaignName}
                     onChange={(e) => form.setCampaignName(e.target.value)}
-                    placeholder={`e.g. "Q3 Cold Traffic — Automation"`}
+                    placeholder={`e.g. "Spring launch — cold traffic"`}
                     className="launch-input px-4 py-3.5 text-[15px]"
                   />
                   <p className="mt-2 text-xs leading-relaxed text-white/55">
@@ -917,7 +1043,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                   <input
                     value={form.offerName}
                     onChange={(e) => form.setOfferName(e.target.value)}
-                    placeholder={`e.g. "AI Automation Masterclass"`}
+                    placeholder={`e.g. "The Starter Bundle"`}
                     className="launch-input px-4 py-3.5 text-[15px]"
                   />
                 </div>
@@ -926,8 +1052,8 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
               <div>
                 <SectionLabel thinking={form.suggesting}>Campaign Offer</SectionLabel>
                 <p className="-mt-1 mb-2.5 text-sm text-white/60">
-                  The TYPE of offer, not its name — it sets the friction, the proof burden and the
-                  CTA frame the concepts are written to.
+                  The DEAL, not its name — it sets what the creative has to show, how much margin it
+                  gives away, and the urgency it can honestly claim.
                 </p>
                 <StrategicSelect field={form.offerField} />
               </div>
@@ -941,7 +1067,7 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
                 <textarea
                   value={form.brief}
                   onChange={(e) => form.setBrief(e.target.value)}
-                  placeholder={`e.g. "Cold traffic. Owner-led businesses doing $1M–$5M who are still doing the work manually. Lead with a named client result and the time it took. Sell the shift in how they operate, not the tool. No hype, no countdown timers."`}
+                  placeholder={`e.g. "Cold traffic. Busy parents who have tried the cheap version and given up. Lead with what customers say in their reviews — it replaced three products. Show it in use, not on a pedestal. No fake countdowns."`}
                   className="launch-input h-28 resize-none px-4 py-3.5 text-[15px] leading-relaxed"
                 />
               </div>
@@ -949,8 +1075,8 @@ export function ReactorModal({ open, onClose, onFire, form }: ReactorModalProps)
               <div>
                 <SectionLabel thinking={form.suggesting}>Creative Deliverables</SectionLabel>
                 <p className="-mt-1 mb-3 text-sm text-white/60">
-                  Pick one or all — you’ll set sizes for each next. Copy is written into every
-                  concept.
+                  Pick one or all — you’ll set sizes for each next. The words go on the creative
+                  itself; the caption is yours to write in Ads Manager.
                 </p>
                 <div className="grid grid-cols-2 gap-3">
                   {form.outputTypeList.map((o) => {
@@ -1424,12 +1550,26 @@ function QuickLaunch({
             </p>
           </div>
 
+          {/* One line plus ONE product is still a quick launch — and it is the
+              difference between an ad for this store and an ad for the
+              category. Shown only once the catalog has been read. */}
+          {form.catalogState === 'ready' && (
+            <div>
+              <SectionLabel>
+                <span className="inline-flex items-center gap-1.5">
+                  <Package size={16} /> Product
+                </span>
+              </SectionLabel>
+              <ProductPicker form={form} />
+            </div>
+          )}
+
           <div>
             <SectionLabel thinking={form.suggesting}>Your Campaign</SectionLabel>
             <textarea
               value={form.brief}
               onChange={(e) => form.setBrief(e.target.value)}
-              placeholder={`e.g. "A founder video for owner-led businesses doing $1M–$5M who are still doing the work manually. Lead with a named client who got 15 hours a week back. Drive masterclass registrations."`}
+              placeholder={`e.g. "Statics for our best-seller aimed at cold traffic. Lead with the reviews — customers keep saying it replaced three products. Push the starter bundle; free shipping over $50."`}
               className="launch-input h-32 resize-none px-4 py-3.5 text-[15px] leading-relaxed"
             />
           </div>

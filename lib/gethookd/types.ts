@@ -51,6 +51,13 @@ export interface ProvenAd {
 export interface ProvenAdQuery {
   query?: string
   focus?: IcpFocus
+  /**
+   * Explicit niche ids — the brand's OWN vertical, read off its catalog
+   * (`inferNiches` in lib/catalog). Takes precedence over the focus's niche
+   * set, so a store selling one category studies that category rather than
+   * every DTC vertical at once. Ignored by a `library`-scoped search.
+   */
+  niches?: number[]
   format?: AdFormat | 'all'
   /** Minimum performance tier to return. */
   tier?: 'winning' | 'proven' | 'all'

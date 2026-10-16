@@ -112,14 +112,17 @@ function asStrings(v: unknown): string[] {
  * `live: false`, which the dashboard renders as an honest empty state rather
  * than as curated placeholder copy.
  */
-export async function liveNovaIntel(): Promise<LiveNovaIntel> {
-  if (!configured()) return emptyNovaIntel()
+export async function liveNovaIntel(accountId: string | null): Promise<LiveNovaIntel> {
+  // One account's research. Unscoped, a brand's Research page summarised every
+  // brand's market reads — their sources, pains and desires — as its own.
+  if (!configured() || !accountId) return emptyNovaIntel()
 
   let rows: ChunkRow[]
   try {
     const { data, error } = await getSupabaseAdmin()
       .from('knowledge_chunks')
       .select('created_at, metadata')
+      .eq('builder_id', accountId)
       .in('system', ['research', 'transformation'])
       .order('created_at', { ascending: false })
       .limit(SCAN_LIMIT)

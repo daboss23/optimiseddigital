@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { searchProvenAds, gethookdConfigured, isIcpFocus, CRAFT_ARCHETYPES } from '@/lib/gethookd'
+import { isEcommerceNiche } from '@/lib/gethookd/icp'
 import type { AdFormat, ProvenAd, ProvenAdQuery, ProvenAdResult } from '@/lib/gethookd'
 
 export const runtime = 'nodejs'
@@ -22,7 +23,8 @@ export const dynamic = 'force-dynamic'
  * Never throws. An empty feed always carries a `note` saying why, so the
  * paste-to-clone path stays the obvious next move.
  *
- * Query: q, focus (services|ecommerce|all), format, tier, geo, limit, page,
+ * Query: q, focus (ecommerce|services|marketing|all), niche (one e-commerce
+ * vertical id), format, tier, geo, limit, page,
  * pool (market|craft), sort (longest|newest).
  *
  * POOL is the split the automatic research layer already runs on, brought to
@@ -173,6 +175,10 @@ export async function GET(req: Request) {
   const geo = (searchParams.get('geo') ?? '').trim()
   const craft = (searchParams.get('pool') ?? 'market') === 'craft'
   const sort = searchParams.get('sort') === 'newest' ? ('newest' as const) : ('longest' as const)
+  // One e-commerce vertical — the brand's own, or one the operator picked.
+  // Anything that is not an e-commerce niche id is ignored, never forwarded.
+  const rawNiche = Number(searchParams.get('niche'))
+  const niches = isEcommerceNiche(rawNiche) ? [rawNiche] : undefined
 
   if (!gethookdConfigured()) {
     const country = (geo.split(',')[0] || 'AU').trim().toUpperCase()
@@ -182,6 +188,7 @@ export async function GET(req: Request) {
   const result = await searchProvenAds({
     query: q,
     focus: isIcpFocus(rawFocus) ? rawFocus : 'all',
+    niches,
     format: isFormat(rawFormat) ? rawFormat : 'all',
     tier: isTier(rawTier) ? rawTier : 'all',
     geo: geo || undefined,

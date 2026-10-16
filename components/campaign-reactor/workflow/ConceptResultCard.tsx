@@ -1,6 +1,5 @@
 'use client'
 
-import { useState } from 'react'
 import {
   Activity,
   AlertTriangle,
@@ -12,13 +11,13 @@ import {
   Hexagon,
   ImageIcon,
   Loader2,
-  Rocket,
+  UploadCloud,
   Users,
   Wand2,
   Workflow,
 } from 'lucide-react'
 import { Pill } from '@/components/reactor/ui'
-import { validateAdPackage, type AdComplianceIssue } from '@/lib/meta-ads'
+import { validateCreativeCopy, type CreativeComplianceIssue } from '@/lib/meta-ads'
 import { modelDisplayName } from '@/lib/model-menu'
 import { VARIATION_METHOD_LABEL } from '@/lib/variations'
 import { NEURO_AXES, NEURO_PASS_MARK, type NeuroScore } from '@/lib/reactor-inputs'
@@ -26,6 +25,7 @@ import type {
   Concept,
   CreativeState,
   MediaMeta,
+  UploadState,
   VideoUiState,
 } from '@/components/campaign-reactor/ReactorRunContext'
 
@@ -62,12 +62,12 @@ function NeuroBar({ label, value }: { label: string; value: number }) {
   )
 }
 
-// Meta ad-unit compliance. Errors block launch (Meta truncates the copy, or a
-// banned phrase is present); warnings are cosmetic. The orchestrator normally
-// revises failures before they ship, but a time-constrained run skips that pass
-// — so the card states plainly what is wrong rather than letting a broken unit
-// look launch-ready.
-function CompliancePanel({ issues }: { issues: AdComplianceIssue[] }) {
+// On-creative compliance. Errors block the upload (a claim Meta rejects is
+// burned into the pixels); warnings are claims that are legal only when true.
+// The orchestrator normally revises failures before they ship, but a
+// time-constrained run skips that pass — so the card states plainly what is
+// wrong rather than letting a rejected creative look ready to upload.
+function CompliancePanel({ issues }: { issues: CreativeComplianceIssue[] }) {
   if (issues.length === 0) return null
   const errors = issues.filter((i) => i.severity === 'error')
   const warnings = issues.filter((i) => i.severity === 'warning')
@@ -86,8 +86,8 @@ function CompliancePanel({ issues }: { issues: AdComplianceIssue[] }) {
           }`}
         >
           {blocking
-            ? `Not launch-ready · ${errors.length} issue${errors.length === 1 ? '' : 's'}`
-            : `${warnings.length} warning${warnings.length === 1 ? '' : 's'}`}
+            ? `Not uploadable · ${errors.length} claim${errors.length === 1 ? '' : 's'} Meta rejects`
+            : `${warnings.length} claim${warnings.length === 1 ? '' : 's'} to verify`}
         </span>
       </div>
       <ul className="mt-1.5 space-y-1">
@@ -95,7 +95,9 @@ function CompliancePanel({ issues }: { issues: AdComplianceIssue[] }) {
           <li key={`${issue.field}-${i}`} className="flex gap-1.5 text-[11px] leading-relaxed text-white/70">
             <span className="text-white/30">·</span>
             <span>
-              <span className="uppercase tracking-wide text-white/40">{issue.field}</span>{' '}
+              <span className="uppercase tracking-wide text-white/40">
+                {issue.field === 'onImageText' ? 'On the creative' : 'Script'}
+              </span>{' '}
               {issue.message}
             </span>
           </li>
@@ -103,7 +105,7 @@ function CompliancePanel({ issues }: { issues: AdComplianceIssue[] }) {
       </ul>
       {blocking && (
         <p className="mt-1.5 text-[10px] text-white/40">
-          Fix in Studio before pushing — Meta will cut or reject this as written.
+          Regenerate this concept before uploading — Meta will reject the words on it as written.
         </p>
       )}
     </div>
@@ -144,10 +146,11 @@ function NeuroPanel({ neuro }: { neuro: NeuroScore }) {
 
 /**
  * A single generated concept — the finished creative first, then the concept
- * line and the collapsed strategy detail. The ad copy itself is edited in the
- * Studio ("Configure in Studio"), and outcomes are graded by the live Meta
- * performance ingest once the ad has actually run — so neither an ad-unit
- * readout nor a manual outcome logger lives on the card.
+ * line and the collapsed strategy detail. The platform makes the creative, not
+ * the caption, so there is no copy to edit here: the card renders the ad,
+ * checks the words burned into it, and uploads it to the brand's Meta media
+ * library. Outcomes are graded by the live Meta performance ingest once the ad
+ * has actually run.
  */
 export function ConceptResultCard({
   concept: c,
@@ -166,7 +169,8 @@ export function ConceptResultCard({
   onGenerateUGC,
   onConfigureInStudio,
   onLaunchCanvas,
-  onPushToMeta,
+  upload,
+  onUpload,
 }: {
   concept: Concept
   index: number
@@ -184,23 +188,18 @@ export function ConceptResultCard({
   onGenerateUGC: () => void
   onConfigureInStudio: () => void
   onLaunchCanvas: () => void
-  onPushToMeta: () => Promise<{ ok: boolean; message: string }>
+  /** This creative's Meta upload state, for its current render. */
+  upload?: UploadState
+  onUpload: () => void
 }) {
   const creativeBusy = creativeState?.status === 'working' || video?.status === 'rendering'
   const hasCreative = Boolean(image || (video?.status === 'done' && video.url))
-  // Validated client-side on every render, so an ad unit that skipped the
-  // orchestrator's revision pass still cannot present itself as launch-ready.
-  const complianceIssues = validateAdPackage(c.adPackage)
-  const blocksLaunch = complianceIssues.some((i) => i.severity === 'error')
-  const [push, setPush] = useState<{ status: 'idle' | 'pushing' | 'done' | 'error'; message?: string }>({
-    status: 'idle',
-  })
-
-  const handlePush = async () => {
-    setPush({ status: 'pushing' })
-    const res = await onPushToMeta()
-    setPush({ status: res.ok ? 'done' : 'error', message: res.message })
-  }
+  // Validated client-side on every render, so a creative that skipped the
+  // orchestrator's revision pass still cannot present itself as uploadable.
+  const complianceIssues = validateCreativeCopy(c)
+  const blocksUpload = complianceIssues.some((i) => i.severity === 'error')
+  const uploading = upload?.status === 'uploading'
+  const uploaded = upload?.status === 'done'
 
   return (
     <div
@@ -281,17 +280,17 @@ export function ConceptResultCard({
         <div className="group/creative relative mt-2">
           <ProviderChip model={imageMeta?.model} provider={imageMeta?.provider} />
           {/* The ad itself is the shortcut: clicking the creative opens it in
-              the Studio with this exact render already loaded as the ad image. */}
+              the Launch Bay with this exact render already loaded. */}
           <button
             type="button"
             onClick={onConfigureInStudio}
-            title="Open this creative in the Studio"
+            title="Open this creative in the Launch Bay"
             className="block w-full overflow-hidden rounded-lg border border-border transition-colors hover:border-glow/50 focus:outline-none focus-visible:border-glow"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={image} alt={c.type} className="w-full" />
             <span className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-center gap-1.5 bg-gradient-to-t from-black/85 to-transparent px-3 pb-3 pt-8 text-[12px] font-semibold text-white opacity-0 transition-opacity group-hover/creative:opacity-100">
-              <Wand2 size={12} /> Open in Studio
+              <Wand2 size={12} /> Open in Launch Bay
             </span>
           </button>
         </div>
@@ -351,15 +350,16 @@ export function ConceptResultCard({
       )}
 
       {/* Advance the creative down the production line: shape it in the Canvas,
-          finish it in the Studio, or push the ready ad unit straight to Meta. */}
-      {(hasCreative || c.adPackage) && (
+          check it in the Launch Bay, or upload the finished render straight to
+          the brand's Meta media library. */}
+      {(hasCreative || c.productionBrief) && (
         <div className="mt-3 space-y-2">
           <button
             type="button"
             onClick={onConfigureInStudio}
             className="fire-btn fire-btn--sm inline-flex w-full items-center justify-center gap-2 font-display font-bold uppercase tracking-[0.14em] text-white"
           >
-            <Wand2 size={14} /> Configure in Studio
+            <Wand2 size={14} /> Open in Launch Bay
           </button>
           <div className="grid grid-cols-2 gap-2">
             <button
@@ -371,42 +371,41 @@ export function ConceptResultCard({
             </button>
             <button
               type="button"
-              onClick={handlePush}
-              disabled={
-                !c.adPackage || blocksLaunch || push.status === 'pushing' || push.status === 'done'
-              }
+              onClick={onUpload}
+              disabled={!hasCreative || blocksUpload || uploading || uploaded}
               className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-white/12 bg-white/[0.03] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-white/70 transition-colors hover:border-primary/40 hover:text-primary disabled:opacity-50 disabled:hover:border-white/12 disabled:hover:text-white/70"
               title={
-                !c.adPackage
-                  ? 'No ad package on this concept'
-                  : blocksLaunch
-                    ? 'This ad unit is not launch-ready — fix the compliance issues in Studio first'
-                    : 'Push this ad unit to your Meta creative library'
+                !hasCreative
+                  ? 'Upload unlocks once the creative has rendered'
+                  : blocksUpload
+                    ? 'This creative carries a claim Meta rejects — regenerate it first'
+                    : 'Upload this creative to your Meta media library'
               }
             >
-              {push.status === 'pushing' ? (
+              {uploading ? (
                 <Loader2 size={13} className="animate-spin" />
-              ) : push.status === 'done' ? (
+              ) : uploaded ? (
                 <Check size={13} />
               ) : (
-                <Rocket size={13} />
+                <UploadCloud size={13} />
               )}
-              {push.status === 'done' ? 'Pushed' : 'Push to Meta'}
+              {uploaded ? 'In Meta' : 'Upload to Meta'}
             </button>
           </div>
-          {push.status !== 'idle' && push.status !== 'pushing' && push.message && (
+          {upload && upload.status !== 'uploading' && upload.message && (
             <p
               className={`rounded-lg border p-2 text-[11px] ${
-                push.status === 'done'
+                upload.status === 'done'
                   ? 'border-success/30 bg-success/[0.06] text-success'
                   : 'border-warning/30 bg-warning/[0.06] text-warning'
               }`}
             >
-              {push.message}
+              {upload.message}
             </p>
           )}
           <p className="text-center text-[10px] text-white/30">
-            Push skips the Studio pre-test — finish in Studio first for a NEURO check before spend.
+            Upload skips the Launch Bay pre-test — open it there first to check the spelling and the
+            product read before spend.
           </p>
         </div>
       )}

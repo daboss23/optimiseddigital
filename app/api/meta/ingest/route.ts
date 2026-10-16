@@ -5,10 +5,12 @@ import { currentAccount, requireAccount } from '@/lib/account'
 export const runtime = 'nodejs'
 export const maxDuration = 120
 
-// Performance Intelligence ingest — pulls live ad-level CTR/CPL/ROAS from the
-// Meta Marketing API, grades every ad against its account cohort, and logs the
-// verdicts into ORACLE memory (campaign_outcomes). Winners re-ingest into the
-// Vault automatically. GET reports readiness; POST runs a sync.
+// Performance Intelligence ingest — pulls live ad-level performance from the
+// Meta Marketing API, grades every ad against its account cohort (purchases
+// first: ROAS and cost per purchase), traces ads back to the creatives uploaded
+// from the platform, and logs the verdicts into this account's ORACLE memory
+// (campaign_outcomes). Winners re-ingest into the Vault automatically. GET
+// reports readiness; POST runs a sync.
 
 export async function GET() {
   const status = await metaIngestStatus(await currentAccount())

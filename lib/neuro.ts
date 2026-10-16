@@ -27,9 +27,11 @@ import { currentAccount } from '@/lib/account'
 interface ScorableConcept {
   type: string
   text: string
-  productionBrief?: { frames?: { label: string; description: string }[] }
-  /** The launch-ready Meta ad unit — its opening is what the feed actually shows. */
-  adPackage?: { primaryText?: string; headline?: string }
+  productionBrief?: {
+    frames?: { label: string; description: string }[]
+    /** The words burned into the creative — with no caption behind it, this IS the opening. */
+    onImageText?: { role?: string; text?: string }[]
+  }
 }
 
 /** Concept fails the pre-test when its scroll-stop or hook is weak. */
@@ -133,11 +135,13 @@ function conceptLine(c: ScorableConcept, i: number): string {
   const frames = c.productionBrief?.frames?.length
     ? ` | First beat: ${c.productionBrief.frames[0].description}`
     : ''
-  // The ad's real opening — the first ~125 chars a scroller actually sees
-  // before Meta's "See more" fold. Grade what ships, not just the concept.
-  const opening = c.adPackage?.primaryText
-    ? ` | Ad opening (pre-fold): ${c.adPackage.primaryText.slice(0, 125)}`
-    : ''
+  // The words a scroller actually reads on the creative. The platform ships
+  // no caption, so the on-image headline and offer ARE the opening — grade
+  // what ships, not just the concept.
+  const words = (c.productionBrief?.onImageText ?? [])
+    .map((t) => t?.text?.trim())
+    .filter(Boolean)
+  const opening = words.length ? ` | On the creative: "${words.join('" / "')}"` : ''
   return `${i}. [${c.type}] ${c.text}${opening}${frames}`
 }
 
@@ -190,6 +194,151 @@ ${list}`
     return concepts.map((_, i) => (arr[i] ? normalize(arr[i]) : neutralScore()))
   } catch {
     return concepts.map(() => neutralScore())
+  }
+}
+
+/* ------------------------- Pre-test on the pixels -------------------------- */
+
+/**
+ * What the finished creative actually shows, read off its pixels — the checks
+ * a media buyer makes before an upload, done before the spend instead of after.
+ */
+export interface CreativeQc {
+  /** Every word visible on the creative, transcribed as rendered. */
+  readText: string
+  /**
+   * Whether each intended on-image line appears on the creative exactly as
+   * written. Compared in code, not judged by the model — a misspelled
+   * headline is the single most common way an AI-rendered ad ships broken.
+   * Null when the creative was meant to carry no words.
+   */
+  textMatches: boolean | null
+  /** The intended lines that did NOT come back off the pixels intact. */
+  missingText: string[]
+  /** The product is clearly visible and identifiable at thumb size. */
+  productVisible: boolean
+  /** One line the operator can act on. */
+  note: string
+}
+
+export interface CreativePretest {
+  neuro: NeuroScore
+  qc: CreativeQc
+}
+
+/** Case, punctuation and whitespace stripped — what "spelled the same" means here. */
+function normaliseText(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[’‘]/g, "'")
+    .replace(/[^a-z0-9%$£€'\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
+ * Which intended lines are not on the creative as written. Pure, so the
+ * selftest can pin it: the model only transcribes, the verdict is computed.
+ */
+export function missingOnImageText(intended: string[], readText: string): string[] {
+  const read = normaliseText(readText)
+  return intended
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .filter((t) => !read.includes(normaliseText(t)))
+}
+
+/**
+ * NEURO, pointed at the RENDER rather than the plan.
+ *
+ * The in-run pre-test scores the concept before a pixel exists. This one
+ * reads the finished creative — what a scroller will actually see — and adds
+ * the two checks that decide whether an e-commerce ad is uploadable at all:
+ * is every word on it spelled the way it was written, and can you see the
+ * product. Never throws: returns null on any failure so the caller can fall
+ * back to the plan-based score.
+ */
+export async function pretestCreative(
+  anthropic: Anthropic,
+  model: string,
+  input: {
+    type: string
+    text: string
+    /** The render to read: base64 when the caller fetched it, else a public URL. */
+    image: { mediaType: string; data: string } | { url: string }
+    /** The words the brief asked the renderer to set. */
+    onImageText: string[]
+  },
+  principles: string,
+): Promise<CreativePretest | null> {
+  const brand = tenantShortName(await getTenant(await currentAccount()))
+  const system = `You are NEURO, the Predicted Response layer of ${brand}'s Creative Intelligence Command Center. You are pre-testing a FINISHED e-commerce ad creative before any money is spent on it: estimate how a person scrolling a Meta feed on a phone is likely to react to exactly these pixels, using established neuromarketing principles. This is an ESTIMATE, not measured brain data — be calibrated and honest, not flattering.
+
+${principles}
+
+Score four axes, 1-10:
+- attention: does it stop the scroll at thumb size (salience, contrast, pattern-interrupt).
+- emotion: does it make the viewer feel something.
+- memorability: will the product and the one idea be remembered an hour later.
+- hook: does the first glance earn the second.
+
+Then read the creative like a media buyer:
+- readText: transcribe EVERY word visible on the creative exactly as rendered — including misspellings, broken letters and stray glyphs. Do not correct anything. Empty string if there is no text.
+- productVisible: true only if the product itself is clearly visible and identifiable at thumb size.
+- note: one sentence (max 20 words) the operator can act on.
+
+Be discriminating: 9-10 is rare, 4-5 is generic.`
+
+  const imageBlock =
+    'url' in input.image
+      ? { type: 'image' as const, source: { type: 'url' as const, url: input.image.url } }
+      : {
+          type: 'image' as const,
+          source: {
+            type: 'base64' as const,
+            media_type: input.image.mediaType as 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif',
+            data: input.image.data,
+          },
+        }
+
+  try {
+    const res = await anthropic.messages.create({
+      model,
+      max_tokens: 900,
+      system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
+      messages: [
+        {
+          role: 'user',
+          content: [
+            imageBlock,
+            {
+              type: 'text',
+              text: `Creative type: ${input.type}\nConcept: ${input.text}\n\nReturn ONLY JSON: {"attention":n,"emotion":n,"memorability":n,"hook":n,"reason":"...","principle":"...","readText":"...","productVisible":true|false,"note":"..."}`,
+            },
+          ],
+        },
+      ],
+    })
+    const block = res.content.find((b): b is Anthropic.TextBlock => b.type === 'text')
+    const raw = parseModelJson<
+      Partial<NeuroScore> & { readText?: unknown; productVisible?: unknown; note?: unknown }
+    >(block?.text ?? '{}')
+    if (!raw || typeof raw !== 'object') return null
+    const readText = typeof raw.readText === 'string' ? raw.readText.trim() : ''
+    const intended = input.onImageText.map((t) => t.trim()).filter(Boolean)
+    const missingText = intended.length ? missingOnImageText(intended, readText) : []
+    return {
+      neuro: normalize(raw),
+      qc: {
+        readText,
+        textMatches: intended.length ? missingText.length === 0 : null,
+        missingText,
+        productVisible: raw.productVisible === true,
+        note: typeof raw.note === 'string' && raw.note.trim() ? raw.note.trim() : 'Read complete.',
+      },
+    }
+  } catch {
+    return null
   }
 }
 

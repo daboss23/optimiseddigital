@@ -17,6 +17,7 @@
 //     five blank profiles means the key is missing, not that the site was
 //     unreadable.
 
+import { isMultiTenant } from '@/lib/tenancy-mode'
 import { createHash } from 'crypto'
 import Anthropic from '@anthropic-ai/sdk'
 import { ingestKnowledge } from '@/lib/knowledge'
@@ -1777,7 +1778,11 @@ export async function getConnectedWebsite(
   // the copy, in the render prompt, and in the shell's own logo. The one thing
   // such a session may see is the scan it ran itself, which was never written
   // to any account precisely because there was no account to write it to.
-  if (!accountId) return lastUnpersistedScan
+  //
+  // Module memory is shared by every request an instance serves, so "the scan
+  // it ran itself" only holds on a single-brand deployment. On a shared one an
+  // account-less session sees nothing — never another visitor's scan.
+  if (!accountId) return (await isMultiTenant()) ? null : lastUnpersistedScan
   const { data, error } = await getSupabaseAdmin()
     .from('knowledge_chunks')
     .select('category, title, created_at, metadata')

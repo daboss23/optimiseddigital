@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { safeFetch } from '@/lib/safe-fetch'
 
 /**
  * Download proxy for generated creatives. Provider CDNs (Kie / fal / Higgsfield)
@@ -7,8 +8,11 @@ import { NextRequest, NextResponse } from 'next/server'
  * it back with Content-Disposition: attachment, giving the user a clean, named
  * PNG download of the finished creative.
  *
- * SSRF-safe: only absolute https URLs are proxied, and only image responses are
- * streamed back.
+ * SSRF-safe: only absolute https URLs are proxied, every hop of a redirect is
+ * re-checked against private and internal addresses (`safeFetch`), and only
+ * image responses are streamed back. It used to check the scheme alone and let
+ * `fetch` follow redirects wherever they led — a public https URL that
+ * redirected inward was proxied like any other.
  */
 
 export const runtime = 'nodejs'
@@ -37,7 +41,11 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const res = await fetch(target.toString(), { cache: 'no-store' })
+    const got = await safeFetch(target.toString(), { timeoutMs: 30_000 })
+    if (!got) {
+      return NextResponse.json({ error: 'That address cannot be downloaded from here' }, { status: 400 })
+    }
+    const res = got.res
     if (!res.ok || !res.body) {
       return NextResponse.json({ error: `Source returned ${res.status}` }, { status: 502 })
     }

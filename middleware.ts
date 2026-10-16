@@ -90,8 +90,12 @@ export const config = {
      *   login            — the door itself
      *   api/auth/*       — signing in and out
      *   api/health       — deployment probes
+     *   owner, api/owner — the Platform Library. It has its OWN credential
+     *                      (lib/owner.ts) and checks it on every request; a
+     *                      brand session neither grants nor is needed for it,
+     *                      and the open gate must not hand one out on the way.
      *   _next/*, assets  — static output and public files
      */
-    '/((?!login|api/auth|api/health|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml|json|woff|woff2)$).*)',
+    '/((?!login|api/auth|api/health|owner|api/owner|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml|json|woff|woff2)$).*)',
   ],
 }

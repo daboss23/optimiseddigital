@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { facesConfigured, listFaces, uploadFace, type FaceKind } from '@/lib/faces'
+import { currentAccount } from '@/lib/account'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -11,7 +12,7 @@ export async function GET() {
     return NextResponse.json({ success: true, configured: false, faces: [] })
   }
   try {
-    const faces = await listFaces()
+    const faces = await listFaces(await currentAccount())
     return NextResponse.json({ success: true, configured: true, faces })
   } catch (err) {
     console.error('Faces list error:', err)
@@ -33,6 +34,13 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     )
   }
+  const account = await currentAccount()
+  if (!account) {
+    return NextResponse.json(
+      { success: false, error: 'Sign in to the brand account this roster belongs to.' },
+      { status: 401 },
+    )
+  }
   try {
     const form = await request.formData()
     const file = form.get('file')
@@ -51,10 +59,10 @@ export async function POST(request: NextRequest) {
     const ext = (file.name.split('.').pop() || (kind === 'video' ? 'mp4' : 'png')).toLowerCase()
     const rawName = (form.get('name') as string | null)?.trim()
     const name = rawName || file.name.replace(/\.[^.]+$/, '') || 'Untitled'
-    const builderId = (form.get('builderId') as string | null) || null
-
+    // The account comes from the session. The form used to carry it, which is
+    // the client naming its own tenant.
     const bytes = Buffer.from(await file.arrayBuffer())
-    const face = await uploadFace({ name, kind, bytes, contentType, ext, builderId })
+    const face = await uploadFace({ name, kind, bytes, contentType, ext, builderId: account })
     return NextResponse.json({ success: true, face })
   } catch (err) {
     console.error('Face upload error:', err)

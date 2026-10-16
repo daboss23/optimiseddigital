@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { backfillTaxonomy, backfillStatus } from '@/lib/taxonomy-backfill'
+import { currentAccount } from '@/lib/account'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -16,7 +17,7 @@ export const maxDuration = 300
  */
 
 export async function GET() {
-  return NextResponse.json(await backfillStatus())
+  return NextResponse.json(await backfillStatus(await currentAccount()))
 }
 
 export async function POST(req: Request) {
@@ -27,5 +28,5 @@ export async function POST(req: Request) {
   } catch {
     // No body / bad JSON — fall back to the default batch size.
   }
-  return NextResponse.json(await backfillTaxonomy(limit))
+  return NextResponse.json(await backfillTaxonomy(await currentAccount(), limit))
 }

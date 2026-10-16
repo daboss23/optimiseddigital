@@ -45,14 +45,23 @@ export async function logGeneration(input: MediaGenerationInsert): Promise<strin
   }
 }
 
-/** Update a render row once polling resolves it (completed/failed + url). */
-export async function updateGeneration(requestId: string, job: VideoJob): Promise<void> {
-  if (!persistenceEnabled() || !requestId) return
+/**
+ * Update one of the account's render rows once polling resolves it
+ * (completed/failed + url). A request id from another account's render
+ * updates nothing.
+ */
+export async function updateGeneration(
+  requestId: string,
+  job: VideoJob,
+  accountId: string | null,
+): Promise<void> {
+  if (!persistenceEnabled() || !requestId || !accountId) return
   try {
     await getSupabaseAdmin()
       .from('media_generations')
       .update({ status: job.status, video_url: job.videoUrl })
       .eq('request_id', requestId)
+      .eq('builder_id', accountId)
   } catch (err) {
     console.error('updateGeneration error:', err)
   }

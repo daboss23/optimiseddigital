@@ -224,10 +224,11 @@ export default async function ReactorDashboard({
     tz: first(params.tz),
   })
 
+  const account = await currentAccount()
   const [data, meta, outcomes] = await Promise.all([
-    getDashboardData(),
-    resolveMetaDashboard(await currentAccount(), range),
-    listOutcomes(12),
+    getDashboardData(account),
+    resolveMetaDashboard(account, range),
+    listOutcomes(account, 12),
   ])
 
   const live = meta.source === 'live'
@@ -508,7 +509,7 @@ export default async function ReactorDashboard({
               Winning ads re-enter the knowledge layer as retrievable patterns, and every generated
               creative stores which learning influenced it.
               {!live &&
-                ' Connect the Meta Marketing API (META_ACCESS_TOKEN) to replace the seeded figures with live performance.'}
+                ' Connect your Meta ad account on Meta Intelligence to replace the seeded figures with live performance.'}
             </span>
           </div>
         </Panel>

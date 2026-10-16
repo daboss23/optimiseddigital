@@ -421,7 +421,7 @@ export function NovaResearch() {
                   className={inputCls}
                 />
                 <p className="mt-1.5 text-[11px] text-white/35">
-                  NOVA reads the transcript. Competitor coaching videos are rich in pains + objections.
+                  NOVA reads the transcript. Competitor reviews, unboxings and comparison videos are rich in pains + objections.
                 </p>
               </div>
               <textarea
@@ -477,7 +477,7 @@ export function NovaResearch() {
                 <input
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g. Member onboarding calls, FB group thread"
+                  placeholder="e.g. Post-purchase survey, product subreddit thread"
                   className={inputCls}
                 />
               </div>

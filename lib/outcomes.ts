@@ -41,6 +41,14 @@ export interface OutcomeAttributes {
   // Live-performance ingest (Meta): the source ad and its measured metrics, so
   // synced outcomes are idempotent and ORACLE memory carries real numbers.
   metaAdId?: string
+  /**
+   * The asset this outcome was uploaded as — an image hash or a video id in
+   * the brand's Meta media library. An ad a buyer builds from that asset in
+   * Ads Manager carries whatever name they gave it, so the ingest matches on
+   * the asset instead, and the result still grades back to its concept.
+   */
+  metaImageHash?: string
+  metaVideoId?: string
   metrics?: Record<string, number>
   // Clone & Iterate: the fixed taxonomy this concept was tagged with (the axis
   // values ORACLE groups by) and the test it belonged to. Stored inside the
@@ -108,14 +116,24 @@ function dbConfigured(): boolean {
  * how many won, and the average win score. Powers the angle reasoning panel so a
  * recommendation cites real history. Degrades to null when Supabase is absent or
  * the angle has no memory yet (a genuinely new strategic configuration).
+ *
+ * Every read in this module is scoped to ONE account. ORACLE's memory is a
+ * brand's own ad results: unscoped, one brand's winners steered another
+ * brand's campaigns and its losses taught them what to avoid — performance
+ * data crossing tenants in the one place it is easiest to miss, because it
+ * arrives as advice rather than as a row. A null account remembers nothing.
  */
-export async function angleEvidence(angleOrPattern: string): Promise<AngleEvidence | null> {
+export async function angleEvidence(
+  angleOrPattern: string,
+  accountId: string | null,
+): Promise<AngleEvidence | null> {
   const needle = angleOrPattern.trim().toLowerCase()
-  if (!needle || !dbConfigured()) return null
+  if (!needle || !dbConfigured() || !accountId) return null
   try {
     const { data, error } = await getSupabaseAdmin()
       .from('campaign_outcomes')
       .select('angle, verdict, concept')
+      .eq('builder_id', accountId)
       .order('created_at', { ascending: false })
       .limit(500)
     if (error) throw error
@@ -159,13 +177,15 @@ export async function angleEvidence(angleOrPattern: string): Promise<AngleEviden
  */
 export async function retrieveWinningConfigs(
   input: { angle?: string; audience?: string; awareness?: string; offer?: string },
+  accountId: string | null,
   limit = 3,
 ): Promise<WinningConfig[]> {
-  if (!dbConfigured()) return []
+  if (!dbConfigured() || !accountId) return []
   try {
     const { data, error } = await getSupabaseAdmin()
       .from('campaign_outcomes')
       .select('angle, verdict, concept')
+      .eq('builder_id', accountId)
       .order('created_at', { ascending: false })
       .limit(500)
     if (error) throw error
@@ -286,14 +306,16 @@ interface RawOutcome {
   concept: { type?: string; text?: string; attributes?: OutcomeAttributes } | null
 }
 
-// Recent logged outcomes — powers the Performance Intelligence feed. Degrades to
-// an empty list when Supabase isn't configured (page shows its empty state).
-export async function listOutcomes(limit = 50): Promise<OutcomeRow[]> {
-  if (!dbConfigured()) return []
+// One account's recent logged outcomes — powers the Performance Intelligence
+// feed. Degrades to an empty list when Supabase isn't configured or the session
+// names no account (the page shows its empty state).
+export async function listOutcomes(accountId: string | null, limit = 50): Promise<OutcomeRow[]> {
+  if (!dbConfigured() || !accountId) return []
   try {
     const { data, error } = await getSupabaseAdmin()
       .from('campaign_outcomes')
       .select('id, created_at, angle, verdict, concept')
+      .eq('builder_id', accountId)
       .order('created_at', { ascending: false })
       .limit(limit)
     if (error) throw error
@@ -337,8 +359,8 @@ export interface VariationPerformance {
  * out there into "this pattern won 50%" and teach nothing. Splitting on the
  * variation label is what makes a controlled set legible.
  */
-export async function variationPerformance(): Promise<VariationPerformance[]> {
-  const rows = await listOutcomes(500)
+export async function variationPerformance(accountId: string | null): Promise<VariationPerformance[]> {
+  const rows = await listOutcomes(accountId, 500)
   const map = new Map<string, { method: string; label: string; wins: number; total: number }>()
 
   for (const r of rows) {
@@ -366,8 +388,8 @@ export interface PatternConfidence {
 
 // Aggregate outcomes into per-pattern confidence: wins / total, weighted by the
 // verdict. This is ORACLE's read on "what is most likely to work next".
-export async function patternConfidence(): Promise<PatternConfidence[]> {
-  const rows = await listOutcomes(500)
+export async function patternConfidence(accountId: string | null): Promise<PatternConfidence[]> {
+  const rows = await listOutcomes(accountId, 500)
   if (rows.length === 0) return []
 
   const map = new Map<string, { wins: number; total: number }>()
@@ -415,13 +437,13 @@ const MIN_GRADED_FOR_LEARNING = 3
  * Never throws: a failed outcome read degrades to the floor, which is always
  * true and never claims a measurement it does not have.
  */
-export async function resolveCreativeLearnings(): Promise<Learning[]> {
+export async function resolveCreativeLearnings(accountId: string | null): Promise<Learning[]> {
   let derived: Learning[] = []
 
   try {
     const [patterns, variations] = await Promise.all([
-      patternConfidence().catch(() => [] as PatternConfidence[]),
-      variationPerformance().catch(() => [] as VariationPerformance[]),
+      patternConfidence(accountId).catch(() => [] as PatternConfidence[]),
+      variationPerformance(accountId).catch(() => [] as VariationPerformance[]),
     ])
 
     for (const p of patterns.filter((x) => x.total >= MIN_GRADED_FOR_LEARNING).slice(0, 3)) {

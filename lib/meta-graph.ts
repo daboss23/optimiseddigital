@@ -62,9 +62,6 @@ import { resolveMetaCredentials } from '@/lib/operator/adapters/meta-credentials
 const GRAPH_BASE = 'https://graph.facebook.com'
 const FETCH_TIMEOUT_MS = 6000
 
-export function metaApiConfigured(): boolean {
-  return Boolean(process.env.META_ACCESS_TOKEN)
-}
 
 function apiVersion(): string {
   return process.env.META_API_VERSION || 'v19.0'
@@ -89,16 +86,18 @@ function appSecretProof(token: string): string | null {
 // Exported so the performance-ingest layer (lib/meta-ingest.ts) reuses the same
 // signed, timeout-guarded Graph plumbing instead of duplicating it.
 //
-// `token` is passed explicitly wherever the credentials were resolved from the
-// stored connection; left unset it falls back to the deployment environment,
-// so every pre-existing caller keeps working unchanged.
+// `token` is REQUIRED. It used to fall back to `META_ACCESS_TOKEN` when a
+// caller left it out, which made the owner's ad account the silent default
+// for any read that forgot to resolve the account's own credentials. Every
+// token now comes from `resolveMetaCredentials(account)`, which decides
+// whether the environment may answer at all (single-brand deployments only).
 export async function graphGet(
   path: string,
   params: Record<string, string>,
-  token?: string,
+  token: string,
 ): Promise<unknown> {
-  const resolvedToken = token ?? process.env.META_ACCESS_TOKEN
-  if (!resolvedToken) throw new Error('META_ACCESS_TOKEN not configured')
+  const resolvedToken = token.trim()
+  if (!resolvedToken) throw new Error('Meta is not connected for this account')
 
   const url = new URL(`${GRAPH_BASE}/${apiVersion()}/${path}`)
   url.searchParams.set('access_token', resolvedToken)
@@ -146,22 +145,28 @@ export type InsightRow = {
  * Meta action types mapped onto the result vocabulary the platform speaks.
  * Deliberately explicit: a booked call is not a lead, a registration is not an
  * application, and nothing here rolls them into one "conversions" number.
+ *
+ * Within ONE result type these names are SYNONYMS, not parts: Meta reports the
+ * same purchases as `purchase`, `omni_purchase` and
+ * `offsite_conversion.fb_pixel_purchase` side by side on one row. They are
+ * therefore read as the largest of them, never added — adding them is what
+ * doubled every purchase count and halved every CPA.
  */
 const RESULT_ACTION_TYPES: Record<PrimaryResultType, string[]> = {
   lead: ['lead', 'offsite_conversion.fb_pixel_lead', 'onsite_conversion.lead_grouped'],
   application: ['submit_application', 'offsite_conversion.fb_pixel_submit_application'],
   booked_call: ['schedule', 'offsite_conversion.fb_pixel_schedule', 'onsite_conversion.schedule'],
   registration: ['complete_registration', 'offsite_conversion.fb_pixel_complete_registration'],
-  purchase: ['purchase', 'offsite_conversion.fb_pixel_purchase'],
+  purchase: ['omni_purchase', 'purchase', 'offsite_conversion.fb_pixel_purchase'],
   custom: ['offsite_conversion.fb_pixel_custom'],
 }
 
-/** Count one result type on an insight row. */
+/** Count one result type on an insight row — the largest of its synonyms. */
 export function resultCount(row: InsightRow, type: PrimaryResultType): number {
   const wanted = new Set(RESULT_ACTION_TYPES[type])
   return (row.actions ?? [])
     .filter((a) => wanted.has(a.action_type))
-    .reduce((sum, a) => sum + num(a.value), 0)
+    .reduce((max, a) => Math.max(max, num(a.value)), 0)
 }
 
 /** The full result mix on a row — every type counted separately. */
@@ -177,23 +182,18 @@ export function dominantResult(mix: ResultSlice[]): PrimaryResultType {
   return mix[0]?.type ?? metaPrimaryResultType
 }
 
-const CONVERSION_ACTIONS = new Set([
-  'lead',
-  'purchase',
-  'offsite_conversion.fb_pixel_lead',
-  'offsite_conversion.fb_pixel_purchase',
-  'onsite_conversion.lead_grouped',
-])
 
 export function num(v: unknown): number {
   const n = parseFloat(String(v ?? '').replace(/[^0-9.\-]/g, ''))
   return Number.isFinite(n) ? n : 0
 }
 
+/**
+ * Leads plus purchases — each counted once, through `resultCount`. Summing the
+ * raw action list counted every purchase two or three times over.
+ */
 export function conversions(row: InsightRow): number {
-  return (row.actions ?? [])
-    .filter((a) => CONVERSION_ACTIONS.has(a.action_type))
-    .reduce((sum, a) => sum + num(a.value), 0)
+  return resultCount(row, 'lead') + resultCount(row, 'purchase')
 }
 
 export function roas(row: InsightRow): number {
@@ -203,7 +203,7 @@ export function roas(row: InsightRow): number {
 /* ------------------------------ live pulls -------------------------------- */
 
 /** The accounts a token can see, with names — the connect flow's picker data. */
-export async function listAccounts(token?: string): Promise<{ id: string; name: string }[]> {
+export async function listAccounts(token: string): Promise<{ id: string; name: string }[]> {
   const json = (await graphGet('me/adaccounts', { fields: 'account_id,name', limit: '50' }, token)) as {
     data?: { account_id?: string; name?: string }[]
   }
@@ -212,7 +212,7 @@ export async function listAccounts(token?: string): Promise<{ id: string; name: 
     .map((d) => ({ id: d.account_id, name: d.name || d.account_id }))
 }
 
-export async function listAccountIds(token?: string): Promise<string[]> {
+export async function listAccountIds(token: string): Promise<string[]> {
   return (await listAccounts(token)).map((a) => a.id)
 }
 
@@ -220,7 +220,7 @@ export async function listAccountIds(token?: string): Promise<string[]> {
 async function accountInsights(
   accountId: string,
   range: DateRange,
-  token?: string,
+  token: string,
 ): Promise<InsightRow | null> {
   const json = (await graphGet(
     `act_${accountId}/insights`,
@@ -233,7 +233,7 @@ async function accountInsights(
   return json.data?.[0] ?? null
 }
 
-async function topAds(accountId: string, range: DateRange, token?: string): Promise<InsightRow[]> {
+async function topAds(accountId: string, range: DateRange, token: string): Promise<InsightRow[]> {
   const json = (await graphGet(
     `act_${accountId}/insights`,
     {
@@ -254,7 +254,7 @@ async function topAds(accountId: string, range: DateRange, token?: string): Prom
  * carries no imagery, so the ad objects are pulled separately and joined by id.
  * A miss is not an error — the table falls back to a format tile.
  */
-async function adThumbnails(accountId: string, token?: string): Promise<Record<string, string>> {
+async function adThumbnails(accountId: string, token: string): Promise<Record<string, string>> {
   const json = (await graphGet(
     `act_${accountId}/ads`,
     {
@@ -277,7 +277,7 @@ async function adThumbnails(accountId: string, token?: string): Promise<Record<s
 async function trendSeries(
   accountId: string,
   range: DateRange,
-  token?: string,
+  token: string,
 ): Promise<{ date: string; spend: number; results: number; roas: number }[]> {
   const days = rangeDays(range)
   const increment = days <= 14 ? '1' : days <= 90 ? '7' : 'monthly'

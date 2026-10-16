@@ -17,7 +17,6 @@ import {
   type CreativeTaxonomy,
 } from '@/lib/taxonomy'
 import { getConnectedWebsite } from '@/lib/website-intelligence'
-import { currentAccount } from '@/lib/account'
 
 const WIN = new Set(['winner', 'high_performer'])
 
@@ -56,9 +55,9 @@ function uniq(seed: readonly string[], discovered: string[]): string[] {
  * behind them so the axis is never empty and nothing a user already picked
  * disappears. Never throws — no site connected simply means no derived values.
  */
-async function derivedAudienceAxes(): Promise<{ personas: string[]; pains: string[] }> {
+async function derivedAudienceAxes(accountId: string | null): Promise<{ personas: string[]; pains: string[] }> {
   try {
-    const site = await getConnectedWebsite(await currentAccount())
+    const site = await getConnectedWebsite(accountId)
     return {
       personas: site?.strategyOptions?.personas ?? [],
       pains: site?.strategyOptions?.painPoints ?? [],
@@ -68,20 +67,26 @@ async function derivedAudienceAxes(): Promise<{ personas: string[]; pains: strin
   }
 }
 
-export async function getTaxonomyLocks(): Promise<TaxonomyLocks> {
-  const derived = await derivedAudienceAxes()
+/**
+ * The lock defaults for ONE account, from its own outcomes. Unscoped, the
+ * "personas and pains actually seen in history" were every brand's — another
+ * brand's audience and pain points offered as this one's options.
+ */
+export async function getTaxonomyLocks(accountId: string | null): Promise<TaxonomyLocks> {
+  const derived = await derivedAudienceAxes(accountId)
   const base: TaxonomyLocks = {
     configured: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL),
     locks: defaultLockedTaxonomy(),
     personaOptions: uniq(derived.personas, [...PERSONA_SEEDS]),
     painOptions: uniq(derived.pains, [...PAIN_POINT_SEEDS]),
   }
-  if (!base.configured) return base
+  if (!base.configured || !accountId) return base
 
   try {
     const { data, error } = await getSupabaseAdmin()
       .from('campaign_outcomes')
       .select('verdict, concept')
+      .eq('builder_id', accountId)
       .limit(1000)
     if (error) throw error
 

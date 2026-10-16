@@ -5,6 +5,7 @@ import {
   updateKnowledge,
   type KnowledgeSystem,
 } from '@/lib/knowledge'
+import { currentAccount } from '@/lib/account'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
@@ -21,7 +22,8 @@ const VALID_SYSTEMS: KnowledgeSystem[] = [
   'website',
 ]
 
-// Browse / search the stored knowledge chunks for the Vault library view.
+// Browse / search the stored knowledge chunks for the Vault library view —
+// this account's own chunks, never another account's and never the platform's.
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -35,7 +37,7 @@ export async function GET(request: NextRequest) {
         : undefined
     const limit = limitParam ? Math.min(200, Math.max(1, Number(limitParam) || 60)) : 60
 
-    const result = await browseKnowledge({ query, system, limit })
+    const result = await browseKnowledge(await currentAccount(), { query, system, limit })
     return NextResponse.json({ success: true, ...result })
   } catch (err) {
     console.error('Vault list error:', err)
@@ -61,11 +63,14 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
-    const { reembedded } = await updateKnowledge({
-      id: body.id,
-      title: body.title,
-      content: body.content,
-    })
+    const { reembedded } = await updateKnowledge(
+      {
+        id: body.id,
+        title: body.title,
+        content: body.content,
+      },
+      await currentAccount(),
+    )
     return NextResponse.json({ success: true, reembedded })
   } catch (err) {
     console.error('Vault update error:', err)
@@ -85,7 +90,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'id is required' }, { status: 400 })
     }
 
-    await deleteKnowledge(id)
+    await deleteKnowledge(id, await currentAccount())
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error('Vault delete error:', err)

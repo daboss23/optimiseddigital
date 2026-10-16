@@ -4,11 +4,11 @@
  * Creative Canvas — the structured creative operating layer.
  *
  * Sits between the Campaign Reactor (strategy → scored concepts) and the
- * Studio (one finished Meta ad). The system builds the first strategic
+ * Launch Bay (one finished creative, checked and uploaded to Meta). The system builds the first strategic
  * structure from the run — one lane per concept, a fixed message spine, scene
  * nodes in montage mode — and the user shapes it: edit, branch, regenerate one
  * node at a time, lock what works, render scenes, then send a lane to the
- * Studio for finishing.
+ * Launch Bay for finishing.
  *
  * Never a blank whiteboard: with no run yet it teaches; with a run it arrives
  * pre-structured. Strategy (angle · awareness · sophistication · audience ·
@@ -62,7 +62,7 @@ import {
 import { cn } from '@/lib/utils'
 import { accentClass } from '@/components/reactor/ui'
 import { useReactorRun, type Concept } from '@/components/campaign-reactor/ReactorRunContext'
-import type { MetaAdPackage, MetaCta } from '@/lib/meta-ads'
+import type { OnImageTextSlot } from '@/lib/reactor-inputs'
 import {
   BRANCH_DY,
   buildCanvasGraph,
@@ -76,7 +76,6 @@ import {
   type CanvasNodeData,
   type CanvasNodeKind,
 } from '@/lib/creative-canvas/graph'
-import { useBrandIdentity } from '@/components/reactor/BrandMark'
 import { useRenderBrand } from '@/components/reactor/useRenderBrand'
 import { renderBrandBlock } from '@/lib/render-prompt'
 
@@ -519,7 +518,6 @@ interface CanvasInnerProps {
 }
 
 function CanvasInner({ mode, concepts, active, strategy, imageModel, videoModel, onSendToStudio, onExit }: CanvasInnerProps) {
-  const identity = useBrandIdentity()
   const renderBrand = useRenderBrand()
   const { imageFor, videoFor, creativeStateFor } = useReactorRun()
 
@@ -1036,7 +1034,7 @@ function CanvasInner({ mode, concepts, active, strategy, imageModel, videoModel,
     [nodes, media, videoModel, aspectRatio, pollVideo, renderBrand],
   )
 
-  /* ---------------------------- Send to Studio ------------------------------ */
+  /* -------------------------- Send to Launch Bay ---------------------------- */
 
   /** The lane's active take for a kind — the approved alternate, else primary. */
   const activeText = useCallback(
@@ -1052,19 +1050,34 @@ function CanvasInner({ mode, concepts, active, strategy, imageModel, videoModel,
     (lane: number) => {
       const src = laneConcepts[lane]
       if (!src) return
+      // The lane's active hook and offer are the words ON the creative. The
+      // platform writes no caption, so a reshaped lane reshapes the creative
+      // itself: its brief carries the new words, and it arrives in the Launch
+      // Bay unrendered so the render matches what the Canvas settled on.
       const hook = activeText(lane, 'hook')
-      const message = activeText(lane, 'message')
-      const headline = activeText(lane, 'cta')
-      const primaryText = [hook, message].filter(Boolean).join('\n\n') || src.text
-      const pkg: MetaAdPackage = {
-        primaryText,
-        headline: headline || src.adPackage?.headline || identity.name,
-        description: src.adPackage?.description,
-        cta: (src.adPackage?.cta ?? 'LEARN_MORE') as MetaCta,
+      const offer = activeText(lane, 'cta')
+      const words: OnImageTextSlot[] = [
+        ...(hook ? [{ role: 'Headline', text: hook }] : []),
+        ...(offer ? [{ role: 'Offer', text: offer }] : []),
+      ]
+      const current = (src.productionBrief?.onImageText ?? []).map((t) => t.text.trim())
+      const changed =
+        words.length > 0 && words.map((w) => w.text).join('\n') !== current.slice(0, words.length).join('\n')
+      if (!changed || !src.productionBrief) {
+        onSendToStudio(src)
+        return
       }
-      onSendToStudio({ ...src, text: primaryText, adPackage: pkg })
+      onSendToStudio({
+        ...src,
+        // A new text is a new creative: media is keyed by it, so the old
+        // render is not mistaken for this one.
+        text: `${src.text}\n\nOn the creative: “${words.map((w) => w.text).join('” · “')}”`,
+        imageUrl: undefined,
+        videoUrl: undefined,
+        productionBrief: { ...src.productionBrief, onImageText: words },
+      })
     },
-    [laneConcepts, activeText, onSendToStudio, identity.name],
+    [laneConcepts, activeText, onSendToStudio],
   )
 
   /* ------------------------------ Keyboard shortcuts ------------------------ *
@@ -1165,7 +1178,7 @@ function CanvasInner({ mode, concepts, active, strategy, imageModel, videoModel,
                     ['Branch', 'Spin controlled alternates of a hook or CTA, then approve the winner.'],
                     ['Drag to reassign', 'Every card is movable — drop any card onto any other slot and the system asks whether its ROLE should follow. Proof can become the Hook, a Hook can become the CTA.'],
                     ['Render', 'Scenes and visuals render stills, then animate into clips.'],
-                    ['Send to Studio', 'The active lane becomes a launch-ready Meta ad unit.'],
+                    ['Send to Launch Bay', 'The active lane’s hook and offer become the words on the creative.'],
                   ].map(([t, d]) => (
                     <li key={t} className="rounded-xl border border-white/[0.07] bg-white/[0.02] px-3 py-2">
                       <p className="text-[11px] font-semibold text-white/80">{t}</p>
@@ -1182,7 +1195,7 @@ function CanvasInner({ mode, concepts, active, strategy, imageModel, videoModel,
                   onClick={() => sendLaneToStudio(0)}
                   className="fire-btn fire-btn--sm inline-flex w-full items-center justify-center gap-1.5 font-bold uppercase tracking-wide text-white"
                 >
-                  Send to Studio <ArrowRight size={12} />
+                  Send to Launch Bay <ArrowRight size={12} />
                 </button>
               </div>
             ) : (
@@ -1331,7 +1344,7 @@ function CanvasInner({ mode, concepts, active, strategy, imageModel, videoModel,
                   onClick={() => sendLaneToStudio(selected.data.lane)}
                   className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-[#4D8DFF]/30 bg-[#4D8DFF]/[0.08] px-3 py-2.5 text-[11px] font-bold uppercase tracking-wide text-[#38E8FF] transition-colors hover:bg-[#4D8DFF]/15"
                 >
-                  Send this lane to Studio <ArrowRight size={12} />
+                  Send this lane to Launch Bay <ArrowRight size={12} />
                 </button>
               </div>
             )}

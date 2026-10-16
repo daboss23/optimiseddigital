@@ -26,7 +26,7 @@ import type { IterationAxis } from './taxonomy'
 /**
  * The variation ladder. Deliberately stops at 4.
  *
- * Every concept costs a production brief, an ad package, a NEURO pre-test and a
+ * Every concept costs a production brief, on-image copy, a NEURO pre-test and a
  * real image/video render, all inside ONE streamed function bounded by
  * `REACTOR_BUDGET_MS` (280s against a 300s host ceiling). Four formats at ×4
  * already crowds that budget; a ×10 ladder would routinely trip the run's
@@ -178,7 +178,7 @@ const MATRIX: Record<VariationFormat, Record<VariationMethod, MethodCopy>> = {
     hooks: {
       summary: 'different headlines and first-read statements',
       directive:
-        'Hold the concept, the proof and the visual construction constant. Change ONLY the headline — the first statement the eye lands on. Each version takes a genuinely different attention device (direct problem, specific number, named member result, contrarian claim, question).',
+        'Hold the concept, the proof and the visual construction constant. Change ONLY the headline — the first statement the eye lands on. Each version takes a genuinely different attention device (direct problem, specific number, a customer’s own words, contrarian claim, question).',
     },
     angles: {
       summary: 'different strategic messages',
@@ -191,9 +191,9 @@ const MATRIX: Record<VariationFormat, Record<VariationMethod, MethodCopy>> = {
         'Hold the central message, the headline promise and the proof constant. Change ONLY the visual construction — composition, imagery, design treatment, colour role assignment. The words may be reset to fit the layout but must not change what they claim.',
     },
     copy: {
-      summary: 'different primary copy, headlines and CTAs',
+      summary: 'different on-image headlines, offer lines and CTAs',
       directive:
-        'Hold the strategic concept and the visual direction constant. Change the written execution — primary text, headline, description and CTA treatment. Same picture, same argument, different words.',
+        'Hold the strategic concept and the visual direction constant. Change the words ON the creative — the headline, the offer or proof line and the CTA label. Same picture, same argument, different words.',
     },
   },
   video: {

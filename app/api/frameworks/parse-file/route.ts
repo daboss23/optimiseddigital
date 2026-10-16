@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { csvToKnowledgeText } from '@/lib/csv'
 
 export const runtime = 'nodejs'
 
@@ -18,6 +19,17 @@ export async function POST(request: NextRequest) {
       const content = text.trim()
       if (!content) {
         return NextResponse.json({ success: false, error: 'File is empty' }, { status: 400 })
+      }
+      return NextResponse.json({ success: true, content })
+    }
+
+    // Review-app and survey exports: one review / response per row, turned into
+    // readable lines with the customer's identity (names, emails, order ids)
+    // left behind. See lib/csv.ts.
+    if (ext === 'csv') {
+      const content = csvToKnowledgeText(await file.text())
+      if (!content) {
+        return NextResponse.json({ success: false, error: 'The CSV has no rows to read' }, { status: 400 })
       }
       return NextResponse.json({ success: true, content })
     }
@@ -52,7 +64,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { success: false, error: 'Unsupported file type. Use .md, .txt, or .pdf' },
+      { success: false, error: 'Unsupported file type. Use .md, .txt, .csv or .pdf' },
       { status: 400 }
     )
   } catch (error) {

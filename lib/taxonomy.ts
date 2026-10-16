@@ -438,7 +438,7 @@ export function visualDirectionBlock(
     'HOW TO USE THIS:',
     '1. Carry the layout, palette roles, element placement and contrast device into the productionBrief for every visual concept — name the zone each piece of copy occupies and what fills the rest of the frame. The brief is what the image model renders, so design detail left out of the brief does not reach the ad.',
     '1a. THE FIRST FRAME OF EVERY VISUAL BRIEF IS THE SUBJECT — the photograph itself: who or what is in shot, where, in what light, framed how. Describing only the zones ("Headline zone", "CTA zone") leaves the image model with a layout and no picture to put in it, and it will invent one that has nothing to do with this business. Write the subject frame first, then the zones.',
-    '2. Write the adPackage copy to FIT the placements above — headline length must survive the headline zone, the hook must land where the reference puts it.',
+    '2. Write the on-image copy (productionBrief.onImageText) to FIT the placements above — the headline must survive the headline zone, the offer or CTA label must sit where the reference puts its action.',
     '3. Never reproduce the reference\'s words, brand, or logo. Reproduce its STRUCTURE.',
     '4. You are the strategist: if the campaign angle, awareness stage or placement means a different design will perform better, use the better design and state the reason in that concept\'s basis. Proven design is the default, not a constraint.',
   )

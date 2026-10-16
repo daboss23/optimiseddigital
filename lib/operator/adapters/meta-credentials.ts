@@ -9,7 +9,10 @@
  *    stored connection is a working one at the moment it was saved.
  * 2. **The deployment environment** — `META_ACCESS_TOKEN` /
  *   `META_AD_ACCOUNT_ID`. The fallback that keeps a self-hosted deployment
- *   and the live self-test working without ever opening the settings screen.
+ *   and the live self-test working without ever opening the settings screen —
+ *   and ONLY on a single-brand deployment (`lib/tenancy-mode.ts`). On a shared
+ *   one the env token is the owner's ad account, so a brand that has not
+ *   connected its own gets "connect your account", never the owner's.
  *
  * A stored connection wins over the environment because it is the more
  * deliberate act: somebody pasted that token into this deployment, for this
@@ -22,6 +25,7 @@
  */
 
 import { getSetting, SETTING_META_CONNECTION } from '@/lib/settings'
+import { deploymentCredentialsAllowed } from '@/lib/tenancy-mode'
 
 export interface StoredMetaConnection {
   accessToken: string
@@ -54,9 +58,13 @@ export function normaliseAccountId(raw: string): string {
  * other customer's ads published and reported through. It is now read from
  * that account's own settings row.
  *
- * The environment fallback is deliberately kept but is DEPLOYMENT-WIDE by
- * nature: it exists for a single-tenant install. On a deployment with real
- * accounts it should be left unset, and `npm run selftest:tenant` says so.
+ * The environment fallback is DEPLOYMENT-WIDE by nature: it exists for a
+ * single-brand install, and it answers only there. Once the deployment is
+ * multi-tenant (a brand login exists, or `PLATFORM_MULTI_TENANT=true`), it is
+ * closed for every account and for a session that names none — the brand
+ * that has not connected is told to connect, and its dashboards, ingest,
+ * uploads and Mike all read "not connected" instead of the owner's numbers.
+ * `npm run selftest:tenant` fails if that gate is removed.
  *
  * Never throws — a settings-store failure reads as "no stored connection" and
  * the environment gets its say, which is the same philosophy as every other
@@ -75,7 +83,7 @@ export async function resolveMetaCredentials(
   }
 
   const envToken = (process.env.META_ACCESS_TOKEN ?? '').trim()
-  if (envToken) {
+  if (envToken && (await deploymentCredentialsAllowed())) {
     const envAccount = (process.env.META_AD_ACCOUNT_ID ?? '').trim()
     return {
       token: envToken,
@@ -85,6 +93,16 @@ export async function resolveMetaCredentials(
   }
 
   return null
+}
+
+/**
+ * Whether the deployment's env token may stand in for an unconnected account
+ * — what the connection panel needs to know before it mentions that token at
+ * all. False on a multi-tenant deployment, so a brand is never told that the
+ * owner's credential exists, let alone which ad account it reads.
+ */
+export async function envFallbackAvailable(): Promise<boolean> {
+  return Boolean((process.env.META_ACCESS_TOKEN ?? '').trim()) && (await deploymentCredentialsAllowed())
 }
 
 /** The last four characters — the only part of a token allowed off the server. */

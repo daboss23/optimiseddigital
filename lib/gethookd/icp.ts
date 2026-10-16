@@ -92,16 +92,22 @@ export const NICHE_TITLES: Record<number, string> = {
   34: 'Subscription Box',
 }
 
+/**
+ * Focuses, e-commerce first: this platform makes e-commerce creative, so the
+ * product verticals lead every surface that lists them. The other focuses
+ * stay addressable — the research layer and the selftest still separate them
+ * — but nothing on an e-commerce surface defaults to them.
+ */
 export const ICP_FOCUSES: { id: IcpFocus; label: string; blurb: string }[] = [
-  {
-    id: 'services',
-    label: 'Service Businesses',
-    blurb: 'Lead-gen, booked calls and quotes — ads that sell a conversation.',
-  },
   {
     id: 'ecommerce',
     label: 'E-commerce',
     blurb: 'DTC product verticals — ads that sell a purchase.',
+  },
+  {
+    id: 'services',
+    label: 'Service Businesses',
+    blurb: 'Lead-gen, booked calls and quotes — ads that sell a conversation.',
   },
   {
     id: 'marketing',
@@ -110,6 +116,20 @@ export const ICP_FOCUSES: { id: IcpFocus; label: string; blurb: string }[] = [
   },
   { id: 'all', label: 'Everything', blurb: 'Every focus at once — clients and our own category.' },
 ]
+
+/**
+ * The e-commerce verticals, labelled — the Ad Library's vertical chips and the
+ * catalog's vertical read both speak in these ids.
+ */
+export const ECOMMERCE_VERTICALS: { id: number; label: string }[] = ECOMMERCE_NICHE_IDS.map((id) => ({
+  id,
+  label: NICHE_TITLES[id] ?? `Niche ${id}`,
+}))
+
+/** True for an id that is one of the e-commerce verticals. */
+export function isEcommerceNiche(id: unknown): id is number {
+  return typeof id === 'number' && (ECOMMERCE_NICHE_IDS as readonly number[]).includes(id)
+}
 
 /**
  * Markets this deployment sells into. Overridable without a redeploy.

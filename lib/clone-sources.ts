@@ -109,9 +109,14 @@ function demoWinners(): WinnerCard[] {
  * clone tab. Returns curated demo rows when Supabase is absent or no winner is
  * logged yet so the tab is never a blank box.
  */
-export async function getWinners(limit = 24): Promise<{ configured: boolean; winners: WinnerCard[] }> {
+export async function getWinners(
+  accountId: string | null,
+  limit = 24,
+): Promise<{ configured: boolean; winners: WinnerCard[] }> {
   const configured = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL)
-  const rows = await listOutcomes(500)
+  // THIS account's winners. The clone tab is labelled "Our Winners" — it used
+  // to list every brand's, metrics and copy included.
+  const rows = await listOutcomes(accountId, 500)
 
   const winners: WinnerCard[] = rows
     .filter((r) => WIN.has(r.verdict))

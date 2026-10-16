@@ -112,7 +112,7 @@ export async function GET(request: NextRequest) {
 
   const job = await getVideoJob(model, requestId, responseUrl)
   if (job.status === 'completed' || job.status === 'failed') {
-    await updateGeneration(requestId, job)
+    await updateGeneration(requestId, job, await currentAccount())
   }
   return NextResponse.json({ success: true, ...job })
 }

@@ -24,19 +24,26 @@
 ## PROJECT OVERVIEW
 
 This is a Next.js app: the **Creative Reactor** — an AI-powered Creative
-Intelligence Command Center for a performance marketing operator. It turns a
-connected website, uploaded assets, proven ads that are live in the market, and
-measured Meta performance into the next winning campaign, answering one
-question: "What should we create next, based on everything that has already
-worked?"
+Intelligence Command Center for **e-commerce Meta advertising**. It turns a
+connected store (its brand, its product catalog), uploaded assets, proven ads
+that are live in the market, and measured Meta performance into the next
+winning creative, answering one question: "What should we create next, based on
+everything that has already worked?"
+
+**The platform makes the creative, not the caption.** For an e-commerce account
+the caption is the cheap part — a buyer runs a handful of proven primary texts
+across dozens of creatives, and Advantage+ rewrites captions for free. What is
+scarce is enough genuinely different, product-true creative to feed delivery,
+so that is the whole job: everything an ad must SAY is said by the creative,
+and finished creatives go straight into the brand's own Meta media library.
 
 It is built around nine intelligence systems (Reactor Dashboard, Knowledge
 Vault, Research, Creative, Copy, Strategic Memory (ORACLE), Campaign Reactor,
 Creative Learnings, Recommendations). The Campaign Reactor runs an **agentic
 orchestrator** (a Claude tool-use loop) over a RAG knowledge layer, and briefs
 its intelligence network — including with live proven ads researched from the
-brief — before a single concept is written. See `SYSTEM_DESIGN.md` for the full
-architecture.
+brief and the product's own published facts — before a single concept is
+written. See `SYSTEM_DESIGN.md` for the full architecture.
 
 Tagline: **Engineered For Performance.**
 
@@ -231,13 +238,16 @@ REACTOR_STATIC_ONLY          # Optional — default ON. The system RECOMMENDS st
                              #   format by hand — this gates the recommendation, not the
                              #   choice. Set to `false` when the video ovens are wired.
 PIPEBOARD_API_TOKEN          # Meta Ads MCP (live ad performance) — optional
-META_ACCESS_TOKEN            # Meta Marketing API (System User token) — /meta dashboard + performance ingest + creative publish
-META_AD_ACCOUNT_ID           # Ad account for "Push Creative to Meta" (with or without act_ prefix)
-META_PAGE_ID                 # Facebook Page the pushed creatives run under
-META_LINK_URL                # Optional — destination link on pushed creatives. Falls back
-                             #   to the connected website; there is deliberately NO default,
-                             #   so an ad with nowhere to send the click is refused rather
-                             #   than published to somebody else's domain.
+META_ACCESS_TOKEN            # Meta Marketing API (System User token) — /meta dashboard + performance
+                             #   ingest + Upload to Meta. The FALLBACK: a brand's own stored
+                             #   connection (Connect Meta on /meta) always wins, so on a
+                             #   multi-brand deployment each brand uploads into its own account.
+                             #   Uploading needs `ads_management` on the token.
+META_AD_ACCOUNT_ID           # Ad account the uploads land in (with or without act_ prefix).
+                             #   Required when the token reaches more than one account — an
+                             #   upload with no unambiguous destination is refused, never guessed.
+                             #   No Page id and no link URL: the upload puts the creative in the
+                             #   account's MEDIA LIBRARY (adimages / advideos), not into an ad.
 META_APP_SECRET              # Optional — adds appsecret_proof request signing
 META_INGEST_MIN_SPEND        # Optional — spend floor to grade an ad (default 50)
 META_INGEST_DATE_PRESET      # Optional — Graph date_preset for the sync (default last_30d)
@@ -265,6 +275,22 @@ PLATFORM_LOGIN_REQUIRED      # Optional — default OFF. While off, the login pa
                              #   every visitor lands on the dashboard (/login forwards to /).
                              #   Set to `true` to put the login page back in front — the
                              #   credential code is untouched behind the switch.
+                             #   NOTE: while off, anyone with the URL is the operator — on a
+                             #   single-brand deployment that includes the env Meta token's data.
+PLATFORM_MULTI_TENANT        # Optional — `true` declares the deployment shared BEFORE the first
+                             #   brand login exists (lib/tenancy-mode.ts). A deployment with any
+                             #   row in `users` is multi-tenant whether or not this is set. In
+                             #   multi-tenant mode deployment-wide credentials stop acting for
+                             #   brands: META_ACCESS_TOKEN no longer stands in for an unconnected
+                             #   brand (it reads "connect your account"), and the Meta Ads MCP
+                             #   (PIPEBOARD_API_TOKEN / META_ADS_ACCESS_TOKEN) is not attached
+                             #   to Reactor runs.
+PLATFORM_OWNER_PASSWORD      # Optional — opens the owner-only Platform Library at /owner. Must be
+                             #   12+ characters or the area stays closed (it is reachable from the
+                             #   public URL and holds your own IP). Separate from every brand
+                             #   login; owner sessions are signed with a key bound to this value,
+                             #   so changing it signs every owner session out. AUTH_SECRET (also
+                             #   used for brand sessions) is mixed into the key when set.
 NEXT_PUBLIC_REACTOR_DEMO_DATA # Optional — the curated demo set, in two halves (lib/demo-mode.ts).
                              #   unset (default): DISPLAY on — empty dashboards render the
                              #     illustration, badged DEMO DATA, and a connected Meta account or
@@ -332,7 +358,7 @@ end. For destructive writes (Supabase inserts), surface errors clearly.
 
 ### On-image text (why ads used to render as gibberish)
 - **`lib/render-prompt.ts` is the ONE prompt path for stills.** It compiles a `ProductionBrief` into a prompt instead of concatenating it. The old `briefToPrompt` (removed from `lib/reactor-inputs.ts`) flattened every frame into one paragraph, handing the model 4–5 quoted strings buried in prose plus a contradictory "room for text overlay" — which is what produced "NOT DISORGARUSED" headlines and noise-band fine print.
-- The compiler: separates SCENE from COPY (a copy-carrying frame never also appears as a scene beat — describing the headline slot twice causes doubled lettering), lists the literal strings under an `ON-IMAGE TEXT` header marked "reproduce exactly", enforces **`MAX_RENDERED_TEXT_BLOCKS` (2)** inside **`MAX_RENDERED_TEXT_CHARS` (95)**, folds an emphasised word quoted inside a headline into a treatment note rather than a second block, and DROPS fine print / compliance strips / logo lettering entirely (unrenderable at ad resolution). Everything dropped comes back in `omitted` with a reason — the full compliant copy still ships in the concept's `adPackage` for the caption, the Studio overlay and the Meta push.
+- The compiler: separates SCENE from COPY (a copy-carrying frame never also appears as a scene beat — describing the headline slot twice causes doubled lettering), lists the literal strings under an `ON-IMAGE TEXT` header marked "reproduce exactly", enforces **`MAX_RENDERED_TEXT_BLOCKS` (2)** inside **`MAX_RENDERED_TEXT_CHARS` (95)**, folds an emphasised word quoted inside a headline into a treatment note rather than a second block, and DROPS fine print / compliance strips / logo lettering entirely (unrenderable at ad resolution). Everything dropped comes back in `omitted` with a reason — it is never silently lost: it is the copy the buyer adds as an overlay or writes into the caption in Ads Manager, since the platform ships the creative without one.
 - A brief with no on-image copy gets the opposite instruction: render no lettering at all, leave clean space for the overlay.
 - OPUS declares on-image copy in **`productionBrief.onImageText`** (role / text / placement), constrained by `ON_IMAGE_TEXT_RULE` in the orchestrator prompt. Absent that, the compiler recovers the copy from quoted strings in the frames — both paths are covered.
 - Guarded by `npm run selftest:render` (`scripts/render-prompt-selftest.ts`), which asserts the discipline against the exact brief that rendered wrong.
@@ -346,7 +372,7 @@ end. For destructive writes (Supabase inserts), surface errors clearly.
 
 ### Proven ads (GetHookd)
 - `lib/gethookd/` is the external ad source, shaped exactly like `lib/image/` and `lib/video/`: a transport (`client.ts`), a normaliser (`index.ts`) and a provider-agnostic row type (`types.ts`). The Ad Library renders a `ProvenAd`, never a vendor row, so a second source normalises in and nothing above the folder changes.
-- **`lib/gethookd/icp.ts` is the single source of truth for who this platform researches ads FOR**: service businesses and e-commerce, as two SEPARATE focuses. They are never blended into one feed — a service ad sells a conversation and an e-commerce ad sells a purchase, so an averaged feed teaches neither. GetHookd has no "e-commerce" category, so that focus is a set of DTC verticals; services is the set that sells time and expertise. The file reads no env at import time (`defaultGeo()` is a function) so the Ad Library's client component can import `ICP_FOCUSES` and the ICP stays defined once.
+- **`lib/gethookd/icp.ts` is the single source of truth for who this platform researches ads FOR**: e-commerce FIRST (the platform makes e-commerce creative, so every surface that lists focuses leads with it and nothing on an e-commerce surface defaults to another), with services and marketing kept as SEPARATE, still-addressable focuses. They are never blended into one feed — a service ad sells a conversation and an e-commerce ad sells a purchase, so an averaged feed teaches neither. GetHookd has no "e-commerce" category, so that focus is a set of DTC verticals, labelled once as `ECOMMERCE_VERTICALS` — the Ad Library's vertical chips and the catalog's vertical read (`inferNiches`) both speak in those ids, and the library opens on the brand's own vertical when its catalog has one. The file reads no env at import time (`defaultGeo()` is a function) so the Ad Library's client component can import `ICP_FOCUSES` and the ICP stays defined once.
 - This is distinct from `lib/tenant.ts`, which resolves who the deployment IS. Collapsing the two makes the library research the operator rather than the market.
 - **Cost is a design constraint, not an afterthought** — the source bills per returned row. Page size is capped (24), `ads_per_brand_limit` stops one advertiser owning the grid, filters refetch but typing does not, and the credits a query actually spent are shown to the operator.
 - Every row carries a signed still, so **"Design" on a card posts it straight to `/api/spark/analyze`** — the same route the Vault drop box uses — which reads the layout/palette/on-ad copy and banks it as a `design` chunk. No second extractor.
@@ -359,13 +385,14 @@ end. For destructive writes (Supabase inserts), surface errors clearly.
 - `lib/gethookd/research.ts` is the AUTOMATIC half of the source; the Ad Library is the manual half. Nobody types a search: a submitted brief is read, terms are constructed from it, and the shortlist reaches **SPARK and ECHO before they report to OPUS**. Ordering is the whole point — evidence that lands after the concepts are written is a filing cabinet, not evidence.
 - It exists because of one line in the orchestrator: when the Vault retrieves nothing, the layers are told to "reason from first principles". On a new account that is EVERY run, and first principles means the model's priors. This fills that gap with ads somebody is currently paying to keep running.
 - **Eligibility is never lowered.** Static image, still listed active, running ≥ `GETHOOKD_RESEARCH_MIN_DAYS` (90). Re-checked on every row in `isEligible()` rather than trusted to the API, because `status` is matched against a lagging index and a filter the endpoint refuses is dropped by the transport — either can hand back a row that does not meet the bar. When too few qualify, the SEARCH widens (broader term → no term → every market) and each widening is named in the result and the telemetry.
+- **The Reactor researches e-commerce, and the brand's own vertical first.** It passes `focus: 'ecommerce'` (a fitness-apparel brief that never says "shop" must not be read as a gym) and, when the catalog's vertical is known, `niches`. With a vertical the market ladder spends its rungs inside it — the sharpest term in this vertical → this vertical unqueried → all of e-commerce — and the last widening is named ("Widened to all of e-commerce — too few qualified in this brand's own vertical"). The same rung ceiling applies, so the cost bound below is unchanged.
 - **A long query is what empties this feed, not the 90-day rule.** Measured against the live library: services + US/AU + static + active + 90 days holds ~355 brand-capped matches; add the phrase "service business lead generation" to that exact search and it returns ZERO. So the ladder searches SHORT (one or two words, matched literally) and falls back to the unqueried browse where the eligible corpus actually is. Never send a sentence.
 - **TWO POOLS, because "should the search be broader?" has two answers.** Measured: the same filters scoped to the service niches hold ~355 eligible statics; unscoped, ~22,000 — and the craft gap shows on the first page. But breadth is only free for the DESIGN. A DTC ad sells a purchase in one line and a service ad sells a conversation over five, so a wider pool teaches a lead-gen campaign to say "Grab our BOGO deal". So:
   - **MARKET** — scoped to the brief's ICP focus, climbing the term ladder. Carries the ARGUMENT. **ECHO sees only this.** Widening it is the one widening that makes the ads worse.
   - **CRAFT** — the whole library, niche filter dropped and replaced by the static-ad ARCHETYPES (`CRAFT_ARCHETYPES`: Before/After, Testimonial, Us vs Them, Facts and Stats, Reasons Why, Features and Benefits). Carries the CONSTRUCTION. SPARK sees it labelled "construction only", and the design read that drives the production brief prefers it.
   - Breadth WITHOUT the archetypes is not an upgrade — it returns the market at large, most of it an untreated product photo. And the archetype tag alone is not enough: the library returned a headline-less phone photo of a watch filed under an archetype at the same performance tier as a properly built ad beside it. So a craft reference must also carry a HEADLINE.
   - Craft standing alone is a real state and is reported as one — ECHO gets nothing rather than the wrong market.
-- **A third focus, because the operator IS a marketing agency.** `MARKETING_NICHE_IDS` (Info · App/Software · Business/Professional · Service Business, ~14k brands) is the agency's OWN category — other agencies, the martech they sell against (ClickFunnels, Kajabi, GoHighLevel) and the info offers that teach it. An agency runs two kinds of campaign, its clients' and its own, and they are not the same research problem: an ad selling roof repairs and an ad selling a funnel build share no buyer, no objection and no proof. `researchFocus()` checks marketing FIRST, since a brief naming funnels or martech is far more likely to be the agency's own.
+- **A third focus, because the operator IS a marketing agency.** `MARKETING_NICHE_IDS` (Info · App/Software · Business/Professional · Service Business, ~14k brands) is the agency's OWN category — other agencies, the martech they sell against (ClickFunnels, Kajabi, GoHighLevel) and the info offers that teach it. An agency runs two kinds of campaign, its clients' and its own, and they are not the same research problem: an ad selling roof repairs and an ad selling a funnel build share no buyer, no objection and no proof. `researchFocus()` checks marketing FIRST, since a brief naming funnels or martech is far more likely to be the agency's own — when the caller does not state a focus. The Reactor does (`ecommerce`, above), so this reading now serves the probe script and any caller that leaves it open.
 - **Marketing vocabulary is stripped by PROVENANCE, not outright.** In a client brief "leads", "funnel" and "campaign" are noise — searching them bills per row for nothing. In an offer NAME or the connected website's industry they are the subject. So `TRADE_TERMS` is applied to the brief body and campaign name, skipped for the offer name / type / industry / audience — and even there weighted BELOW a plain noun, or "digital marketing agency" would supply the two best terms on every campaign that agency ever runs. Three-letter market acronyms (seo, ppc, crm, cro, b2b, b2c, dtc, ugc) are kept against the length floor.
 - **Cost is bounded before the first request**: at most 4 searches × 6 rows = 24 billed rows per campaign (3 market rungs + 1 craft), the market track stopping the moment it has enough, and the craft search running last so a dead source is never paid for twice. Credits spent ride into the telemetry feed.
 - **A competitor's results are never our claims.** Every evidence block carries that rule verbatim — the references are read for STRUCTURE (hook shape, proof placement, offer framing, CTA), and lifting their figures or testimonials is a compliance failure wearing a proven layout. External evidence can lift a layer's confidence off the floor but never to High: a live competitor ad is direction, a retrieved Vault asset is this account's own intelligence.
@@ -376,13 +403,48 @@ end. For destructive writes (Supabase inserts), surface errors clearly.
 - Attach Pipeboard's hosted Meta Ads MCP to the orchestrator with Anthropic's **MCP connector** (`mcp_servers` + `mcp_toolset` on `anthropic.beta.messages.create`, beta header `mcp-client-2025-11-20`). Token auth via `PIPEBOARD_API_TOKEN` (`?token=` on the server URL).
 - Only attached when configured; the agent runs normally without it. MCP tool calls execute server-side and surface in the telemetry feed.
 
-### Meta ad units (launch-ready output)
-- Every Reactor concept ships with an **`adPackage`** — a complete Meta ad unit (primary text with the hook inside the 125-char "See more" fold, ≤40-char headline, ≤30-char description, CTA button type). The contract lives in `lib/meta-ads.ts` — the type, Meta's limits, the validator (including the hard compliance phrases), the Ads-Manager clipboard format, the orchestrator prompt block, and the `submit_concepts` schema fragment all come from that one module. Never re-declare these limits elsewhere.
-- On submit, packages are validated server-side; compliance errors share the single bounded revision pass with the NEURO pre-test. The concept card renders the ad unit with the fold made visible, live char counts, and a "Copy for Ads Manager" action.
+### Meta creative contract (`lib/meta-ads.ts`)
+- **The platform makes the creative, not the caption.** The caption layer — the per-concept `adPackage` (primary text, headline, description, CTA), its editor and the mock Facebook feed it was previewed in — was removed on purpose. Do not reintroduce it: the caption is written in Ads Manager, so everything an ad must say is said by the creative (`productionBrief.onImageText`, at most 2 blocks inside 95 chars — see "On-image text" above).
+- What remains of the contract lives in this one module: the RXN test token (`metaAdName`, `metaAssetName`, `parseTestToken`, `TEST_ID_RE`), the **on-creative compliance gate** (`validateCreativeCopy` / `creativeCopyFeedback`), `META_CREATIVE_CRAFT_BLOCK` (injected into every orchestrator run) and the placement map (`PLACEMENTS`, `placementFor`). Never re-declare any of these elsewhere.
+- **Words burned into pixels cannot be edited after the upload, so they are checked BEFORE the render.** The gate reads what ships — the on-image text of every creative, plus the frames of a motion concept — and names CLAIMS, not words (the old banned-word list bounced every legitimate "30-day money-back guarantee"). Hard errors (guaranteed outcomes, medical cure claims, weight-loss figures, miracle / overnight results, income claims, personal-attribute assertions such as "Do you have acne?") share the single bounded revision pass with the NEURO pre-test; claims that are legal only when substantiated ("cure for", FDA-approved, clinically proven, #1 / best-selling) are warnings. The upload route re-runs the same gate server-side, so a creative that skipped the run still cannot leave with a hard error on it.
+
+### Upload to Meta + the Launch Bay
+- **The Launch Bay** (`components/campaign-reactor/canvas/AdStudio.tsx`, the Reactor's third view) replaced the Ad Studio's caption editor and mock feed. It is about the PIXELS: which Meta placement the render fits (`placementFor`), a **pixel pre-test** (`POST /api/studio/pretest` → `pretestCreative` in `lib/neuro.ts`) that reads the actual render with vision — is the on-image text spelled the way it was written, does the product read at thumb size — and falls back to scoring the plan when there is no render or no key (`basis: 'plan' | 'creative'`, never dressed up as the other), plus download and upload.
+- **Upload goes to the brand's MEDIA LIBRARY, not into an ad** (`lib/meta-publish.ts`): images to `act_X/adimages` (multipart; the source is fetched through `safeFetch` with every redirect re-validated, capped at Meta's 30 MB), clips to `act_X/advideos` via `file_url`. It needs a token with `ads_management` and an ad account — no Page id, no link URL, no caption. The buyer builds the ad in Ads Manager from the library, Advantage+ or manual alike.
+- **Whose account:** `resolveMetaCredentials` — the brand's stored connection first, the deployment env second. An upload with no unambiguous destination is refused with a reason (`needsConnection`), never guessed into whichever account the token reaches first.
+- `GET /api/meta/publish` reports where this brand's uploads go; `POST` takes one creative or `{ items }` for a whole run (≤ 24, 3 in parallel, `maxDuration` 300). Every asset is named with its RXN token and pre-seeded as a pending outcome carrying the returned **image hash / video id**, which is what lets the ingest grade an ad built under any name back to the variant it came from. Never throws: every failure is a 200 with a structured reason the Launch Bay renders inline.
+
+### Product catalog (`lib/catalog/`)
+- **The store's own products, read from what it already publishes** — no app install, no API key: Shopify's public `/products.json`, then the WooCommerce Store API, then schema.org `Product` JSON-LD on the homepage and the product pages it links to. Shopify/Woo products are enriched from their own pages, because review apps publish ratings as JSON-LD and the catalog APIs do not. Every fetch goes through `lib/safe-fetch.ts` (SSRF-checked on every redirect, size-capped).
+- Kept per account in `platform_settings` (`catalog.products`, ≤ 250 products). With no settings store, the catalog a session synced is shown to that session only — the same rule `getConnectedWebsite` follows, so one brand's catalog never surfaces for another. `GET/POST /api/catalog` lists summaries / syncs; the panel lives on the Brand page, and the brief's product picker (guided step 1 and Quick Launch) appears once a catalog exists.
+- **A product's published facts are the ONLY figures a creative may state about it.** A run with a `productId` resolves the product from THIS account's catalog server-side (never from the request body) and appends `productFactsBlock` to the system prompt: price, sale price and % off as the store publishes them today, rating + review count only when published, SOLD OUT stops any offer on it, and the product photo binds every production brief to the product as it is actually sold. The photo is also handed to OPUS as an image. A whole-brand run gets `catalogRangeBlock` (the range, for bundles and cross-sells); a run with no catalog gets a rule forbidding invented prices, discounts and ratings.
+- `inferNiches` reads the catalog's vertical (product types, tags, titles → `ECOMMERCE_VERTICALS`, at most two, empty when the catalog is too mixed to say) for the research ladder and the Ad Library's default view.
+- Guarded by `npm run selftest:ecom` — the parsers against captured Shopify / WooCommerce / JSON-LD payloads, the facts block, the vertical read, the compliance gate, the upload naming and the purchase-first grading. No network.
 
 ### Meta performance ingest (learning loop)
-- `POST /api/meta/ingest` (engine: `lib/meta-ingest.ts`) pulls ad-level CTR/CPL/ROAS from the Marketing API, grades each ad **against its account cohort medians** (absolute benchmarks under 3 eligible ads), and writes verdicts into `campaign_outcomes` — ORACLE memory. Winners auto re-ingest into the Vault via `recordOutcome`.
-- Idempotent by `attributes.metaAdId`: re-syncs update changed verdicts, skip unchanged ones. Never throws — returns a summary. Trigger from the /meta dashboard ("Sync Meta → ORACLE").
+- `POST /api/meta/ingest` (engine: `lib/meta-ingest.ts`) pulls ad-level insights from the Marketing API, grades each ad **against its account cohort medians**, and writes verdicts into `campaign_outcomes` — ORACLE memory. Winners auto re-ingest into the Vault via `recordOutcome`, into the SAME account.
+- **Purchase first.** Once ≥ 3 ads in the account have purchases, grading is on ROAS and cost per purchase against the account's medians — a winner needs ≥ 3 purchases and at least break-even ROAS; a loser spent twice the floor without a sale or returns well under the median. An account with no purchase signal yet is click-graded (CTR/CPL vs cohort, absolute benchmarks under 3 eligible ads), and the verdict's metric says which. An e-commerce ad that wins on clicks and loses on revenue is a loser with a good thumbnail.
+- **Counted once.** `resultCount` takes the MAX across an event's synonyms (`purchase`, `offsite_conversion.fb_pixel_purchase`, `omni_purchase`…) rather than summing them — Meta reports the same purchase under several names, and summing them doubled every count.
+- **Attributed three ways**, in order: the Meta ad id (a re-sync), the RXN token in the ad's name, and the uploaded ASSET (image hash / video id read off the ad's creative — single, carousel or flexible). The asset match is what claims the pending row the upload seeded.
+- **Scoped to the account** on every read and write — the outcomes it matches, the rows it writes, the winners it banks. Idempotent by `attributes.metaAdId`: re-syncs update changed verdicts, skip unchanged ones. Never throws — returns a summary. Trigger from the /meta dashboard ("Sync Meta → ORACLE").
+
+### Multi-tenant lock-down (one brand never reads another's data)
+- **The account comes from the signed session, always** — `currentAccount()` (`lib/account.ts`). Never from a body, form field or query string; `selftest:tenant` greps for all three.
+- **Every query against a tenant table carries the account IN THE QUERY CHAIN** — `.eq('builder_id', …)` / `.eq('account_id', …)` (or the key in an insert's row). A predicate elsewhere in the function does not count: that is how the second query in a function goes unscoped while the first passes review. Tenant tables: `knowledge_chunks`, `campaign_outcomes`, `faces`, `frameworks`, `creative_outputs`, `media_generations`, `long_documents`, `platform_settings`. Inserts of a pre-built row are allowlisted by name in `scripts/tenant-isolation-selftest.ts`, with the claim asserted.
+- **Reads by id are scoped too** — an update or delete by id also filters on the account, and an id the account does not own reads as "Not found" (the same answer as an id that does not exist).
+- **The Vault lists only what the account owns** — never global rows. `match_knowledge` widens a scoped search to global rows, so the semantic browse re-checks ownership. Vault counts use `knowledge_stats_scoped` (`supabase/schema.lockdown.sql`) with a per-system head-count fallback; the unscoped `knowledge_stats()` is never called.
+- **Deployment-wide credentials only act on a single-brand deployment** (`lib/tenancy-mode.ts` → `deploymentCredentialsAllowed()`): the `META_ACCESS_TOKEN` fallback in `resolveMetaCredentials`, the Meta Ads MCP attached to Reactor runs, and the connection screen's report of the env token. `graphGet` has no env default — every token is resolved for an account. Multi-tenant = any `users` row, or `PLATFORM_MULTI_TENANT=true`.
+- **Provider keys only go to the provider.** A caller-supplied fal `responseUrl` is followed only on fal's queue host (`isFalQueueUrl`) — it used to receive `FAL_KEY` for any host named. The image download proxy goes through `safeFetch`.
+- **No account directory.** Accounts are read only where tenancy is resolved (`lib/account.ts`, `lib/tenancy-mode.ts`, `getBuilder` by id); the unauthenticated `/api/builders` route that listed and created accounts was removed. Account creation belongs to the future owner dashboard.
+- Guarded by `npm run selftest:tenant`, verified by mutation: re-introducing each original bug (unscoped outcomes, null-scoped browse, ungated env token, fal key to any host, unscoped faces, ungated MCP) fails it.
+
+### Platform Library (the owner's method, never a brand's to see)
+- **What it is:** the owner's SOPs, frameworks and playbooks, uploaded once at `/owner/library`, tagged by niche, and applied by the Reactor to every brand in a matching niche — as METHOD only. Owner-only behind `PLATFORM_OWNER_PASSWORD` (`lib/owner.ts`, `lib/owner-session.ts`); `/owner` and `/api/owner/**` sit outside the brand middleware and every owner handler checks the owner cookie first, answering 404 without it.
+- **Separate tables, not `knowledge_chunks`** (`supabase/schema.library.sql`): `library_documents` + `library_chunks`, HNSW + full-text, `match_library` (RRF hybrid, scoped by NICHE overlap, not by account). RLS on, no browser-role grants (EXECUTE revoked from `public` too — Postgres grants it by default). No brand-facing query can reach them; only `lib/library/index.ts` names them.
+- **Upload:** Markdown, text, CSV, HTML, PDF, or a whole Notion export zip. Zips are unpacked IN THE BROWSER (`lib/library/unzip.ts`, fflate) so only text is sent — images are never decompressed, nested `Part-N.zip`s are followed, text capped at 25 MB per archive. PDFs go to `/api/owner/library/extract` (unpdf, full text). Documents are normalised (`lib/library/text.ts`: Notion ids stripped from titles, images dropped, links reduced to their text), chunked BY HEADING PATH (a rule keeps the heading that says what it is a rule about), embedded with the heading, and de-duplicated by content hash. Batches are sent under Vercel's body limit and matched back by position.
+- **Niches** (`lib/library/niches.ts`): `all`, `ecommerce`, `ecom:<vertical id>` (the ad library's verticals), `services`, `marketing`. A brand's keys are read off its OWN catalog and website (`brandLibraryNiches`) — always `all` + `ecommerce`, plus its verticals. A brand never chooses, and a request cannot claim, a niche.
+- **In a run:** `searchLibrary` runs in parallel with the preflight briefing, capped at 6 s (`LIBRARY_BUDGET_MS`), and `libraryMethodBlock` hands OPUS the sections with three rules that travel every time: METHOD ONLY (its examples and figures are other businesses' — never a claim, never on a creative), THE BRAND WINS a conflict, NEVER CITE IT. Telemetry says "Platform playbook applied · N sections" — a count, never a heading or a line.
+- Guarded by `npm run selftest:library`: the SQL in Postgres + pgvector (niche filtering, no browser access, no surfacing through `match_knowledge`, cascade delete, scoped stats), Notion text + zip handling, the owner gate (short password closed, expiry, tamper, password change signs out), and the walls (only the library module names the tables, only owner routes + the Reactor import it, the Reactor can only search it, telemetry carries a count).
 
 ### Supabase calls
 - Use `supabaseAdmin` (service role) for all write operations
@@ -469,9 +531,10 @@ Telemetry** feed on the Campaign Reactor page. How to verify it's there:
 
 **A. In the UI (easiest)**
 1. Run `npm run dev`, open `/campaign-reactor`.
-2. Pick a Campaign Angle, choose output types, hit **Fire Reactor**.
+2. Pick a Campaign Angle (and a product, once a catalog is synced on the Brand
+   page), choose output types, hit **Fire Reactor**.
 3. Watch the **Reactor Telemetry** panel stream the agent's steps:
-   "Searching pattern: …", "└▸ pattern · Profit Pattern", "Loading Creative
+   "Searching pattern: …", "└▸ pattern · Social Proof Pattern", "Loading Creative
    Learnings rubric…", "Scoring concepts…". Each concept shows a rubric score
    and a "Grounded in" basis.
    - **No `ANTHROPIC_API_KEY`** → demo mode: the feed shows the same step-by-step
@@ -483,7 +546,7 @@ Telemetry** feed on the Campaign Reactor page. How to verify it's there:
 ```bash
 curl -N -X POST http://localhost:3000/api/campaign-reactor \
   -H 'Content-Type: application/json' \
-  -d '{"angle":"Profit","outputs":["Hook","Founder Concept"]}'
+  -d '{"angle":"Social Proof","outputs":["Static Creative","Carousel Creatives"]}'
 ```
 You'll see the SSE stream of `step` / `retrieval` / `concept` / `done` events —
 that *is* the agent thinking out loud.
@@ -495,10 +558,11 @@ that *is* the agent thinking out loud.
 
 To run the *real* agent end to end: set `ANTHROPIC_API_KEY` (agent),
 `VOYAGE_API_KEY` (embeddings + reranker), and the Supabase keys (vector store),
-then run `supabase/schema.reactor.sql`, `schema.tenancy.sql` and
-`schema.retrieval.sql` in Supabase (plus `schema.documents.sql` with
-`PAGEINDEX_API_KEY` for long documents). `/api/health` → `retrieval` confirms
-which stages are live.
+then run `supabase/schema.reactor.sql`, `schema.tenancy.sql`,
+`schema.retrieval.sql` and `schema.lockdown.sql` in Supabase (plus
+`schema.documents.sql` with `PAGEINDEX_API_KEY` for long documents, and
+`schema.library.sql` for the Platform Library). `/api/health` → `retrieval`
+confirms which stages are live.
 
 ---
 
@@ -558,11 +622,11 @@ Full architecture: `docs/MIKE_DELIGHT.md`.
 
 **Creative Canvas — the structured creative operating layer**
 - [x] Brief upgrades: Market Sophistication dropdown (Schwartz stages with per-option descriptions, system-recommended) under Awareness; Campaign Offer + Offer Name moved under Campaign Name on step 1; new deliverable (Montage / Scene Flow)
-- [x] **Per-creative variation system** (`lib/variations.ts` — the single source of truth). Variations are not a deliverable and not a global knob: every selected format carries its OWN count (×1–×4) and its OWN lever (Smart Mix / Hooks / Angles / Visuals / Copy) under its size cards, so "3 hook variations of the video, 1 static" is expressible. The ladder stops at 4 because every concept costs a brief + ad package + NEURO pass + a real render inside one `REACTOR_BUDGET_MS` function — raise it when the host allows longer functions. Lever language is format-aware (a static has no "first three seconds", a carousel no "spoken opening"), the counts are enforced server-side (surplus trimmed always; a shortfall re-asked once, only on runs of ≤6 concepts, since that costs a whole turn), and every version is stamped with the run's `testId`, its own `variantId` and the lever + concrete difference it carries — which is what lets the Meta ingest grade a controlled test instead of a pile of one-offs (`variationPerformance()` in `lib/outcomes.ts`). Guarded by `npm run selftest`. The old `Creative Variations` and `Recommend Format` deliverables are removed — the first double-counted against the global knob, the second carried no model or size choice
+- [x] **Per-creative variation system** (`lib/variations.ts` — the single source of truth). Variations are not a deliverable and not a global knob: every selected format carries its OWN count (×1–×4) and its OWN lever (Smart Mix / Hooks / Angles / Visuals / Copy) under its size cards, so "3 hook variations of the video, 1 static" is expressible. The ladder stops at 4 because every concept costs a brief + on-image copy + NEURO pass + a real render inside one `REACTOR_BUDGET_MS` function — raise it when the host allows longer functions. Lever language is format-aware (a static has no "first three seconds", a carousel no "spoken opening"), the counts are enforced server-side (surplus trimmed always; a shortfall re-asked once, only on runs of ≤6 concepts, since that costs a whole turn), and every version is stamped with the run's `testId`, its own `variantId` and the lever + concrete difference it carries — which is what lets the Meta ingest grade a controlled test instead of a pile of one-offs (`variationPerformance()` in `lib/outcomes.ts`). Guarded by `npm run selftest`. The old `Creative Variations` and `Recommend Format` deliverables are removed — the first double-counted against the global knob, the second carried no model or size choice
 - [x] Per-deliverable render-model menus on the Formats step (`lib/model-menu.ts`) — system recommends, user overrides; dimension options adapt to the chosen model's registry ratios. Montage gets two REAL pickers (Still Model + Motion Model) — OpenMontage is shown as the scene-planning engine only, never a selectable render model
-- [x] Creative Canvas view (`components/creative-canvas/`, `lib/creative-canvas/graph.ts`): **full-screen immersive mode** (portaled to `document.body`, sidebar/topbar fully hidden, layered Escape), pre-structured node lanes (hook → message → proof → scenes/visual → CTA → output) seeded live with the Reactor's already-generated media, branch/approve/lock, precise per-node regeneration (`/api/canvas/regenerate`, strategy-coherent, demo fallback), **universal drag-to-reassign** (every content card — hook/message/proof/visual/scene/CTA — can take any content role; only Output is fixed) with a confirmation modal (Reassign & regenerate / Reassign, keep words / Visual move only / Cancel), right-click context menu, ⌘/Ctrl+D duplicate + Delete shortcuts, scene render + animate, Send-to-Studio composition; "Launch in Creative Canvas" CTA on montage runs; full spec in `docs/CREATIVE_CANVAS.md`
+- [x] Creative Canvas view (`components/creative-canvas/`, `lib/creative-canvas/graph.ts`): **full-screen immersive mode** (portaled to `document.body`, sidebar/topbar fully hidden, layered Escape), pre-structured node lanes (hook → message → proof → scenes/visual → CTA → output) seeded live with the Reactor's already-generated media, branch/approve/lock, precise per-node regeneration (`/api/canvas/regenerate`, strategy-coherent, demo fallback), **universal drag-to-reassign** (every content card — hook/message/proof/visual/scene/CTA — can take any content role; only Output is fixed) with a confirmation modal (Reassign & regenerate / Reassign, keep words / Visual move only / Cancel), right-click context menu, ⌘/Ctrl+D duplicate + Delete shortcuts, scene render + animate, Send to Launch Bay (the lane's active hook and offer become the creative's on-image words, so a reshaped lane arrives unrendered and renders what the Canvas settled on); "Launch in Creative Canvas" CTA on montage runs; full spec in `docs/CREATIVE_CANVAS.md`
 - [x] **Multi-format campaigns**: selecting several formats in the brief yields ONE campaign → ONE shared strategy layer (campaign bar + chips shown once) → one Creative Canvas tab per format family (Image / Video / Montage / Variations / Recommended, `canvasTracks()` + `conceptsForTrack()`); tabs are lazy-mounted and kept alive so switching never loses edits; formats are never mixed into one graph
-- [x] Reactor view toggle is Reactor · Canvas · Studio (`components/campaign-reactor/canvas/AdStudio.tsx` is the renamed Studio; the old free-node Flow view is retired from the toggle)
+- [x] Reactor view toggle is Reactor · Canvas · Launch Bay (`components/campaign-reactor/canvas/AdStudio.tsx` — the Studio rebuilt around the pixels and the upload; the caption editor, the mock feed preview (`AdPreviewCard`) and the retired free-node Flow view (`CreativeFlow`, `lib/campaign-reactor/flow.ts`, `canvas.ts`) are deleted)
 
 **Mike Delight — the performance operator on the dashboard**
 - [x] `lib/operator/` — separately replaceable layers behind the existing
@@ -736,21 +800,35 @@ Full architecture: `docs/MIKE_DELIGHT.md`.
 
 **Proven-ad intelligence (GetHookd)**
 - [x] `lib/gethookd/` — the proven-ad source: live Meta creative that is already running in the ICP's markets, with performance tier, run-time, transcripts and signed stills. Replaces the Meta `ads_archive` search that could never return commercial ads outside the EU (it is kept as the unkeyed fallback)
-- [x] Ad Library "Proven Ads" tab — focus toggle (Service Businesses / E-commerce / Both), format and tier filters, longest-running-first ordering, credit accounting on screen
+- [x] Ad Library "Proven Ads" tab — focus toggle (E-commerce first, then Service Businesses / Marketing & Agency / Everything), e-commerce vertical chips (opening on the brand's own vertical when its catalog has one), format and tier filters, longest-running-first ordering, credit accounting on screen
 - [x] Two actions per ad: **Clone** (headline + body + transcript → Creative DNA → Reactor) and **Design** (signed still → SPARK's visual reader → banked as a `design` chunk in the Vault, with an honest receipt when nothing was stored)
-- [x] The ICP is configuration, not prose: `lib/gethookd/icp.ts` defines services and e-commerce as separate niche sets, and the curated demo winners were rewritten off one construction account onto the real ICP
+- [x] The ICP is configuration, not prose: `lib/gethookd/icp.ts` defines e-commerce, services and marketing as separate niche sets (e-commerce leading, its verticals labelled once in `ECOMMERCE_VERTICALS`), and the curated demo winners were rewritten off one construction account onto the real ICP
 - [x] **Automatic campaign research** (`lib/gethookd/research.ts`) — a submitted brief now searches the proven-ad library on its own and hands the result to SPARK and ECHO BEFORE they report to OPUS. Static image, active, 90+ days running, no maximum age; a bounded ladder (short literal term → broader term → unqueried browse → every market) with a hard ceiling of 24 billed rows; the shortlist deduplicated by ad id, by copy and by advertiser. Eligibility is re-checked per row and never lowered — a thin result is reported as thin and OPUS is told not to claim external validation
 - [x] **Two reference pools, split by what each layer learns.** MARKET is scoped to the brief's ICP and carries the argument; CRAFT drops the niche filter for the whole library and narrows on the static-ad archetypes instead, carrying the construction. ECHO sees market only; SPARK sees both in labelled sets; the design read prefers craft. A craft reference must carry a headline, because the library files untreated product photos under an archetype too
 - [x] **The agency's own category is a first-class focus** (`MARKETING_NICHE_IDS`) — martech, info offers and other agencies, so a campaign for the agency itself researches the right market instead of its clients'. Marketing vocabulary is stripped by provenance rather than outright, so "funnel" is noise in a brief body and the subject in an offer name
-- [x] **The Campaign Offer ladder is the one an agency actually sells against** (`offerOptions`) — Free Audit / Teardown, DM / Comment Trigger, Case Study / Proof Asset, Free Trial / Pilot, Done-For-You Retainer and Performance / Risk Reversal join the original five, ordered by friction and each carrying its own proof burden and CTA frame. The risk-reversal directive carries its compliance constraint and the case-study directive forbids borrowing a result — those are the two offers most likely to invent one
+- [x] **The Campaign Offer ladder is the one an e-commerce brand actually runs** (`offerOptions`) — Full Price (value-led), New Launch / Drop, Limited Stock / Restock, Quiz / Product Finder, Free Shipping, Money-Back Guarantee / Risk-Free Trial, Subscribe & Save, Free Gift With Purchase, Spend Threshold / Amount Off, Bundle / Buy More Save More, BOGO, Percent Off and Sale Event / Seasonal — ordered by margin cost, each carrying its own proof burden and CTA frame. The guarantee directive carries its compliance constraint, and the discount and bundle directives forbid a rounded-up, manufactured or borrowed saving — a wrong number burned into a creative is a compliance problem shipped at scale
 - [x] The reference set is banked as it is used — the top ad's design is read once and stored as a `design` chunk, so `bestVisualReferenceFor` serves it free on every later run in that account
 - [x] `npm run gethookd:research` — the one live probe: runs the real ladder, prints what each agent is handed and what it cost
 - [x] `npm run selftest:gethookd` — in-process checks: focus separation, the real payload shape, cost caps, the 90-day bar (including a 3,200-day zombie and an 89-day near-miss), the ladder's bounds, term extraction that never searches a marketing word, dedup by copy and by brand, the borrow rule on every block, and honest failure on an unkeyed / rejected / exhausted / dead source
 
-**Meta-native output + closed loop**
-- [x] Launch-ready Meta ad units on every concept (`lib/meta-ads.ts`): primary text with 125-char fold discipline, headline/description limits, CTA button types, compliance validator wired into the submit gate + concept cards ("Copy for Ads Manager")
-- [x] Meta craft block injected into every orchestrator run (fold/hook rules, placement ratios, safe zones, CTA-to-temperature mapping)
-- [x] Performance ingest (Meta API) → `campaign_outcomes` auto-ingest of live CTR/CPL/ROAS with cohort-median grading; winners auto re-ingest into the Vault (`lib/meta-ingest.ts`, `/api/meta/ingest`, /meta sync control)
+**E-commerce Meta creative — the creative, not the caption**
+- [x] **Caption layer removed** — the per-concept `adPackage` (primary text / headline / description / CTA), its editor, the mock Facebook feed preview and "Copy for Ads Manager" are gone. The creative carries the sale: `META_CREATIVE_CRAFT_BLOCK` (product as hero, one idea per creative, proof only from supplied facts, offers stated exactly as configured, placement safe zones) is injected into every run, and the on-creative compliance gate (`validateCreativeCopy`) checks the words burned into pixels before the render and again at upload
+- [x] **Upload to Meta, rebuilt** (`lib/meta-publish.ts`, `/api/meta/publish`): into the brand's OWN ad account (per-account credentials — the old publisher read the deployment env, so every brand on a multi-brand deployment would have pushed into one account), into the media library rather than a half-built ad, one creative or a whole run, named with its RXN token and seeded as a pending outcome keyed by image hash / video id
+- [x] **The Launch Bay** replaces the Studio: placement fit, a pixel pre-test that reads the render back (spelling of the on-image text, product legibility), download, single + bulk upload with per-creative status
+- [x] **Product catalog** (`lib/catalog/`, Brand page panel, product picker in the brief): Shopify / WooCommerce / JSON-LD, read from what the store already publishes; the selected product's published facts are the only figures a creative may state, its photo is shown to OPUS and binds every production brief, and its vertical steers research
+- [x] **Strategy vocabulary re-grounded in e-commerce** — angles, deliverables (creative formats only), awareness, audiences and the offer ladder (`lib/reactor-inputs.ts`), the curated foundation assets and learnings (`lib/reactor-data.ts`), the suggest heuristics, the demo pool and the orchestrator's compliance block all speak purchases, AOV and products. The curated learnings are labelled "Craft principle — not yet measured on this account." rather than passed off as results
+- [x] **Research on the brand's own vertical** — `focus: 'ecommerce'` + catalog `niches` into the research ladder; the Ad Library gains vertical chips and opens on the brand's vertical
+- [x] **Performance ingest graded on e-commerce economics** (`lib/meta-ingest.ts`) — ROAS and cost per purchase vs account medians once ≥ 3 ads have purchases, click grading otherwise and labelled as such; purchase counts de-duplicated across Meta's synonyms (they were being summed — double counting); ads attributed back by uploaded asset as well as ad id and RXN token; every read and write scoped to the account (it was not — one brand's ad could claim another brand's pending upload)
+- [x] CSV joins the Vault's text formats (`lib/csv.ts`) — review exports and product feeds ingest as rows a model can read
+- [x] `npm run selftest:ecom` — the contract, compliance gate, upload naming, catalog parsers, facts blocks, vertical read and purchase-first grading, in-process
+
+**Multi-tenant lock-down + Platform Library**
+- [x] **Cross-account reads closed** — Vault browse (listed every brand's chunks; its semantic half missed the brand's own), Vault stats, Vault update/delete by id, ORACLE outcomes + learnings rubric + winning configs, the "Our Winners" clone tab, banked ad designs, NOVA research (page, dedup, sweep), faces (whose upload took its tenant from the form), frameworks (tenant from the body, `builderScope=all`), taxonomy locks + backfill, dashboard KPIs/activity, render-status updates, Mike's Vault search + strategic memory, and the in-memory website scan / catalog for account-less sessions on a shared deployment
+- [x] **Owner's credentials stop at the owner** — the `META_ACCESS_TOKEN` fallback, the Meta Ads MCP and the connection screen's env report are single-brand only (`lib/tenancy-mode.ts`); `graphGet` has no env default
+- [x] **Two key/endpoint leaks fixed** — the fal video poll sent `FAL_KEY` to any caller-named URL; `/api/builders` listed (and created) every brand account without authentication. The download proxy now re-checks redirects
+- [x] The NOVA sweep no longer spends model calls extracting research it cannot store (it ran with no account, and every write was refused)
+- [x] `npm run selftest:tenant` — a general rule (every tenant query carries the account in its chain) plus credential and key checks, mutation-tested
+- [x] **Platform Library** — `/owner/library`, `PLATFORM_OWNER_PASSWORD`, browser-side Notion zip unpacking, heading-chunked + niche-tagged + hybrid-searched, applied to runs as method only and never shown to a brand (`supabase/schema.library.sql`, `npm run selftest:library`)
 
 **Network integrity, speed + mobile**
 - [x] ATLAS reconnected to the fallback knowledge layer — `foundationAssets` in
@@ -768,7 +846,7 @@ Full architecture: `docs/MIKE_DELIGHT.md`.
       concurrently; ORACLE's memory lookup runs alongside the briefing
 - [x] Streaming client: context value memoized + SSE events folded per chunk
       (was one re-render of every consumer per event)
-- [x] Reactor page code-split (Canvas/Studio dynamic): 167 kB → 102 kB
+- [x] Reactor page code-split (Canvas/Launch Bay dynamic): 167 kB → 102 kB
 - [x] Mobile: safe-area viewport, portaled nav drawer + brief sheet (both were
       trapped by `backdrop-filter` / `isolation: isolate` containing blocks),
       `dvh` sheets, 44px touch targets, and a phone performance layer that
@@ -826,5 +904,6 @@ Full architecture: `docs/MIKE_DELIGHT.md`.
 - [ ] SPARK URL-only ingestion for JS-rendered sources (Meta Ad Library / TikTok / shared boards via oEmbed/transcript APIs or a headless render). Uploads, pasted screenshots, direct image links and YouTube transcripts all work today; a client-rendered page has no images in its served HTML, so `lib/ad-image.ts` scrapes og:image/`<img>`/inlined-JSON URLs and otherwise returns a note telling the user to screenshot it
 - [ ] Scheduled auto-sync for the Meta performance ingest (manual one-click sync done; cron/Vercel scheduled function pending)
 - [ ] More dashboards reading live `knowledge_chunks` counts (Agent Network does; Research/Copy/Pattern still curated)
+- [ ] Run `schema.lockdown.sql` and `schema.library.sql` in Supabase; set `PLATFORM_OWNER_PASSWORD`
 - [ ] Deployed + tested end to end with real keys
 

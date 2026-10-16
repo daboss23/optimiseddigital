@@ -14,7 +14,8 @@ type SyncState =
 
 /**
  * The Performance Intelligence sync control — one click pulls live ad-level
- * CTR/CPL/ROAS from Meta, grades every ad against its cohort, and writes the
+ * performance from Meta, grades every ad against its cohort (on purchases —
+ * ROAS and cost per purchase — once the account records them), and writes the
  * verdicts into ORACLE memory (winners feed the Vault automatically). Sits in
  * the Reactor Learning Loop panel header; shows the run summary inline.
  */
@@ -67,10 +68,14 @@ export function MetaSyncButton() {
     <div className="flex flex-wrap items-center gap-2">
       {state.status === 'done' && (
         <span className="text-[11px] tabular text-white/55">
-          {state.summary.eligible} ads graded ·{' '}
+          {state.summary.eligible} ads graded on{' '}
+          {state.summary.gradedOn === 'purchases' ? 'purchases' : 'clicks'} ·{' '}
           <span className="text-success">{state.summary.winners} winners → Vault</span>
           {state.summary.losers > 0 && (
             <span className="text-danger"> · {state.summary.losers} losers</span>
+          )}
+          {state.summary.attributed > 0 && (
+            <span> · {state.summary.attributed} traced to uploaded creatives</span>
           )}
         </span>
       )}

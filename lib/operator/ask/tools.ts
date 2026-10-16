@@ -182,6 +182,13 @@ export const ASK_TOOLS: Anthropic.Tool[] = [
 /* --------------------------------- context --------------------------------- */
 
 export interface ToolContext {
+  /**
+   * The account Mike is reading for. His Vault search and strategic-memory
+   * reads are scoped to it: unscoped, `past_outcomes` listed every brand's
+   * graded ads and `search_knowledge` saw only platform rows, never the
+   * brand's own Vault. Null reads nothing.
+   */
+  accountId: string | null
   evaluationDate: string
   creatives: CreativeSnapshot[]
   baselines: PerformanceBaseline[]
@@ -529,7 +536,7 @@ export async function runAskTool(
     case 'search_knowledge': {
       const query = asString(input.query) ?? ''
       const limit = Math.max(1, Math.min(10, asNumber(input.limit, 5)))
-      const hits = await searchKnowledge(query, { k: limit }).catch(() => [])
+      const hits = await searchKnowledge(query, { k: limit, builderId: ctx.accountId }).catch(() => [])
       return {
         name: tool,
         label: `Searching the Vault for "${query}"`,
@@ -548,7 +555,7 @@ export async function runAskTool(
 
     case 'past_outcomes': {
       const limit = Math.max(1, Math.min(50, asNumber(input.limit, 20)))
-      const rows = await listOutcomes(limit).catch(() => [])
+      const rows = await listOutcomes(ctx.accountId, limit).catch(() => [])
       return {
         name: tool,
         label: 'Checking strategic memory',

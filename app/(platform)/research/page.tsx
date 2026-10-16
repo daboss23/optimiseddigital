@@ -1,3 +1,4 @@
+import { currentAccount } from '@/lib/account'
 import { Radar, Globe, Sparkles, MessageSquare, Clock, Inbox } from 'lucide-react'
 import { PageHeader, Panel, PanelHeader, Pill } from '@/components/reactor/ui'
 import { researchOutputs } from '@/lib/reactor-data'
@@ -66,7 +67,7 @@ export default async function ResearchPage() {
   // What NOVA actually holds. Never throws — an unconfigured or empty store
   // comes back `live: false`, and the panels below render an empty state rather
   // than curated copy that would read as findings.
-  const intel = await liveNovaIntel().catch(() => null)
+  const intel = await liveNovaIntel(await currentAccount()).catch(() => null)
   const novaIndexed = intel?.totalChunks ?? 0
 
   return (

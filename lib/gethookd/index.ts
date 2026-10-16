@@ -316,7 +316,12 @@ export async function searchProvenAds(q: ProvenAdQuery = {}): Promise<ProvenAdRe
     // confidently wrong ads is worse than an empty one.
     strict_query: query ? 'true' : undefined,
     // `library` scope drops the niche filter deliberately — see ProvenAdQuery.
-    niche: q.scope === 'library' ? undefined : nicheCsvFor(focus),
+    niche:
+      q.scope === 'library'
+        ? undefined
+        : q.niches?.length
+          ? Array.from(new Set(q.niches)).join(',')
+          : nicheCsvFor(focus),
     creative_categories: q.creativeCategories?.length ? q.creativeCategories.join(',') : undefined,
     [geoParam()]: (q.geo ?? defaultGeo()) || undefined,
     performance_scores: TIER_FILTER[q.tier ?? 'all'],

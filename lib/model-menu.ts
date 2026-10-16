@@ -173,7 +173,7 @@ export function modelMenuFor(
       deliverable,
       options: videoOptions,
       recommendedId: rec?.modelId ?? videoOptions[0].id,
-      reason: rec?.reason ?? 'Flagship realism for builder-native video.',
+      reason: rec?.reason ?? 'Flagship realism for product-native video.',
     }
   }
 
