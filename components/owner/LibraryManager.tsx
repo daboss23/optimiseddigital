@@ -423,7 +423,9 @@ export function LibraryManager() {
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <p className="text-[12.5px] font-semibold text-white/80">
                     {staged.length} document{staged.length === 1 ? '' : 's'} ready ·{' '}
-                    {Math.round(stagedChars / 1000).toLocaleString()}k characters
+                    {stagedChars < 1000
+                      ? `${stagedChars} characters`
+                      : `${Math.round(stagedChars / 1000).toLocaleString()}k characters`}
                   </p>
                   <button
                     type="button"

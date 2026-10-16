@@ -275,6 +275,22 @@ PLATFORM_LOGIN_REQUIRED      # Optional — default OFF. While off, the login pa
                              #   every visitor lands on the dashboard (/login forwards to /).
                              #   Set to `true` to put the login page back in front — the
                              #   credential code is untouched behind the switch.
+                             #   NOTE: while off, anyone with the URL is the operator — on a
+                             #   single-brand deployment that includes the env Meta token's data.
+PLATFORM_MULTI_TENANT        # Optional — `true` declares the deployment shared BEFORE the first
+                             #   brand login exists (lib/tenancy-mode.ts). A deployment with any
+                             #   row in `users` is multi-tenant whether or not this is set. In
+                             #   multi-tenant mode deployment-wide credentials stop acting for
+                             #   brands: META_ACCESS_TOKEN no longer stands in for an unconnected
+                             #   brand (it reads "connect your account"), and the Meta Ads MCP
+                             #   (PIPEBOARD_API_TOKEN / META_ADS_ACCESS_TOKEN) is not attached
+                             #   to Reactor runs.
+PLATFORM_OWNER_PASSWORD      # Optional — opens the owner-only Platform Library at /owner. Must be
+                             #   12+ characters or the area stays closed (it is reachable from the
+                             #   public URL and holds your own IP). Separate from every brand
+                             #   login; owner sessions are signed with a key bound to this value,
+                             #   so changing it signs every owner session out. AUTH_SECRET (also
+                             #   used for brand sessions) is mixed into the key when set.
 NEXT_PUBLIC_REACTOR_DEMO_DATA # Optional — the curated demo set, in two halves (lib/demo-mode.ts).
                              #   unset (default): DISPLAY on — empty dashboards render the
                              #     illustration, badged DEMO DATA, and a connected Meta account or
@@ -412,6 +428,24 @@ end. For destructive writes (Supabase inserts), surface errors clearly.
 - **Attributed three ways**, in order: the Meta ad id (a re-sync), the RXN token in the ad's name, and the uploaded ASSET (image hash / video id read off the ad's creative — single, carousel or flexible). The asset match is what claims the pending row the upload seeded.
 - **Scoped to the account** on every read and write — the outcomes it matches, the rows it writes, the winners it banks. Idempotent by `attributes.metaAdId`: re-syncs update changed verdicts, skip unchanged ones. Never throws — returns a summary. Trigger from the /meta dashboard ("Sync Meta → ORACLE").
 
+### Multi-tenant lock-down (one brand never reads another's data)
+- **The account comes from the signed session, always** — `currentAccount()` (`lib/account.ts`). Never from a body, form field or query string; `selftest:tenant` greps for all three.
+- **Every query against a tenant table carries the account IN THE QUERY CHAIN** — `.eq('builder_id', …)` / `.eq('account_id', …)` (or the key in an insert's row). A predicate elsewhere in the function does not count: that is how the second query in a function goes unscoped while the first passes review. Tenant tables: `knowledge_chunks`, `campaign_outcomes`, `faces`, `frameworks`, `creative_outputs`, `media_generations`, `long_documents`, `platform_settings`. Inserts of a pre-built row are allowlisted by name in `scripts/tenant-isolation-selftest.ts`, with the claim asserted.
+- **Reads by id are scoped too** — an update or delete by id also filters on the account, and an id the account does not own reads as "Not found" (the same answer as an id that does not exist).
+- **The Vault lists only what the account owns** — never global rows. `match_knowledge` widens a scoped search to global rows, so the semantic browse re-checks ownership. Vault counts use `knowledge_stats_scoped` (`supabase/schema.lockdown.sql`) with a per-system head-count fallback; the unscoped `knowledge_stats()` is never called.
+- **Deployment-wide credentials only act on a single-brand deployment** (`lib/tenancy-mode.ts` → `deploymentCredentialsAllowed()`): the `META_ACCESS_TOKEN` fallback in `resolveMetaCredentials`, the Meta Ads MCP attached to Reactor runs, and the connection screen's report of the env token. `graphGet` has no env default — every token is resolved for an account. Multi-tenant = any `users` row, or `PLATFORM_MULTI_TENANT=true`.
+- **Provider keys only go to the provider.** A caller-supplied fal `responseUrl` is followed only on fal's queue host (`isFalQueueUrl`) — it used to receive `FAL_KEY` for any host named. The image download proxy goes through `safeFetch`.
+- **No account directory.** Accounts are read only where tenancy is resolved (`lib/account.ts`, `lib/tenancy-mode.ts`, `getBuilder` by id); the unauthenticated `/api/builders` route that listed and created accounts was removed. Account creation belongs to the future owner dashboard.
+- Guarded by `npm run selftest:tenant`, verified by mutation: re-introducing each original bug (unscoped outcomes, null-scoped browse, ungated env token, fal key to any host, unscoped faces, ungated MCP) fails it.
+
+### Platform Library (the owner's method, never a brand's to see)
+- **What it is:** the owner's SOPs, frameworks and playbooks, uploaded once at `/owner/library`, tagged by niche, and applied by the Reactor to every brand in a matching niche — as METHOD only. Owner-only behind `PLATFORM_OWNER_PASSWORD` (`lib/owner.ts`, `lib/owner-session.ts`); `/owner` and `/api/owner/**` sit outside the brand middleware and every owner handler checks the owner cookie first, answering 404 without it.
+- **Separate tables, not `knowledge_chunks`** (`supabase/schema.library.sql`): `library_documents` + `library_chunks`, HNSW + full-text, `match_library` (RRF hybrid, scoped by NICHE overlap, not by account). RLS on, no browser-role grants (EXECUTE revoked from `public` too — Postgres grants it by default). No brand-facing query can reach them; only `lib/library/index.ts` names them.
+- **Upload:** Markdown, text, CSV, HTML, PDF, or a whole Notion export zip. Zips are unpacked IN THE BROWSER (`lib/library/unzip.ts`, fflate) so only text is sent — images are never decompressed, nested `Part-N.zip`s are followed, text capped at 25 MB per archive. PDFs go to `/api/owner/library/extract` (unpdf, full text). Documents are normalised (`lib/library/text.ts`: Notion ids stripped from titles, images dropped, links reduced to their text), chunked BY HEADING PATH (a rule keeps the heading that says what it is a rule about), embedded with the heading, and de-duplicated by content hash. Batches are sent under Vercel's body limit and matched back by position.
+- **Niches** (`lib/library/niches.ts`): `all`, `ecommerce`, `ecom:<vertical id>` (the ad library's verticals), `services`, `marketing`. A brand's keys are read off its OWN catalog and website (`brandLibraryNiches`) — always `all` + `ecommerce`, plus its verticals. A brand never chooses, and a request cannot claim, a niche.
+- **In a run:** `searchLibrary` runs in parallel with the preflight briefing, capped at 6 s (`LIBRARY_BUDGET_MS`), and `libraryMethodBlock` hands OPUS the sections with three rules that travel every time: METHOD ONLY (its examples and figures are other businesses' — never a claim, never on a creative), THE BRAND WINS a conflict, NEVER CITE IT. Telemetry says "Platform playbook applied · N sections" — a count, never a heading or a line.
+- Guarded by `npm run selftest:library`: the SQL in Postgres + pgvector (niche filtering, no browser access, no surfacing through `match_knowledge`, cascade delete, scoped stats), Notion text + zip handling, the owner gate (short password closed, expiry, tamper, password change signs out), and the walls (only the library module names the tables, only owner routes + the Reactor import it, the Reactor can only search it, telemetry carries a count).
+
 ### Supabase calls
 - Use `supabaseAdmin` (service role) for all write operations
 - Use `supabase` (anon key) for all read operations
@@ -524,10 +558,11 @@ that *is* the agent thinking out loud.
 
 To run the *real* agent end to end: set `ANTHROPIC_API_KEY` (agent),
 `VOYAGE_API_KEY` (embeddings + reranker), and the Supabase keys (vector store),
-then run `supabase/schema.reactor.sql`, `schema.tenancy.sql` and
-`schema.retrieval.sql` in Supabase (plus `schema.documents.sql` with
-`PAGEINDEX_API_KEY` for long documents). `/api/health` → `retrieval` confirms
-which stages are live.
+then run `supabase/schema.reactor.sql`, `schema.tenancy.sql`,
+`schema.retrieval.sql` and `schema.lockdown.sql` in Supabase (plus
+`schema.documents.sql` with `PAGEINDEX_API_KEY` for long documents, and
+`schema.library.sql` for the Platform Library). `/api/health` → `retrieval`
+confirms which stages are live.
 
 ---
 
@@ -787,6 +822,14 @@ Full architecture: `docs/MIKE_DELIGHT.md`.
 - [x] CSV joins the Vault's text formats (`lib/csv.ts`) — review exports and product feeds ingest as rows a model can read
 - [x] `npm run selftest:ecom` — the contract, compliance gate, upload naming, catalog parsers, facts blocks, vertical read and purchase-first grading, in-process
 
+**Multi-tenant lock-down + Platform Library**
+- [x] **Cross-account reads closed** — Vault browse (listed every brand's chunks; its semantic half missed the brand's own), Vault stats, Vault update/delete by id, ORACLE outcomes + learnings rubric + winning configs, the "Our Winners" clone tab, banked ad designs, NOVA research (page, dedup, sweep), faces (whose upload took its tenant from the form), frameworks (tenant from the body, `builderScope=all`), taxonomy locks + backfill, dashboard KPIs/activity, render-status updates, Mike's Vault search + strategic memory, and the in-memory website scan / catalog for account-less sessions on a shared deployment
+- [x] **Owner's credentials stop at the owner** — the `META_ACCESS_TOKEN` fallback, the Meta Ads MCP and the connection screen's env report are single-brand only (`lib/tenancy-mode.ts`); `graphGet` has no env default
+- [x] **Two key/endpoint leaks fixed** — the fal video poll sent `FAL_KEY` to any caller-named URL; `/api/builders` listed (and created) every brand account without authentication. The download proxy now re-checks redirects
+- [x] The NOVA sweep no longer spends model calls extracting research it cannot store (it ran with no account, and every write was refused)
+- [x] `npm run selftest:tenant` — a general rule (every tenant query carries the account in its chain) plus credential and key checks, mutation-tested
+- [x] **Platform Library** — `/owner/library`, `PLATFORM_OWNER_PASSWORD`, browser-side Notion zip unpacking, heading-chunked + niche-tagged + hybrid-searched, applied to runs as method only and never shown to a brand (`supabase/schema.library.sql`, `npm run selftest:library`)
+
 **Network integrity, speed + mobile**
 - [x] ATLAS reconnected to the fallback knowledge layer — `foundationAssets` in
       `lib/reactor-data.ts` gives the `vault` + `website` systems real curated
@@ -861,5 +904,6 @@ Full architecture: `docs/MIKE_DELIGHT.md`.
 - [ ] SPARK URL-only ingestion for JS-rendered sources (Meta Ad Library / TikTok / shared boards via oEmbed/transcript APIs or a headless render). Uploads, pasted screenshots, direct image links and YouTube transcripts all work today; a client-rendered page has no images in its served HTML, so `lib/ad-image.ts` scrapes og:image/`<img>`/inlined-JSON URLs and otherwise returns a note telling the user to screenshot it
 - [ ] Scheduled auto-sync for the Meta performance ingest (manual one-click sync done; cron/Vercel scheduled function pending)
 - [ ] More dashboards reading live `knowledge_chunks` counts (Agent Network does; Research/Copy/Pattern still curated)
+- [ ] Run `schema.lockdown.sql` and `schema.library.sql` in Supabase; set `PLATFORM_OWNER_PASSWORD`
 - [ ] Deployed + tested end to end with real keys
 
