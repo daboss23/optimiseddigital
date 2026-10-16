@@ -56,18 +56,26 @@ function isVisualDna(value: unknown): value is VisualDNA {
 }
 
 /**
- * Every ad design banked in the Vault, newest first.
+ * Every ad design ONE ACCOUNT has banked in its Vault, newest first.
  *
  * One row per chunk, and a long teardown is chunked — so designs are de-duped
  * by title, keeping the newest copy of each.
+ *
+ * Scoped: a banked design is a brand's own winning ad, read pixel by pixel.
+ * Unscoped, the Reactor's "best banked design" for one brand could be another
+ * brand's winner, rebuilt as the layout of its next campaign.
  */
-export async function listVisualReferences(limit = 60): Promise<StoredVisualReference[]> {
-  if (!ready()) return []
+export async function listVisualReferences(
+  accountId: string | null,
+  limit = 60,
+): Promise<StoredVisualReference[]> {
+  if (!ready() || !accountId) return []
 
   try {
     const { data, error } = await getSupabaseAdmin()
       .from('knowledge_chunks')
       .select('id, title, category, content, created_at, metadata')
+      .eq('builder_id', accountId)
       // `creative` is included for designs banked before the visual section
       // existed — they carry the same metadata and are still perfectly good.
       .in('system', ['design', 'creative'])
@@ -263,8 +271,11 @@ export function rankVisualReferences(
  * rather than inventing a layout from scratch, it builds on the strongest
  * design already proven and stored.
  */
-export async function bestVisualReferenceFor(brief: VisualBrief): Promise<VisualMatch | null> {
-  const refs = await listVisualReferences()
+export async function bestVisualReferenceFor(
+  brief: VisualBrief,
+  accountId: string | null,
+): Promise<VisualMatch | null> {
+  const refs = await listVisualReferences(accountId)
   if (!refs.length) return null
   const best = rankVisualReferences(refs, brief)[0]
   // No match is a legitimate answer, and a far better one than the top of a

@@ -1,5 +1,6 @@
 import { getSetting, setSetting, settingsConfigured } from '@/lib/settings'
 import { getConnectedWebsite } from '@/lib/website-intelligence'
+import { isMultiTenant } from '@/lib/tenancy-mode'
 import { readCapped, safeFetch } from '@/lib/safe-fetch'
 import {
   MAX_PRODUCTS,
@@ -219,9 +220,16 @@ export async function syncCatalog(accountId: string | null, storeUrl?: string): 
   return { ok: true, catalog, stored }
 }
 
-/** This account's catalog, or null when none has been synced. */
+/**
+ * This account's catalog, or null when none has been synced.
+ *
+ * The in-memory copy answers only where it cannot be somebody else's: with no
+ * settings store, or with no account on a single-brand deployment. On a
+ * shared deployment an account-less session reads nothing.
+ */
 export async function getCatalog(accountId: string | null): Promise<Catalog | null> {
-  if (!settingsConfigured() || !accountId) return lastUnpersistedCatalog
+  if (!settingsConfigured()) return lastUnpersistedCatalog
+  if (!accountId) return (await isMultiTenant()) ? null : lastUnpersistedCatalog
   return getSetting<Catalog>(SETTING_CATALOG, accountId)
 }
 

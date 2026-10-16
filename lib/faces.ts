@@ -44,11 +44,17 @@ async function ensureBucket(): Promise<void> {
   }
 }
 
-/** List the saved roster, newest first. */
-export async function listFaces(): Promise<Face[]> {
+/**
+ * One account's saved roster, newest first. A face is a real person a brand
+ * uploaded to put in its ads — never another brand's to list, use or delete.
+ * A session with no account has no roster.
+ */
+export async function listFaces(accountId: string | null): Promise<Face[]> {
+  if (!accountId) return []
   const { data, error } = await getSupabaseAdmin()
     .from('faces')
     .select('*')
+    .eq('builder_id', accountId)
     .order('created_at', { ascending: false })
   if (error) throw error
   return (data ?? []) as Face[]
@@ -60,7 +66,8 @@ export interface UploadFaceInput {
   bytes: Buffer
   contentType: string
   ext: string
-  builderId?: string | null
+  /** The session's account — resolved server-side, never taken from the form. */
+  builderId: string
 }
 
 /** Upload a reference asset to Storage and save it to the roster. */
@@ -83,7 +90,7 @@ export async function uploadFace(input: UploadFaceInput): Promise<Face> {
         kind: input.kind,
         url: pub.publicUrl,
         storage_path: path,
-        builder_id: input.builderId ?? null,
+        builder_id: input.builderId,
       },
     ])
     .select()
@@ -92,14 +99,25 @@ export async function uploadFace(input: UploadFaceInput): Promise<Face> {
   return data as Face
 }
 
-/** Remove a roster entry and its Storage object. */
-export async function deleteFace(id: string): Promise<void> {
+/**
+ * Remove one of the account's roster entries and its Storage object. The row
+ * is looked up WITH the account, so an id belonging to another brand finds
+ * nothing — its file is never touched.
+ */
+export async function deleteFace(id: string, accountId: string | null): Promise<void> {
+  if (!accountId) throw new Error('No account on this session')
   const admin = getSupabaseAdmin()
-  const { data } = await admin.from('faces').select('storage_path').eq('id', id).single()
+  const { data } = await admin
+    .from('faces')
+    .select('storage_path')
+    .eq('id', id)
+    .eq('builder_id', accountId)
+    .maybeSingle()
+  if (!data) throw new Error('Not found')
   const path = (data as { storage_path?: string } | null)?.storage_path
   if (path) {
     await admin.storage.from(BUCKET).remove([path])
   }
-  const { error } = await admin.from('faces').delete().eq('id', id)
+  const { error } = await admin.from('faces').delete().eq('id', id).eq('builder_id', accountId)
   if (error) throw error
 }

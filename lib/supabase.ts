@@ -56,43 +56,11 @@ export function getSupabaseAdmin(): SupabaseClient {
 /*                                                                             */
 /* The table is `accounts` — renamed from `builders` by                        */
 /* supabase/schema.tenancy.sql, which preserves every row, index and foreign   */
-/* key. These three functions still named the old table after that migration,  */
-/* so `getBuilder` (and the brand memory that depends on it) would have failed  */
-/* the moment it ran. The `Builder*` type and function names are kept so the    */
-/* call sites do not churn; only the table they read is corrected.              */
+/* key. `getBuilder` reads one account BY ID — the session's own, resolved by    */
+/* lib/account.ts. Listing and creating accounts used to live here behind an    */
+/* unauthenticated /api/builders route that returned every brand on the        */
+/* deployment; both were removed. Provisioning belongs to lib/account.ts.       */
 /* -------------------------------------------------------------------------- */
-
-export interface BuilderInsert {
-  name: string
-  website?: string | null
-  region?: string | null
-  brand_voice?: string | null
-  serves?: string | null
-  offer?: string | null
-  proof_points?: string[] | null
-  visual_style?: string | null
-}
-
-export async function createBuilder(input: BuilderInsert): Promise<Builder> {
-  const { data, error } = await getSupabaseAdmin()
-    .from('accounts')
-    .insert([input])
-    .select()
-    .single()
-
-  if (error) throw error
-  return data as Builder
-}
-
-export async function listBuilders(): Promise<Builder[]> {
-  const { data, error } = await getSupabaseAdmin()
-    .from('accounts')
-    .select('*')
-    .order('created_at', { ascending: false })
-
-  if (error) throw error
-  return (data ?? []) as Builder[]
-}
 
 export async function getBuilder(id: string): Promise<Builder> {
   const { data, error } = await getSupabaseAdmin()
@@ -136,58 +104,30 @@ export async function saveCreativeOutput(output: CreativeOutputInsert) {
   return data
 }
 
-export async function getRecentOutputs(limit = 10) {
-  const { data, error } = await getSupabaseAdmin()
-    .from('creative_outputs')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(limit)
-
-  if (error) throw error
-  return data
-}
-
-export async function approveOutput(id: string) {
-  const { data, error } = await getSupabaseAdmin()
-    .from('creative_outputs')
-    .update({ approved: true, status: 'approved' })
-    .eq('id', id)
-    .select()
-    .single()
-
-  if (error) throw error
-  return data
-}
 
 /* -------------------------------------------------------------------------- */
 /* Frameworks library (P2)                                                     */
 /* -------------------------------------------------------------------------- */
 
-export interface ListFrameworksOptions {
-  category?: string
-  // 'all' = everything, 'global' = builder_id IS NULL, string uuid = exact builder only
-  builderScope?: 'all' | 'global' | string
-}
-
-export async function listFrameworks(opts: ListFrameworksOptions = {}): Promise<Framework[]> {
-  const scope = opts.builderScope ?? 'all'
-
+/**
+ * One account's own frameworks, for managing them. Platform frameworks
+ * (`builder_id IS NULL`) still reach generation through
+ * `getFrameworksForBuilder`, but they are not a brand's to list or edit, and
+ * another brand's are not a brand's to see at all — the old `'all'` scope
+ * returned every row in the table.
+ */
+export async function listFrameworks(
+  accountId: string,
+  opts: { category?: string } = {},
+): Promise<Framework[]> {
   const base = getSupabaseAdmin()
     .from('frameworks')
     .select('*')
+    .eq('builder_id', accountId)
     .order('category', { ascending: true })
     .order('created_at', { ascending: true })
 
-  const withScope =
-    scope === 'global'
-      ? base.is('builder_id', null)
-      : scope !== 'all'
-        ? base.eq('builder_id', scope)
-        : base
-
-  const { data, error } = opts.category
-    ? await withScope.eq('category', opts.category)
-    : await withScope
+  const { data, error } = opts.category ? await base.eq('category', opts.category) : await base
 
   if (error) throw error
   return (data ?? []) as Framework[]
@@ -209,10 +149,11 @@ export async function getFrameworksForBuilder(builderId: string | null): Promise
   return (data ?? []) as Framework[]
 }
 
-export async function createFramework(input: FrameworkInsert): Promise<Framework> {
+/** Create a framework owned by the session's account — never one the request names. */
+export async function createFramework(input: FrameworkInsert, accountId: string): Promise<Framework> {
   const { data, error } = await getSupabaseAdmin()
     .from('frameworks')
-    .insert([input])
+    .insert([{ ...input, builder_id: accountId }])
     .select()
     .single()
 
@@ -220,11 +161,22 @@ export async function createFramework(input: FrameworkInsert): Promise<Framework
   return data as Framework
 }
 
-export async function updateFramework(id: string, updates: FrameworkUpdate): Promise<Framework> {
+/**
+ * Update one of the account's frameworks. The owner column cannot be moved by
+ * an update, and an id the account does not own matches nothing.
+ */
+export async function updateFramework(
+  id: string,
+  updates: FrameworkUpdate,
+  accountId: string,
+): Promise<Framework> {
+  const { builder_id: _ignored, ...patch } = updates
+  void _ignored
   const { data, error } = await getSupabaseAdmin()
     .from('frameworks')
-    .update(updates)
+    .update(patch)
     .eq('id', id)
+    .eq('builder_id', accountId)
     .select()
     .single()
 
@@ -232,11 +184,12 @@ export async function updateFramework(id: string, updates: FrameworkUpdate): Pro
   return data as Framework
 }
 
-export async function deleteFramework(id: string): Promise<void> {
+export async function deleteFramework(id: string, accountId: string): Promise<void> {
   const { error } = await getSupabaseAdmin()
     .from('frameworks')
     .delete()
     .eq('id', id)
+    .eq('builder_id', accountId)
 
   if (error) throw error
 }

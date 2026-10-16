@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getTaxonomyLocks } from '@/lib/taxonomy-locks'
+import { currentAccount } from '@/lib/account'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -10,5 +11,5 @@ export const dynamic = 'force-dynamic'
  * Never throws — degrades to canonical defaults without Supabase.
  */
 export async function GET() {
-  return NextResponse.json(await getTaxonomyLocks())
+  return NextResponse.json(await getTaxonomyLocks(await currentAccount()))
 }

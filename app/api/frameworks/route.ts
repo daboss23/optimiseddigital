@@ -1,16 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { listFrameworks, createFramework } from '@/lib/supabase'
+import { currentAccount } from '@/lib/account'
 import type { FrameworkInsert } from '@/types'
 
 export const runtime = 'nodejs'
 
+/**
+ * The account's own frameworks.
+ *
+ * Both halves used to trust the request: GET took a `builderScope` query
+ * parameter whose default, `all`, listed every brand's frameworks, and POST
+ * wrote whatever `builder_id` the body named. The account now comes from the
+ * session, and a session that names none gets nothing.
+ */
 export async function GET(request: NextRequest) {
+  const account = await currentAccount()
+  if (!account) return NextResponse.json({ success: true, data: [] })
   try {
     const { searchParams } = new URL(request.url)
     const category = searchParams.get('category') || undefined
-    const builderScope = (searchParams.get('builderScope') as 'all' | 'global' | string) || 'all'
 
-    const frameworks = await listFrameworks({ category, builderScope })
+    const frameworks = await listFrameworks(account, { category })
     return NextResponse.json({ success: true, data: frameworks })
   } catch (error) {
     console.error('List frameworks error:', error)
@@ -22,6 +32,10 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const account = await currentAccount()
+  if (!account) {
+    return NextResponse.json({ success: false, error: 'No account on this session' }, { status: 401 })
+  }
   try {
     const body = (await request.json()) as FrameworkInsert
 
@@ -40,13 +54,15 @@ export async function POST(request: NextRequest) {
         ? body.tags.map((t) => t.trim()).filter(Boolean)
         : null
 
-    const framework = await createFramework({
-      title: body.title.trim(),
-      category: body.category,
-      content: body.content.trim(),
-      builder_id: body.builder_id ?? null,
-      tags,
-    })
+    const framework = await createFramework(
+      {
+        title: body.title.trim(),
+        category: body.category,
+        content: body.content.trim(),
+        tags,
+      },
+      account,
+    )
 
     return NextResponse.json({ success: true, data: framework })
   } catch (error) {

@@ -610,14 +610,17 @@ function storeReady(): boolean {
   )
 }
 
-// Has NOVA already embedded this exact source content? Keeps the weekly sweep
-// from piling duplicates. Best-effort — any failure means "not a duplicate".
-async function researchHashExists(hash: string): Promise<boolean> {
+// Has NOVA already embedded this exact source content FOR THIS ACCOUNT? Keeps
+// the sweep from piling duplicates. Scoped, because a deployment-wide check
+// told brand B its research already existed when it was brand A's — B was
+// skipped and stored nothing. Best-effort — any failure means "not a duplicate".
+async function researchHashExists(hash: string, builderId: string): Promise<boolean> {
   if (!storeReady()) return false
   try {
     const { data, error } = await getSupabaseAdmin()
       .from('knowledge_chunks')
       .select('id')
+      .eq('builder_id', builderId)
       .eq('system', 'research')
       .eq('metadata->>content_hash', hash)
       .limit(1)
@@ -646,6 +649,8 @@ function sweepSubs(): string[] {
 
 export interface NovaSweepResult {
   ran: boolean
+  /** Why nothing ran, when nothing did. */
+  reason?: string
   window: string
   subsAttempted: number
   sourcesStored: number
@@ -673,6 +678,13 @@ export async function runNovaSweep(
     chunks: 0,
     details: [],
   }
+  // Research belongs to an account. With none there is nowhere to store it —
+  // `ingestKnowledge` refuses an unscoped write — so stop BEFORE a single
+  // model call is spent extracting intelligence that would be thrown away.
+  const builderId = opts.builderId ?? null
+  if (!builderId) {
+    return { ...result, ran: false, reason: 'No account on this request — research is stored per brand.' }
+  }
 
   for (const sub of subs) {
     result.subsAttempted += 1
@@ -683,13 +695,13 @@ export async function runNovaSweep(
         continue
       }
       const hash = sourceHash(gathered.text)
-      if (await researchHashExists(hash)) {
+      if (await researchHashExists(hash, builderId)) {
         result.skippedDuplicates += 1
         result.details.push({ sub, status: 'duplicate', chunks: 0 })
         continue
       }
       const profile = await extractMarketIntel(gathered.text, gathered.meta)
-      const { stored, chunks } = await storeMarketIntel(profile, gathered.meta, opts.builderId ?? null, {
+      const { stored, chunks } = await storeMarketIntel(profile, gathered.meta, builderId, {
         contentHash: hash,
       })
       if (stored) result.sourcesStored += 1

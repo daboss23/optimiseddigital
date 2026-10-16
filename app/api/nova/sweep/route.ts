@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { runNovaSweep } from '@/lib/market-intelligence'
+import { currentAccount } from '@/lib/account'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -27,7 +28,9 @@ async function handle(request: NextRequest) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
   try {
-    const result = await runNovaSweep()
+    // For the signed-in brand. A cron call carries no session, so it resolves
+    // no account and the sweep declines before spending a token.
+    const result = await runNovaSweep({ builderId: await currentAccount() })
     return NextResponse.json({ success: true, ...result })
   } catch (err) {
     console.error('NOVA sweep error:', err)

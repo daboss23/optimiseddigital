@@ -1777,12 +1777,17 @@ async function runDemo(controller: ReadableStreamDefaultController, body: Reacto
   }
 
   // ATLAS leads every build — the Knowledge Vault is the foundation, never asleep.
+  // Scoped like the live path: with a vector store and no model key, the demo
+  // still reads THIS account's Vault rather than platform rows alone.
+  const demoAccount = await currentAccount()
   for (const id of ['atlas', 'nova', 'spark', 'echo', 'oracle'] as IntelligenceId[]) {
     const agent = INTELLIGENCE[id]
     sse(controller, { type: 'delegate', agent: agent.codename, id: agent.id, label: agent.intelligenceLabel, status: 'start' })
     await pace(1300)
     const hits = (
-      await Promise.all(agent.systems.map((s) => searchKnowledge(demoQuery, { system: s, k: 2 })))
+      await Promise.all(
+        agent.systems.map((s) => searchKnowledge(demoQuery, { system: s, k: 2, builderId: demoAccount })),
+      )
     ).flat()
     for (const h of hits.slice(0, 3)) {
       sse(controller, {
@@ -2042,7 +2047,7 @@ export async function POST(request: NextRequest) {
           audience: body.reactorInputs?.audienceType,
           outputs,
           taxonomy: body.isolate?.lockedTaxonomy,
-        })
+        }, runAccount)
         if (match) {
           body.cloneReference = {
             designOnly: true,

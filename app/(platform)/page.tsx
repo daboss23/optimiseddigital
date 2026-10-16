@@ -509,7 +509,7 @@ export default async function ReactorDashboard({
               Winning ads re-enter the knowledge layer as retrievable patterns, and every generated
               creative stores which learning influenced it.
               {!live &&
-                ' Connect the Meta Marketing API (META_ACCESS_TOKEN) to replace the seeded figures with live performance.'}
+                ' Connect your Meta ad account on Meta Intelligence to replace the seeded figures with live performance.'}
             </span>
           </div>
         </Panel>

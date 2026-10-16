@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { deleteFace, facesConfigured } from '@/lib/faces'
+import { currentAccount } from '@/lib/account'
 
 export const runtime = 'nodejs'
 
@@ -9,7 +10,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: { id: 
     return NextResponse.json({ success: false, error: 'Supabase is not configured' }, { status: 400 })
   }
   try {
-    await deleteFace(params.id)
+    await deleteFace(params.id, await currentAccount())
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error('Face delete error:', err)

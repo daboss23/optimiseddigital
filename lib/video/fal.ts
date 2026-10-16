@@ -111,10 +111,29 @@ export interface FalStatusResult {
   videoUrl: string | null
 }
 
+/**
+ * Is this a URL fal itself would hand back — https, on fal's queue host?
+ *
+ * The response_url round-trips through the browser (the poll route takes it as
+ * a query parameter), and every request to it carries `Authorization: Key
+ * <FAL_KEY>`. Accepted unchecked, `?responseUrl=https://anywhere` made the
+ * server send the deployment's fal key to any host a caller named.
+ */
+export function isFalQueueUrl(raw: string | null | undefined): boolean {
+  if (!raw) return false
+  try {
+    const u = new URL(raw)
+    return u.protocol === 'https:' && u.origin === new URL(QUEUE_BASE).origin && !u.username && !u.password
+  } catch {
+    return false
+  }
+}
+
 /** Resolve the result URL for a request: prefer fal's authoritative
- * response_url; otherwise reconstruct from the endpoint's base app namespace. */
+ * response_url when it really is fal's; otherwise reconstruct from the
+ * endpoint's base app namespace. */
 function resultUrlFor(endpoint: string, requestId: string, responseUrl?: string | null): string {
-  if (responseUrl) return responseUrl
+  if (responseUrl && isFalQueueUrl(responseUrl)) return responseUrl
   const base = endpoint.split('/').slice(0, 2).join('/')
   return `${QUEUE_BASE}/${base}/requests/${encodeURIComponent(requestId)}`
 }

@@ -41,16 +41,21 @@ function empty(configured: boolean): BackfillSummary {
  * batches rather than one long request. Winners already re-ingested keep their
  * text, so the classifier reads real creative, not a stub.
  */
-export async function backfillTaxonomy(limit = 200): Promise<BackfillSummary> {
+export async function backfillTaxonomy(accountId: string | null, limit = 200): Promise<BackfillSummary> {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     return { ...empty(false), error: 'Supabase not configured' }
   }
+  // One account's memory, classified on that account's request. It used to
+  // walk every brand's outcomes — rewriting rows the caller does not own and
+  // spending a model call on each.
+  if (!accountId) return { ...empty(true), error: 'No account on this session' }
   const summary = empty(true)
   try {
     const supabase = getSupabaseAdmin()
     const { data, error } = await supabase
       .from('campaign_outcomes')
       .select('id, angle, concept')
+      .eq('builder_id', accountId)
       .order('created_at', { ascending: false })
       .limit(limit)
     if (error) throw error
@@ -72,6 +77,7 @@ export async function backfillTaxonomy(limit = 200): Promise<BackfillSummary> {
           .from('campaign_outcomes')
           .update({ concept: mergedConcept })
           .eq('id', r.id)
+          .eq('builder_id', accountId)
         if (upErr) throw upErr
         summary.tagged += 1
       } catch (err) {
@@ -89,18 +95,19 @@ export async function backfillTaxonomy(limit = 200): Promise<BackfillSummary> {
 }
 
 /** How much of ORACLE memory is tagged — powers the backfill control. */
-export async function backfillStatus(): Promise<{
+export async function backfillStatus(accountId: string | null): Promise<{
   configured: boolean
   total: number
   tagged: number
   untagged: number
 }> {
   const base = { configured: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL), total: 0, tagged: 0, untagged: 0 }
-  if (!base.configured) return base
+  if (!base.configured || !accountId) return base
   try {
     const { data, error } = await getSupabaseAdmin()
       .from('campaign_outcomes')
       .select('concept')
+      .eq('builder_id', accountId)
       .limit(1000)
     if (error) throw error
     const rows = (data ?? []) as { concept: OutcomeRowLite['concept'] }[]
