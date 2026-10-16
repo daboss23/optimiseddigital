@@ -76,6 +76,7 @@ import { websiteBrandBrief } from '@/lib/brand-context'
 import { getTenant, tenantDescriptor } from '@/lib/tenant'
 import { currentAccount } from '@/lib/account'
 import { deploymentCredentialsAllowed } from '@/lib/tenancy-mode'
+import { brandLibraryNiches, libraryMethodBlock, searchLibrary, type LibraryHit } from '@/lib/library'
 import { askDocument, readyDocuments, type LongDocument } from '@/lib/documents'
 import {
   catalogRangeBlock,
@@ -1252,6 +1253,12 @@ async function runIntelligence(
  * not is reported and skipped.
  */
 const RESEARCH_BUDGET_MS = Number(process.env.GETHOOKD_RESEARCH_TIMEOUT_MS) || 15_000
+/**
+ * The Platform Library lookup's ceiling. It runs beside the briefing, so it
+ * costs no wall clock until it is slower than that — and past this it is
+ * dropped rather than waited on: method improves a run, it never gates one.
+ */
+const LIBRARY_BUDGET_MS = 6_000
 
 /** Read the top reference's actual pixels, so the design is seen, not guessed. */
 const RESEARCH_DESIGN_READ = process.env.GETHOOKD_RESEARCH_DESIGN_READ !== 'false'
@@ -2229,7 +2236,29 @@ export async function POST(request: NextRequest) {
         // read of the strongest reference are independent, so they run against
         // the same wall clock instead of queueing. None of them can fail the
         // run.
-        const [winningConfigs, briefing, runLearnings, researchDesign] = await Promise.all([
+        // The Platform Library: the owner's method for this brand's niche,
+        // read off the brand's own catalog and website — never claimed by the
+        // request. Bounded so a slow embed can never hold the run.
+        const libraryQuery = [
+          ri?.brief,
+          ri?.angle ?? body.angle,
+          ri?.offerType,
+          ri?.campaignName,
+          runProduct?.title,
+          outputs.join(', '),
+        ]
+          .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+          .join('\n')
+        const libraryLookup = brandLibraryNiches(runAccount)
+          .then((niches) =>
+            Promise.race([
+              searchLibrary(libraryQuery, niches),
+              new Promise<LibraryHit[]>((resolve) => setTimeout(() => resolve([]), LIBRARY_BUDGET_MS)),
+            ]),
+          )
+          .catch(() => [] as LibraryHit[])
+
+        const [winningConfigs, briefing, runLearnings, researchDesign, libraryHits] = await Promise.all([
           // ORACLE retrieves matching past winners and feeds them into OPUS's
           // reasoning — the Reactor reuses what worked instead of starting cold.
           retrieveWinningConfigs(
@@ -2286,8 +2315,18 @@ export async function POST(request: NextRequest) {
           research && !body.cloneReference && !FAST_PATH
             ? readTopReference(controller, research, runAccount).catch(() => null)
             : Promise.resolve(null),
+          libraryLookup,
         ])
         if (researchDesign) body.cloneReference = researchDesign
+        // A count, never a title or a line of it: the brand's telemetry may say
+        // the platform's method was applied, and nothing about what it says.
+        if (libraryHits.length) {
+          sse(controller, {
+            type: 'step',
+            text: `Platform playbook applied · ${libraryHits.length} section${libraryHits.length === 1 ? '' : 's'} matched to this brand's niche`,
+          })
+        }
+        const libraryBlock = libraryMethodBlock(libraryHits)
         const learningsRubric = formatLearnings(runLearnings)
         const oracleMemory = memoryBlock(winningConfigs)
 
@@ -2350,7 +2389,7 @@ export async function POST(request: NextRequest) {
             imageModels: availableImageModels,
             preferredVideoModel: body.videoModel ?? null,
             preferredImageModel: body.imageModel ?? null,
-          }, tenantDescriptor(await getTenant(await currentAccount()))) + inputBlocks + productBlock + brandBlock + oracleMemory + cloneClause + isolationClause
+          }, tenantDescriptor(await getTenant(await currentAccount()))) + inputBlocks + productBlock + brandBlock + oracleMemory + libraryBlock + cloneClause + isolationClause
 
         // One test ID per run — stamped onto every submitted concept so outcomes
         // attribute back to which single variable was under test. Minted for an

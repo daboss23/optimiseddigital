@@ -22,7 +22,8 @@
     "preflight": "tsx scripts/preflight.ts",
     "selftest:blank-slate": "tsx scripts/blank-slate-selftest.ts",
     "selftest:tenant": "tsx scripts/tenant-isolation-selftest.ts",
-    "selftest:ecom": "tsx scripts/ecom-selftest.ts"
+    "selftest:ecom": "tsx scripts/ecom-selftest.ts",
+    "selftest:library": "tsx scripts/library-selftest.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.103.0",
@@ -33,6 +34,7 @@
     "@types/three": "^0.185.0",
     "@xyflow/react": "^12.11.1",
     "clsx": "^2.1.1",
+    "fflate": "0.8.2",
     "gsap": "^3.15.0",
     "lucide-react": "^1.17.0",
     "motion": "^11.18.2",
