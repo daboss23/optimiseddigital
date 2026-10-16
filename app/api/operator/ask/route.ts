@@ -71,14 +71,15 @@ export async function POST(request: NextRequest) {
         // The account's own today, not the browser's. A dashboard left open
         // across midnight in another timezone must not shift which days count
         // as complete.
-        const { evaluationDate, creatives, baselines, metadata } = await loadOperatorContext(await currentAccount())
-        const tenant = await getTenant(await currentAccount()).catch(() => null)
+        const accountId = await currentAccount()
+        const { evaluationDate, creatives, baselines, metadata } = await loadOperatorContext(accountId)
+        const tenant = await getTenant(accountId).catch(() => null)
 
         await runOpenAsk(
           {
             question,
             history,
-            context: { evaluationDate, creatives, baselines, metadata, board },
+            context: { accountId, evaluationDate, creatives, baselines, metadata, board },
             client: {
               company: tenant?.companyName || null,
               industry: tenant?.industry || null,

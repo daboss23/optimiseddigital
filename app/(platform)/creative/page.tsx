@@ -11,6 +11,7 @@ import {
 import { creativeAnalyses } from '@/lib/reactor-data'
 import { AdIngest } from '@/components/spark/AdIngest'
 import { AdLibrary } from '@/components/ad-library/AdLibrary'
+import { currentAccount } from '@/lib/account'
 import { getWinners } from '@/lib/clone-sources'
 import { cn } from '@/lib/utils'
 import { demoDataEnabled } from '@/lib/demo-mode'
@@ -33,7 +34,7 @@ export default async function CreativePage() {
   // winning ad and tearing one down are the same job — studying creative that
   // already works — and splitting them across two destinations made the
   // library look like a separate product instead of the front half of SPARK.
-  const { winners, configured } = await getWinners()
+  const { winners, configured } = await getWinners(await currentAccount())
 
   return (
     <>

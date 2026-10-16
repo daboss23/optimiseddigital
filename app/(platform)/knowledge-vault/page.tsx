@@ -1,6 +1,7 @@
 import { Database } from 'lucide-react'
 import { PageHeader, Panel, PanelHeader, Pill } from '@/components/reactor/ui'
 import { vaultStats } from '@/lib/knowledge'
+import { currentAccount } from '@/lib/account'
 import { AdIngest } from '@/components/spark/AdIngest'
 import { UploadGrid } from './UploadGrid'
 import { LongDocuments } from './LongDocuments'
@@ -9,7 +10,7 @@ import { VaultManager } from './VaultManager'
 export const dynamic = 'force-dynamic'
 
 export default async function KnowledgeVaultPage() {
-  const stats = await vaultStats()
+  const stats = await vaultStats(await currentAccount())
 
   return (
     <>

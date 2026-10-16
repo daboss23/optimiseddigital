@@ -224,10 +224,11 @@ export default async function ReactorDashboard({
     tz: first(params.tz),
   })
 
+  const account = await currentAccount()
   const [data, meta, outcomes] = await Promise.all([
-    getDashboardData(),
-    resolveMetaDashboard(await currentAccount(), range),
-    listOutcomes(12),
+    getDashboardData(account),
+    resolveMetaDashboard(account, range),
+    listOutcomes(account, 12),
   ])
 
   const live = meta.source === 'live'

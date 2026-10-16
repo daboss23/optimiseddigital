@@ -253,10 +253,12 @@ function buildIntelSources(
 }
 
 async function withEvidence(brief: string, raw: RawSuggestion, demo: boolean): Promise<NextResponse> {
-  // ORACLE strategic memory + live knowledge stats — cite real history/assets.
+  // ORACLE strategic memory + live knowledge stats — cite THIS account's real
+  // history and assets, never another brand's.
+  const account = await currentAccount()
   const [evidence, stats] = await Promise.all([
-    angleEvidence(raw.angle).catch(() => null),
-    vaultStats().catch(() => ({ live: false, total: 0, groups: [] as { system: string; category: string | null; count: number }[] })),
+    angleEvidence(raw.angle, account).catch(() => null),
+    vaultStats(account).catch(() => ({ live: false, total: 0, groups: [] as { system: string; category: string | null; count: number }[] })),
   ])
   const suggestion: ReactorSuggestion = {
     ...raw,

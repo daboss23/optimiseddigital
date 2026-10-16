@@ -201,7 +201,7 @@ const WIN_VERDICTS: Verdict[] = ['winner', 'high_performer']
 
 /* ------------------------------ Live pull ---------------------------------- */
 
-async function adInsights(accountId: string, token?: string): Promise<InsightRow[]> {
+async function adInsights(accountId: string, token: string): Promise<InsightRow[]> {
   const json = (await graphGet(
     `act_${accountId}/insights`,
     {
@@ -254,7 +254,7 @@ export function assetsOf(creative: RawCreative | undefined): AdAssets {
  * read access to creatives still grades ads, it just cannot attribute them by
  * asset — the name token and the ad id still work.
  */
-async function adAssetMap(accountId: string, token?: string): Promise<Map<string, AdAssets>> {
+async function adAssetMap(accountId: string, token: string): Promise<Map<string, AdAssets>> {
   const out = new Map<string, AdAssets>()
   let after: string | undefined
   for (let page = 0; page < 5; page++) {

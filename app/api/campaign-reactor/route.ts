@@ -75,6 +75,7 @@ import { getConnectedWebsite } from '@/lib/website-intelligence'
 import { websiteBrandBrief } from '@/lib/brand-context'
 import { getTenant, tenantDescriptor } from '@/lib/tenant'
 import { currentAccount } from '@/lib/account'
+import { deploymentCredentialsAllowed } from '@/lib/tenancy-mode'
 import { askDocument, readyDocuments, type LongDocument } from '@/lib/documents'
 import {
   catalogRangeBlock,
@@ -608,11 +609,19 @@ function pipeboardServer(): Anthropic.Beta.Messages.BetaRequestMCPServerURLDefin
 // (so both backends can be tested side by side), falling back to the env
 // default. If the requested provider isn't configured, falls back to the other
 // configured one rather than running blind — and returns null when neither is.
-function metaAdsServer(
+//
+// Both backends authenticate with a DEPLOYMENT-WIDE token — the owner's own
+// Meta access. On a single-brand deployment that is the brand's account and
+// the agent may read it. On a multi-tenant one it is somebody else's: handing
+// it to a brand's run would let OPUS read the owner's campaigns and write them
+// into that brand's concepts as evidence. So it is attached only where
+// deployment credentials may act (`lib/tenancy-mode.ts`).
+async function metaAdsServer(
   requested?: MetaProvider | null,
-): { server: Anthropic.Beta.Messages.BetaRequestMCPServerURLDefinition; provider: MetaProvider } | null {
+): Promise<{ server: Anthropic.Beta.Messages.BetaRequestMCPServerURLDefinition; provider: MetaProvider } | null> {
   const provider = requested ?? defaultMetaProvider()
   if (provider === 'off') return null
+  if (!(await deploymentCredentialsAllowed())) return null
   const meta = metaFirstPartyServer()
   const pipeboard = pipeboardServer()
 
@@ -2057,7 +2066,7 @@ export async function POST(request: NextRequest) {
         }
 
         const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-        const metaAds = metaAdsServer(body.metaProvider)
+        const metaAds = await metaAdsServer(body.metaProvider)
         const mcpServer = metaAds?.server ?? null
         // Image rendering is configured, but only handed to the agent as a tool
         // when inline (blocking) renders are explicitly enabled — see
@@ -2218,12 +2227,15 @@ export async function POST(request: NextRequest) {
         const [winningConfigs, briefing, runLearnings, researchDesign] = await Promise.all([
           // ORACLE retrieves matching past winners and feeds them into OPUS's
           // reasoning — the Reactor reuses what worked instead of starting cold.
-          retrieveWinningConfigs({
-            angle: ri?.angle ?? body.angle,
-            audience: ri?.audienceType,
-            awareness: ri?.awarenessStage,
-            offer: ri?.offerType,
-          })
+          retrieveWinningConfigs(
+            {
+              angle: ri?.angle ?? body.angle,
+              audience: ri?.audienceType,
+              awareness: ri?.awarenessStage,
+              offer: ri?.offerType,
+            },
+            runAccount,
+          )
             .then((configs) => {
               if (configs.length > 0) {
                 // A step, NOT a second ORACLE delegate report. The memory
@@ -2261,7 +2273,7 @@ export async function POST(request: NextRequest) {
           // What THIS account has learned, ahead of the craft floor. An
           // independent read, so it runs against the same wall clock rather
           // than queueing behind the briefing.
-          resolveCreativeLearnings().catch(() => [] as Learning[]),
+          resolveCreativeLearnings(runAccount).catch(() => [] as Learning[]),
           // Only when nothing is already driving the design. A reference the
           // operator attached, or one the Vault already holds, outranks a
           // fresh vision call — and skipping it here is what keeps the second

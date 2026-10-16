@@ -183,7 +183,13 @@ function weeklyCumulative(timestamps: number[], baseline: number, weeks: number)
 
 /* ------------------------------- Live build ------------------------------- */
 
-async function buildLive(): Promise<DashboardData | null> {
+/**
+ * The live dashboard for ONE account. Every read below carries the account:
+ * this build used to count every brand's chunks, outcomes and renders into one
+ * set of KPIs, so a brand's "intelligence base" and activity feed were the
+ * whole deployment's.
+ */
+async function buildLive(accountId: string): Promise<DashboardData | null> {
   const admin = getSupabaseAdmin()
 
   // One bounded pull of the lightweight columns (no embeddings) powers KPIs,
@@ -191,6 +197,7 @@ async function buildLive(): Promise<DashboardData | null> {
   const { data: chunkData, error: chunkErr } = await admin
     .from('knowledge_chunks')
     .select('created_at, system, category')
+    .eq('builder_id', accountId)
     .order('created_at', { ascending: false })
     .limit(20000)
   if (chunkErr) throw chunkErr
@@ -230,6 +237,7 @@ async function buildLive(): Promise<DashboardData | null> {
   const { data: outcomeData } = await admin
     .from('campaign_outcomes')
     .select('verdict, metric_name, metric_value, created_at')
+    .eq('builder_id', accountId)
     .limit(5000)
   const outcomes = summarizeOutcomes(outcomeData ?? [])
 
@@ -259,6 +267,7 @@ async function buildLive(): Promise<DashboardData | null> {
   const { data: mediaData } = await admin
     .from('media_generations')
     .select('model_id, provider, mode, status, created_at')
+    .eq('builder_id', accountId)
     .order('created_at', { ascending: false })
     .limit(6)
   const activity = buildActivity(rows, mediaData ?? [], outcomeData ?? [])
@@ -524,10 +533,10 @@ function iso(hoursAgo: number): string {
 
 /* --------------------------------- Entry ---------------------------------- */
 
-export async function getDashboardData(): Promise<DashboardData> {
-  if (supabaseReady()) {
+export async function getDashboardData(accountId: string | null): Promise<DashboardData> {
+  if (supabaseReady() && accountId) {
     try {
-      const live = await buildLive()
+      const live = await buildLive(accountId)
       if (live) return live
     } catch (err) {
       console.error('Dashboard live build failed:', err)

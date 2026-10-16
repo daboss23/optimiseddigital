@@ -3,6 +3,7 @@ import { PageHeader, Panel, Pill, ProgressBar, RadialGauge, type Accent } from '
 import { AGENT_NETWORK, INTELLIGENCE, INTELLIGENCE_IDS, type AgentId, type IntelligenceId } from '@/lib/agents'
 import { vaultStats } from '@/lib/knowledge'
 import { listOutcomes } from '@/lib/outcomes'
+import { currentAccount } from '@/lib/account'
 import type { KnowledgeSystem } from '@/lib/knowledge'
 
 export const dynamic = 'force-dynamic'
@@ -27,7 +28,8 @@ const DEMO_COUNTS: Record<IntelligenceId, number> = {
 }
 
 export default async function AgentNetworkPage() {
-  const [stats, outcomes] = await Promise.all([vaultStats(), listOutcomes(50)])
+  const account = await currentAccount()
+  const [stats, outcomes] = await Promise.all([vaultStats(account), listOutcomes(account, 50)])
 
   const systemCounts: Partial<Record<KnowledgeSystem, number>> = {}
   for (const g of stats.groups) {

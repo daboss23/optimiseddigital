@@ -318,8 +318,13 @@ export async function probeHybridSearch(): Promise<{ installed: boolean; error?:
 }
 
 /* ------------------------------ Vault stats ------------------------------- */
-// Live counts of what's actually stored in the knowledge layer. Degrades to the
-// curated demo map so the dashboards always render meaningful numbers.
+// Live counts of what THIS ACCOUNT has stored. Degrades to the curated demo map
+// so the dashboards always render meaningful numbers.
+//
+// Scoped, because the counts are themselves a read of tenant data: the old
+// version counted every row in the table and grouped it with the unscoped
+// `knowledge_stats()`, so a brand's Vault badge and Agent Network read the
+// size and the shape of every other brand's library.
 
 export interface VaultStatGroup {
   system: string
@@ -341,8 +346,55 @@ export function curatedVaultTotal(): number {
   )
 }
 
-export async function vaultStats(): Promise<VaultStats> {
+/** Every system a chunk can be filed under — the fallback breakdown's buckets. */
+const KNOWLEDGE_SYSTEMS: KnowledgeSystem[] = [
+  'vault',
+  'research',
+  'transformation',
+  'creative',
+  'copy',
+  'pattern',
+  'learning',
+  'website',
+  'design',
+]
+
+/**
+ * The per-system / per-category breakdown for one account.
+ *
+ * `knowledge_stats_scoped` (supabase/schema.lockdown.sql) groups in the
+ * database. Until that migration runs, one head-count per system answers the
+ * per-system half — what the Agent Network needs — with the category left
+ * unbroken rather than read across tenants.
+ */
+async function scopedGroups(accountId: string): Promise<VaultStatGroup[]> {
+  const admin = getSupabaseAdmin()
+  const { data, error } = await admin.rpc('knowledge_stats_scoped', { filter_builder: accountId })
+  if (!error && data) {
+    return (data as { system: string; category: string | null; count: number }[]).map((r) => ({
+      system: r.system,
+      category: r.category ?? null,
+      count: Number(r.count),
+    }))
+  }
+  const counts = await Promise.all(
+    KNOWLEDGE_SYSTEMS.map(async (system) => {
+      const { count } = await admin
+        .from('knowledge_chunks')
+        .select('id', { count: 'exact', head: true })
+        .eq('builder_id', accountId)
+        .eq('system', system)
+      return { system, category: null, count: count ?? 0 }
+    }),
+  )
+  return counts.filter((g) => g.count > 0)
+}
+
+export async function vaultStats(accountId: string | null): Promise<VaultStats> {
   if (supabaseReady()) {
+    // No account, no library: a session that names no brand reads an empty
+    // Vault — never the deployment's.
+    if (!accountId) return { live: true, total: 0, groups: [] }
     try {
       const admin = getSupabaseAdmin()
 
@@ -351,19 +403,10 @@ export async function vaultStats(): Promise<VaultStats> {
       const { count, error: countErr } = await admin
         .from('knowledge_chunks')
         .select('id', { count: 'exact', head: true })
+        .eq('builder_id', accountId)
       if (countErr) throw countErr
 
-      // Per-system / per-category breakdown for the categories panel.
-      let groups: VaultStatGroup[] = []
-      const { data, error: rpcErr } = await admin.rpc('knowledge_stats')
-      if (!rpcErr && data) {
-        groups = (data as { system: string; category: string | null; count: number }[]).map((r) => ({
-          system: r.system,
-          category: r.category ?? null,
-          count: Number(r.count),
-        }))
-      }
-
+      const groups = await scopedGroups(accountId).catch(() => [] as VaultStatGroup[])
       return { live: true, total: count ?? 0, groups }
     } catch (err) {
       console.error('Vault stats query failed, using demo counts:', err)
@@ -398,37 +441,69 @@ export interface BrowseResult {
   items: VaultItem[]
 }
 
+/**
+ * List or search the chunks ONE ACCOUNT owns, for the Vault library view.
+ *
+ * Two bugs lived here. The plain browse had no tenant filter at all, so every
+ * brand's Vault listed every brand's chunks. The semantic browse passed
+ * `filter_builder: null`, which `match_knowledge` answers with GLOBAL rows
+ * only — so a brand searching its own Vault never found its own uploads.
+ *
+ * The Vault shows what the account owns and nothing else: never global rows,
+ * which are platform material and not the brand's to read or edit.
+ */
 export async function browseKnowledge(
+  accountId: string | null,
   opts: { query?: string; system?: KnowledgeSystem; limit?: number } = {},
 ): Promise<BrowseResult> {
   const limit = opts.limit ?? 60
   const q = opts.query?.trim()
 
   if (supabaseReady()) {
+    if (!accountId) return { live: true, items: [] }
     try {
       const admin = getSupabaseAdmin()
 
       // Semantic search when a query is present and embeddings are configured.
       if (q && hasEmbeddings()) {
         const queryEmbedding = await embedOne(q, 'query')
+        // Scoped to the account — which `match_knowledge` widens to include
+        // platform-global rows, so a second, owned-only read decides what is
+        // listed. The pool is doubled so global rows cannot crowd out the
+        // account's own.
         const { data, error } = await admin.rpc('match_knowledge', {
           query_embedding: queryEmbedding,
-          match_count: limit,
+          match_count: limit * 2,
           filter_system: opts.system ?? null,
-          filter_builder: null,
+          filter_builder: accountId,
         })
         if (error) throw error
+        const hits = (data ?? []) as (VaultItem & { similarity: number })[]
+        const ids = hits.map((d) => d.id).filter((id): id is string => Boolean(id))
+        const owned = new Set<string>()
+        if (ids.length) {
+          const { data: rows, error: ownErr } = await admin
+            .from('knowledge_chunks')
+            .select('id')
+            .in('id', ids)
+            .eq('builder_id', accountId)
+          if (ownErr) throw ownErr
+          for (const r of rows ?? []) owned.add(String((r as { id: string }).id))
+        }
         return {
           live: true,
-          items: (data ?? []).map((d: VaultItem & { similarity: number }) => ({
-            id: d.id,
-            system: d.system,
-            category: d.category ?? null,
-            title: d.title,
-            content: d.content,
-            created_at: null,
-            similarity: d.similarity,
-          })),
+          items: hits
+            .filter((d) => d.id && owned.has(d.id))
+            .slice(0, limit)
+            .map((d) => ({
+              id: d.id,
+              system: d.system,
+              category: d.category ?? null,
+              title: d.title,
+              content: d.content,
+              created_at: null,
+              similarity: d.similarity,
+            })),
         }
       }
 
@@ -436,10 +511,14 @@ export async function browseKnowledge(
       let sel = admin
         .from('knowledge_chunks')
         .select('id, system, category, title, content, created_at')
+        .eq('builder_id', accountId)
         .order('created_at', { ascending: false })
         .limit(limit)
       if (opts.system) sel = sel.eq('system', opts.system)
-      if (q) sel = sel.or(`title.ilike.%${q}%,content.ilike.%${q}%`)
+      // Characters PostgREST reads as filter syntax are dropped, so a search
+      // term can only ever be a term — never an extra condition.
+      const term = q?.replace(/[%,()*\\]/g, ' ').trim()
+      if (term) sel = sel.or(`title.ilike.%${term}%,content.ilike.%${term}%`)
 
       const { data, error } = await sel
       if (error) throw error
@@ -470,10 +549,23 @@ export async function browseKnowledge(
   }
 }
 
-export async function deleteKnowledge(id: string): Promise<void> {
+/**
+ * Delete one chunk the account owns. An id that belongs to another account —
+ * or to the platform — deletes nothing and reads as "not found", the same
+ * answer as an id that does not exist, so the route cannot be used to probe
+ * which ids are real.
+ */
+export async function deleteKnowledge(id: string, accountId: string | null): Promise<void> {
   if (!supabaseReady()) throw new Error('Vector store not configured')
-  const { error } = await getSupabaseAdmin().from('knowledge_chunks').delete().eq('id', id)
+  if (!accountId) throw new Error('No account on this session')
+  const { data, error } = await getSupabaseAdmin()
+    .from('knowledge_chunks')
+    .delete()
+    .eq('id', id)
+    .eq('builder_id', accountId)
+    .select('id')
   if (error) throw error
+  if (!data?.length) throw new Error('Not found')
 }
 
 /**
@@ -486,12 +578,16 @@ export async function deleteKnowledge(id: string): Promise<void> {
  * text still updates (keyword browse stays correct) and the caller is told the
  * vector is stale.
  */
-export async function updateKnowledge(input: {
-  id: string
-  title?: string
-  content?: string
-}): Promise<{ reembedded: boolean }> {
+export async function updateKnowledge(
+  input: {
+    id: string
+    title?: string
+    content?: string
+  },
+  accountId: string | null,
+): Promise<{ reembedded: boolean }> {
   if (!supabaseReady()) throw new Error('Vector store not configured')
+  if (!accountId) throw new Error('No account on this session')
 
   const title = input.title?.trim()
   const content = input.content?.trim()
@@ -510,8 +606,17 @@ export async function updateKnowledge(input: {
     }
   }
 
-  const { error } = await getSupabaseAdmin().from('knowledge_chunks').update(patch).eq('id', input.id)
+  // Scoped like the delete: an id the account does not own updates nothing.
+  // The embedding above is spent before this check on purpose — one wasted
+  // embed call is cheaper than a read-then-write race.
+  const { data, error } = await getSupabaseAdmin()
+    .from('knowledge_chunks')
+    .update(patch)
+    .eq('id', input.id)
+    .eq('builder_id', accountId)
+    .select('id')
   if (error) throw error
+  if (!data?.length) throw new Error('Not found')
   return { reembedded }
 }
 

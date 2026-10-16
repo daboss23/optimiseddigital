@@ -59,6 +59,10 @@ async function main() {
     source.getMetadata(),
   ])
   const ctx: ToolContext = {
+    // No account: the in-process run reads the seeded source, and the two
+    // database-backed tools (Vault search, strategic memory) must come back
+    // empty rather than reach for somebody's rows.
+    accountId: null,
     evaluationDate: EVALUATION_DATE,
     creatives,
     baselines,

@@ -9,8 +9,14 @@
  *          one), then stores it in platform_settings. When the token can see
  *          several ad accounts and none was chosen, nothing is stored yet: the
  *          response carries the account list so the screen can ask which one.
- * DELETE → removes the stored connection. The META_ACCESS_TOKEN env fallback,
- *          if set, takes over from the next request.
+ * DELETE → removes the stored connection. On a single-brand deployment the
+ *          META_ACCESS_TOKEN env fallback, if set, takes over from the next
+ *          request; on a multi-tenant one nothing does — the brand is simply
+ *          not connected.
+ *
+ * The env fallback is reported ONLY where it may answer (`envFallbackAvailable`).
+ * On a shared deployment it is the owner's credential, and a brand's settings
+ * screen must not learn that it exists, let alone which ad account it reads.
  *
  * Why platform_settings and not a new table: this is one small blob of
  * deployment-level configuration, exactly what the key/value store exists for
@@ -29,6 +35,7 @@ import {
 import { listAccounts } from '@/lib/meta-graph'
 import { currentAccount } from '@/lib/account'
 import {
+  envFallbackAvailable,
   normaliseAccountId,
   tokenTail,
   type StoredMetaConnection,
@@ -38,7 +45,10 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  const stored = await getSetting<StoredMetaConnection>(SETTING_META_CONNECTION, await currentAccount())
+  const [stored, fallback] = await Promise.all([
+    currentAccount().then((account) => getSetting<StoredMetaConnection>(SETTING_META_CONNECTION, account)),
+    envFallbackAvailable(),
+  ])
   return NextResponse.json({
     success: true,
     data: {
@@ -52,8 +62,8 @@ export async function GET() {
       // "what happens instead" answers.
       storageAvailable: settingsConfigured(),
       envFallback: {
-        token: Boolean(process.env.META_ACCESS_TOKEN),
-        adAccountId: (process.env.META_AD_ACCOUNT_ID ?? '').trim() || null,
+        token: fallback,
+        adAccountId: fallback ? (process.env.META_AD_ACCOUNT_ID ?? '').trim() || null : null,
       },
     },
   })
@@ -70,6 +80,16 @@ export async function POST(request: NextRequest) {
 
   if (!accessToken) {
     return NextResponse.json({ success: false, error: 'An access token is required.' }, { status: 400 })
+  }
+  const account = await currentAccount()
+  if (!account && settingsConfigured()) {
+    // Checked BEFORE the token is sent to Meta: with no account there is
+    // nowhere to keep it, and validating it would only tell this session
+    // which ad accounts the token reaches.
+    return NextResponse.json(
+      { success: false, error: 'Sign in to the brand account you are connecting Meta for.' },
+      { status: 401 },
+    )
   }
   if (!settingsConfigured()) {
     return NextResponse.json(
@@ -130,7 +150,7 @@ export async function POST(request: NextRequest) {
     adAccountId: chosen.id,
     accountName: chosen.name,
     connectedAt: new Date().toISOString(),
-  } satisfies StoredMetaConnection, await currentAccount())
+  } satisfies StoredMetaConnection, account)
   if (!stored) {
     return NextResponse.json(
       { success: false, error: 'The connection could not be saved.' },
