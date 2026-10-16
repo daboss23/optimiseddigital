@@ -97,7 +97,10 @@ async function main() {
       /(?:const|let)\s*\{[^}]*\b(?:builderId|accountId|tenantId)\b[^}]*\}\s*=\s*(?:await\s*)?(?:request|req)\.json\(\)/.test(
         src,
       ) ||
-      /\bbody\.(?:builderId|accountId|tenantId)\b/.test(src)
+      /\bbody\.(?:builderId|accountId|tenantId|builder_id|account_id)\b/.test(src) ||
+      // A multipart form or a query string is the same suggestion in another
+      // envelope — the faces upload read its tenant from `form.get('builderId')`.
+      /\.get\(\s*['"](?:builderId|accountId|tenantId|builder_id|account_id|builderScope)['"]\s*\)/.test(src)
     ) {
       bodyTenant.push(f.replace(`${root}/`, ''))
     }
@@ -248,6 +251,269 @@ async function main() {
     'no query names a table the schema does not define',
     missing.length === 0,
     missing.map((t) => `${t} (in ${queried.get(t)?.join(', ')})`).join(' · '),
+  )
+
+  console.log('\nEvery query against a tenant table names the account it reads')
+
+  /* The audit that wrote this section found the same bug in a dozen places:
+     a query against a tenant table with no account in it. The Vault listed
+     every brand's chunks, ORACLE's memory and the learnings rubric read every
+     brand's outcomes, the Reactor's "best banked design" could be another
+     brand's winning ad, the Research page summarised everyone's research, and
+     a delete or update by id touched whatever row the id named.
+
+     So the rule is structural and general rather than one check per bug: each
+     query chain against a tenant table must carry the account in the chain
+     itself — `.eq('builder_id', …)` / `.eq('account_id', …)`, or the tenant
+     key written in an insert's own row. A predicate somewhere else in the
+     function does not count; that is exactly how the second query in a
+     function goes unscoped while the first one passes review. */
+  const TENANT_TABLES = [
+    'knowledge_chunks',
+    'campaign_outcomes',
+    'faces',
+    'frameworks',
+    'creative_outputs',
+    'media_generations',
+    'long_documents',
+    'platform_settings',
+  ]
+  const PREDICATE =
+    /\.(?:eq|in|match)\(\s*['"](?:builder_id|account_id)['"]|\b(?:builder_id|account_id)\s*:|\.or\(\s*[`'"][^`'"]*\b(?:builder_id|account_id)\.|\.is\(\s*['"]builder_id['"]\s*,\s*null\s*\)/
+
+  /* Queries that touch a tenant table and read no tenant rows at all. Each is
+     pinned to the one shape that makes it safe, so a later edit that turns it
+     into a real read fails here. */
+  const ROWLESS_PROBES: Record<string, RegExp> = {
+    // Selects a COLUMN with head:true to learn whether a migration ran.
+    'app/api/health/route.ts': /\.select\(\s*'is_global'\s*,\s*\{\s*head:\s*true\s*\}\s*\)/,
+  }
+
+  /* Inserts whose row is built (and typed) before the query rather than
+     written inline. Each one is named with the reason it is safe, and each
+     reason is asserted below rather than taken on trust. */
+  const TYPED_ROW_INSERTS: Record<string, { why: string; proof: RegExp }> = {
+    'lib/knowledge.ts': {
+      why: 'rows are built with builder_id from the resolved account, and an ingest with no account is refused before this',
+      proof: /builder_id:\s*accountId[\s\S]*\.insert\(rows\)/,
+    },
+    'lib/video/persistence.ts': {
+      why: 'MediaGenerationInsert carries builder_id, set by every caller from the session',
+      proof: /interface MediaGenerationInsert\s*\{[^}]*builder_id/,
+    },
+    'lib/supabase.ts': {
+      why: 'CreativeOutputInsert carries builder_id; its one route sets it from requireAccount()',
+      proof: /interface CreativeOutputInsert\s*\{[^}]*builder_id/,
+    },
+  }
+
+  /** The query chain starting at a `.from(` — bracket-aware, through every `.method()` line. */
+  const chainAt = (src: string, at: number): string => {
+    let i = at
+    let depth = 0
+    for (; i < src.length; i += 1) {
+      const ch = src[i]
+      if (ch === '(' || ch === '[' || ch === '{') depth += 1
+      else if (ch === ')' || ch === ']' || ch === '}') {
+        depth -= 1
+        if (depth < 0) break
+      } else if (ch === ';' && depth === 0) break
+      else if (ch === '\n' && depth === 0) {
+        const next = /^\s*(\S)/.exec(src.slice(i + 1))
+        if (!next || next[1] !== '.') break
+      }
+    }
+    let chain = src.slice(at, i)
+    /* `let sel = admin.from(…)` followed by `sel = sel.eq(…)`, or a `base`
+       finished later as `base.or(…)`: the predicate can legitimately arrive
+       on a later line of the same build. */
+    const head = src.slice(Math.max(0, at - 160), at)
+    const assigned = /(?:let|const)\s+(\w+)\s*=\s*[\w.()]*\s*$/.exec(head.replace(/\s+$/, ''))
+    if (assigned) {
+      const v = assigned[1]
+      const later = src.slice(i, i + 1500)
+      const extend = new RegExp(`\\b${v}(?:\\s*=\\s*${v})?\\.[a-z]\\w*\\([^\\n]*`, 'g')
+      let m: RegExpExecArray | null
+      while ((m = extend.exec(later)) !== null) chain += `\n${m[0]}`
+    }
+    return chain
+  }
+
+  const unscoped: string[] = []
+  const typedInsertProblems: string[] = []
+  for (const f of [...libFiles, ...apiFiles]) {
+    const rel = f.replace(`${root}/`, '')
+    const src = code(f)
+    eachMatch(/\.from\(\s*'([a-z_]+)'\s*\)/g, src, (m) => {
+      if (!TENANT_TABLES.includes(m[1])) return
+      const chain = chainAt(src, m.index)
+      if (PREDICATE.test(chain)) return
+      if (ROWLESS_PROBES[rel]?.test(chain)) return
+      const insertsTypedRow = /\.(?:insert|upsert)\(\s*\[?\s*[a-zA-Z_]\w*\s*\]?\s*[,)]/.test(chain)
+      const allowed = TYPED_ROW_INSERTS[rel]
+      if (insertsTypedRow && allowed) {
+        if (!allowed.proof.test(src)) typedInsertProblems.push(`${rel} (${allowed.why})`)
+        return
+      }
+      const line = src.slice(0, m.index).split('\n').length
+      unscoped.push(`${rel}:${line} ${m[1]}`)
+    })
+  }
+  check(
+    'every query against a tenant table carries the account in the query itself',
+    unscoped.length === 0,
+    unscoped.length ? `no account predicate: ${unscoped.join(' · ')}` : '',
+  )
+  check(
+    'every typed-row insert still writes the account it claims to',
+    typedInsertProblems.length === 0,
+    typedInsertProblems.join(' · '),
+  )
+
+  /* The retrieval functions take the account as `filter_builder`. A literal
+     null is the global-only scope — right for a deployment probe, wrong for
+     anything a brand reads, and it is how the Vault's semantic browse never
+     found a brand's own uploads. `knowledge_stats()` takes no scope at all. */
+  const nullScopedRpc: string[] = []
+  for (const f of [...libFiles, ...apiFiles]) {
+    const rel = f.replace(`${root}/`, '')
+    const src = code(f)
+    eachMatch(/\.rpc\(\s*'([a-z_]+)'/g, src, (m) => {
+      const call = chainAt(src, m.index)
+      if (m[1] === 'knowledge_stats') {
+        nullScopedRpc.push(`${rel}: knowledge_stats() is unscoped — use knowledge_stats_scoped`)
+        return
+      }
+      if (!/^match_knowledge/.test(m[1])) return
+      if (/probeHybridSearch/.test(src.slice(Math.max(0, m.index - 1200), m.index)) && /filter_builder:\s*null/.test(call)) {
+        return // the health probe: global scope by design, reads no account's rows
+      }
+      // A literal null is the bug. A spread scope object (`...scope`) is how
+      // the shared search passes the caller's account, which every caller now
+      // supplies — so it is accepted only where that object names filter_builder.
+      const spreadsScope = /\.\.\.(\w+)/.exec(call)
+      const scopeObject = spreadsScope
+        ? new RegExp(`const\\s+${spreadsScope[1]}\\s*=\\s*\\{[^}]*filter_builder:\\s*(?!null)`).test(src)
+        : false
+      if (/filter_builder:\s*null/.test(call) || (!/filter_builder:/.test(call) && !scopeObject)) {
+        nullScopedRpc.push(`${rel}: ${m[1]} without an account`)
+      }
+    })
+  }
+  check(
+    'no retrieval call passes a null account outside the health probe',
+    nullScopedRpc.length === 0,
+    nullScopedRpc.join(' · '),
+  )
+
+  /* Accounts are provisioned and resolved in one module. A route that lists
+     them is a directory of every customer — /api/builders was exactly that,
+     unauthenticated, and could also create accounts. */
+  const accountReaders: string[] = []
+  for (const f of [...libFiles, ...apiFiles]) {
+    const rel = f.replace(`${root}/`, '')
+    if (['lib/account.ts', 'lib/tenancy-mode.ts', 'lib/supabase.ts'].includes(rel)) continue
+    if (/\.from\(\s*'(?:accounts|users)'\s*\)/.test(code(f))) accountReaders.push(rel)
+  }
+  check(
+    'accounts and users are only read where tenancy is resolved',
+    accountReaders.length === 0,
+    accountReaders.join(' · '),
+  )
+  const supabaseSrc = code(join(root, 'lib', 'supabase.ts'))
+  const accountListings: string[] = []
+  eachMatch(/\.from\(\s*'accounts'\s*\)/g, supabaseSrc, (m) => {
+    const chain = chainAt(supabaseSrc, m.index)
+    // Reading one account by id is resolution; anything else is a listing.
+    if (/\.select\(/.test(chain) && !/\.eq\(\s*'id'/.test(chain)) {
+      accountListings.push(`lib/supabase.ts:${supabaseSrc.slice(0, m.index).split('\n').length}`)
+    }
+  })
+  check(
+    'no helper lists every account on the deployment',
+    accountListings.length === 0 && !/function\s+listBuilders\b/.test(supabaseSrc),
+    `an accounts query with no id filter — a directory of every customer: ${accountListings.join(' · ')}`,
+  )
+
+  console.log('\nDeployment-wide credentials never act for a brand on a shared deployment')
+
+  /* The env Meta token is the OWNER'S ad account. On a single-brand install it
+     is that brand's, and the fallback is a convenience. Once a second brand
+     exists it is somebody else's account, and a brand that has not connected
+     its own must be told to connect — not shown, and not uploaded into, the
+     owner's. */
+  const credsSrc = metaCreds ? code(metaCreds) : ''
+  const resolverBody = /async function resolveMetaCredentials[\s\S]*?\n\}/.exec(credsSrc)?.[0] ?? ''
+  check(
+    'the Meta env token answers only where deployment credentials may act',
+    /META_ACCESS_TOKEN/.test(resolverBody) && /deploymentCredentialsAllowed\(\)/.test(resolverBody),
+    'resolveMetaCredentials falls back to META_ACCESS_TOKEN without asking lib/tenancy-mode.ts — every unconnected brand reads the owner\'s ad account',
+  )
+  const modeSrc = (() => {
+    try {
+      return code(join(root, 'lib', 'tenancy-mode.ts'))
+    } catch {
+      return ''
+    }
+  })()
+  check(
+    'a deployment with brand logins is multi-tenant whether or not the flag is set',
+    /PLATFORM_MULTI_TENANT/.test(modeSrc) && /hasUsers\(\)/.test(modeSrc) && /!\(await isMultiTenant\(\)\)/.test(modeSrc),
+    'lib/tenancy-mode.ts must treat existing user rows as multi-tenant, not only the env flag',
+  )
+  const graphSrc = code(join(root, 'lib', 'meta-graph.ts'))
+  check(
+    'the Graph client never defaults to the deployment token',
+    /function graphGet\([^)]*token:\s*string\s*,?\s*\)/.test(graphSrc) &&
+      !/process\.env\.META_ACCESS_TOKEN/.test(graphSrc),
+    'graphGet falls back to META_ACCESS_TOKEN when a caller omits the token — the owner\'s account becomes the silent default',
+  )
+  const envTokenReaders: string[] = []
+  const ENV_TOKEN_ALLOWED: Record<string, string> = {
+    'lib/operator/adapters/meta-credentials.ts': 'the one resolver, gated above',
+    'app/api/health/route.ts': 'reports presence as a boolean, never the value',
+    'app/api/ad-library/search/route.ts': 'queries the PUBLIC ads archive — no account data',
+  }
+  for (const f of [...libFiles, ...apiFiles]) {
+    const rel = f.replace(`${root}/`, '')
+    if (ENV_TOKEN_ALLOWED[rel]) continue
+    if (/process\.env\.META_ACCESS_TOKEN/.test(code(f))) envTokenReaders.push(rel)
+  }
+  check(
+    'nothing else reads the env Meta token directly',
+    envTokenReaders.length === 0,
+    envTokenReaders.join(' · '),
+  )
+  const reactorSrc = code(join(root, 'app', 'api', 'campaign-reactor', 'route.ts'))
+  const mcpResolver = /async function metaAdsServer[\s\S]*?\n\}/.exec(reactorSrc)?.[0] ?? ''
+  check(
+    'the Meta Ads MCP (owner\'s token) is attached only on a single-brand deployment',
+    /deploymentCredentialsAllowed\(\)/.test(mcpResolver),
+    'metaAdsServer attaches PIPEBOARD_API_TOKEN / META_ADS_ACCESS_TOKEN to every brand\'s run — OPUS could read the owner\'s campaigns into another brand\'s concepts',
+  )
+  const connectionRoute = code(join(root, 'app', 'api', 'operator', 'meta-connection', 'route.ts'))
+  check(
+    'a brand\'s Meta settings screen is never told about the owner\'s env token',
+    /envFallbackAvailable\(\)/.test(connectionRoute) && !/process\.env\.META_ACCESS_TOKEN/.test(connectionRoute),
+    'the connection route reports the env token (and its ad account id) to every brand',
+  )
+
+  console.log('\nProvider keys only travel to the provider')
+
+  /* fal's response_url round-trips through the browser and every request to it
+     carries `Authorization: Key <FAL_KEY>`. Followed unchecked, any caller
+     could name a host and receive the deployment's key. */
+  const falSrc = code(join(root, 'lib', 'video', 'fal.ts'))
+  check(
+    'a caller-supplied fal response URL is followed only on fal\'s own host',
+    /function resultUrlFor[\s\S]*?isFalQueueUrl\(responseUrl\)/.test(falSrc),
+    'lib/video/fal.ts sends FAL_KEY to whatever responseUrl the poll request names',
+  )
+  const downloadSrc = code(join(root, 'app', 'api', 'image', 'download', 'route.ts'))
+  check(
+    'the image download proxy re-checks every redirect hop',
+    /safeFetch\(/.test(downloadSrc) && !/\bawait fetch\(/.test(downloadSrc),
+    'app/api/image/download fetches with redirects followed blindly — a public URL can bounce it inward',
   )
 
   console.log('\nRow-level security is the backstop, not the plan')
